@@ -299,6 +299,12 @@ export const characters = pgTable("characters", {
   showHpBar: boolean("show_hp_bar").notNull().default(true),
   showEnergyBar: boolean("show_energy_bar").notNull().default(true),
   showManaBar: boolean("show_mana_bar").notNull().default(true),
+  // GM-only toggle: when true, this character's real inventory is browsable
+  // as a shop by other campaign members (Buy/Sell), using the same buy/sell
+  // logic as a map-pin shop but sourced from real items instead of a curated
+  // snapshot list. The shop's buying budget IS whatever currency-type items
+  // this character actually holds - no separate tracked number.
+  isShop: boolean("is_shop").notNull().default(false),
   classSkillPoints: integer("class_skill_points").notNull().default(0),
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   // New Attributes (range -2 to 5, mod equals value)
@@ -561,6 +567,47 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 
+// Character-to-character trades. Each row is one in-progress or completed
+// trade session between exactly two characters. Both offer lists are edited
+// freely until that side locks; once both are locked, both must accept
+// before anything transfers - a deny (or an unlock) at any point ends the
+// negotiation without moving a single item.
+export const characterTrades = pgTable("character_trades", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  characterAId: varchar("character_a_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  characterBId: varchar("character_b_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  // `name` is a display-only snapshot taken when the offer was set - never
+  // trusted for the actual transfer, which always re-reads the real item by
+  // itemId. It exists so the OTHER side of the trade (who can't query this
+  // character's inventory) can still see what's being offered by name.
+  offerA: jsonb("offer_a").$type<{ itemId: string; quantity: number; name?: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  offerB: jsonb("offer_b").$type<{ itemId: string; quantity: number; name?: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  lockedA: boolean("locked_a").notNull().default(false),
+  lockedB: boolean("locked_b").notNull().default(false),
+  acceptedA: boolean("accepted_a").notNull().default(false),
+  acceptedB: boolean("accepted_b").notNull().default(false),
+  status: text("status").notNull().default("open"), // 'open' | 'completed' | 'denied' | 'cancelled'
+  // Snapshot of exactly what changed hands, kept after completion so the GM
+  // can reveal it later even though the live offer lists mean nothing once
+  // items have already moved.
+  completedSummary: jsonb("completed_summary").$type<{
+    aGave: { name: string; quantity: number }[];
+    bGave: { name: string; quantity: number }[];
+  } | null>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertCharacterTradeSchema = createInsertSchema(characterTrades).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCharacterTrade = z.infer<typeof insertCharacterTradeSchema>;
+export type CharacterTrade = typeof characterTrades.$inferSelect;
+
 // Password Reset Tokens table
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -646,6 +693,10 @@ export const items = pgTable("items", {
   // normal inventory list while it's "inside" the character, and un-setting
   // it is the entire undo (the item just reappears, unchanged).
   isAbsorbed: boolean("is_absorbed").default(false).notNull(),
+  // GM-only: excludes this item from its owning character's shop listing
+  // when that character has isShop enabled. The item stays real inventory
+  // either way - this only controls whether it shows up for sale.
+  hiddenFromShop: boolean("hidden_from_shop").default(false).notNull(),
   // Armor-specific fields
   armorSlot: text("armor_slot"), // "helm", "chest", "arm", "legs", "boots" - which body part the armor covers
   armorBonus: integer("armor_bonus").default(0), // Bonus to DC when equipped

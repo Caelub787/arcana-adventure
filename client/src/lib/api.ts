@@ -3336,6 +3336,69 @@ class ApiClient {
     });
   }
 
+  // Token Shop: a character's real inventory acting as a shop (see server
+  // routes for the buy/sell semantics - unlike a pin shop, nothing here is a
+  // curated snapshot, everything is a real item/currency transfer).
+  async getCharacterShopListing(shopCharacterId: string): Promise<{ items: any[]; wallet: { name: string; image?: string | null; price: number; quantity: number }[]; budget: number }> {
+    return this.request(`/characters/${shopCharacterId}/shop-listing`);
+  }
+
+  async buyFromCharacterShop(shopCharacterId: string, data: { itemId: string; buyerCharacterId: string; quantity?: number }): Promise<any> {
+    return this.request(`/characters/${shopCharacterId}/shop-buy`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sellToCharacterShop(shopCharacterId: string, data: { itemId: string; sellerCharacterId: string; quantity?: number; sellPercentage?: number; currencyName: string }): Promise<any> {
+    return this.request(`/characters/${shopCharacterId}/shop-sell`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // GM-only: move an item (or part of a stack) from its current owner to a
+  // different character - e.g. dragging between two open character sheets.
+  async transferItem(itemId: string, data: { toCharacterId: string; quantity: number }): Promise<any> {
+    return this.request(`/items/${itemId}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Character-to-character trading.
+  async createCharacterTrade(data: { characterAId: string; characterBId: string }): Promise<any> {
+    return this.request('/character-trades', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getCharacterTrade(tradeId: string): Promise<any> {
+    return this.request(`/character-trades/${tradeId}`);
+  }
+
+  async setTradeOffer(tradeId: string, data: { characterId: string; items: { itemId: string; quantity: number }[] }): Promise<any> {
+    return this.request(`/character-trades/${tradeId}/offer`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async setTradeLock(tradeId: string, data: { characterId: string; locked: boolean }): Promise<any> {
+    return this.request(`/character-trades/${tradeId}/lock`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async respondToTrade(tradeId: string, data: { characterId: string; accept: boolean }): Promise<any> {
+    return this.request(`/character-trades/${tradeId}/respond`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getHaggleRolls(pinId: string): Promise<any[]> {
     return this.request(`/campaign-map-pins/${pinId}/haggle-rolls`);
   }

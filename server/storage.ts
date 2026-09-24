@@ -6,6 +6,7 @@ import {
   type Character, type InsertCharacter,
   type Token, type InsertToken,
   type ChatMessage, type InsertChatMessage,
+  type CharacterTrade, type InsertCharacterTrade,
   type PasswordResetToken, type InsertPasswordResetToken,
   type Scene, type InsertScene,
   type Hotbar, type InsertHotbar,
@@ -103,7 +104,7 @@ import {
   craftRecipes, craftRecipeIngredients, craftRecipeOutcomes,
   crafterRecipeTemplates, crafterTemplateLinks,
   type CrafterRecipeTemplate, type InsertCrafterRecipeTemplate,
-  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, caAbilities, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
+  spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, characterTrades, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, caAbilities, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, asc, desc, sql, inArray, or, isNull, isNotNull, ne } from "drizzle-orm";
@@ -2656,6 +2657,36 @@ export class DatabaseStorage implements IStorage {
   async getItem(id: string): Promise<Item | undefined> {
     const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1) as Item[];
     return item;
+  }
+
+  // Character trades
+  async createCharacterTrade(trade: InsertCharacterTrade): Promise<CharacterTrade> {
+    const [newTrade] = await db.insert(characterTrades).values(trade as any).returning() as CharacterTrade[];
+    return newTrade;
+  }
+
+  async getCharacterTrade(id: string): Promise<CharacterTrade | undefined> {
+    const [trade] = await db.select().from(characterTrades).where(eq(characterTrades.id, id)).limit(1) as CharacterTrade[];
+    return trade;
+  }
+
+  async updateCharacterTrade(id: string, updates: Partial<InsertCharacterTrade>): Promise<CharacterTrade | undefined> {
+    const [trade] = await db.update(characterTrades)
+      .set({ ...updates, updatedAt: new Date() } as any)
+      .where(eq(characterTrades.id, id))
+      .returning() as CharacterTrade[];
+    return trade;
+  }
+
+  async getOpenTradeForCharacter(characterId: string): Promise<CharacterTrade | undefined> {
+    const [trade] = await db.select().from(characterTrades)
+      .where(and(
+        eq(characterTrades.status, 'open'),
+        or(eq(characterTrades.characterAId, characterId), eq(characterTrades.characterBId, characterId))
+      ))
+      .orderBy(desc(characterTrades.createdAt))
+      .limit(1) as CharacterTrade[];
+    return trade;
   }
 
   async getSystemItems(system?: string, ownerScope?: string[], worldId?: string, personal?: boolean): Promise<Item[]> {

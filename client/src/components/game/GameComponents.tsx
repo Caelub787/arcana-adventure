@@ -11538,7 +11538,7 @@ export function rollsForTracked(
   );
 }
 
-export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, orientation = 'OGPT', onOpenCharacterSheet }: {
+export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed, isMobile, orientation = 'OGPT', onOpenCharacterSheet, onTradeRequest }: {
   members: any[];
   characters: any[];
   campaignSystem?: string;
@@ -11552,6 +11552,9 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   // exactly where "under the toolbar instead of on top of it" matters most.
   orientation?: 'OGPT' | 'vertical-left';
   onOpenCharacterSheet?: (character: any) => void;
+  // Right-click a chip -> "Trade" -> opens a live trade session between the
+  // viewer's own character and this chip's character.
+  onTradeRequest?: (character: any) => void;
 }) {
   const vertical = orientation === 'vertical-left';
   // Mobile only has room for a couple of cards at once, so the row scrolls
@@ -11621,6 +11624,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             trayOrientation={vertical ? 'right' : 'below'}
             onOpenSheet={character ? () => onOpenCharacterSheet?.(character) : undefined}
             onNewRoll={handleNewRoll}
+            onTrade={character && onTradeRequest ? () => onTradeRequest(character) : undefined}
           />
         );
       })}
@@ -11640,6 +11644,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
             trayOrientation={vertical ? 'right' : 'below'}
             onOpenSheet={() => onOpenCharacterSheet?.(character)}
             onNewRoll={handleNewRoll}
+            onTrade={onTradeRequest ? () => onTradeRequest(character) : undefined}
           />
         );
       })}
@@ -11697,7 +11702,7 @@ export function PinnedRosterBar({ members, characters, campaignSystem, rollFeed,
   );
 }
 
-function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, compact = false, trayOrientation = 'below', onOpenSheet, onNewRoll }: {
+function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaignSystem, rolls, accentColor, compact = false, trayOrientation = 'below', onOpenSheet, onNewRoll, onTrade }: {
   testId: string;
   portraitSrc?: string;
   displayName: string;
@@ -11717,6 +11722,8 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   // whether the chip is currently scrolled off-screen and light up that
   // edge of the tracker.
   onNewRoll?: (chipEl: HTMLDivElement | null, color: string) => void;
+  // Right-click -> "Trade" -> starts a live trade with this chip's character.
+  onTrade?: () => void;
 }) {
   const [revealed, setRevealed] = useState(false);
   const [glow, setGlow] = useState(false);
@@ -11862,7 +11869,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const trayWidth = cardWidth - 15;
   const trayHeight = compact ? 56 : 70;
 
-  return (
+  const chipBody = (
     <div
       ref={containerRef}
       className="relative shrink-0"
@@ -12043,6 +12050,19 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       </div>
      </div>
     </div>
+  );
+
+  if (!onTrade) return chipBody;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{chipBody}</ContextMenuTrigger>
+      <ContextMenuContent className="w-40">
+        <ContextMenuItem onClick={onTrade} data-testid={`context-trade-${testId}`}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Trade
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -16529,8 +16549,67 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   );
 }
 
-// Shared state for drag and drop (works on mobile unlike dataTransfer)
-let globalDraggedItem: { id: string; item: any } | null = null;
+// Shared state for drag and drop (works on mobile unlike dataTransfer).
+// `quantity` is how many units of a stack are being moved - defaults to the
+// whole stack, adjustable mid-drag by scroll wheel (see the dragQuantity*
+// helpers below), bounded to [1, item.quantity].
+let globalDraggedItem: { id: string; item: any; quantity: number } | null = null;
+// Set by a right-click during an active drag; checked by every drop handler
+// so a cancelled drag never moves anything even if the browser still
+// delivers a drop event for the native drag gesture already in flight.
+let dragCancelled = false;
+let dragQuantityBadgeEl: HTMLDivElement | null = null;
+function updateDragQuantityBadge(x: number, y: number, quantity: number, max: number) {
+  if (max <= 1) return;
+  if (!dragQuantityBadgeEl) {
+    dragQuantityBadgeEl = document.createElement('div');
+    dragQuantityBadgeEl.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;background:rgba(30,27,24,0.95);color:#fbbf24;border:1px solid #78716c;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:bold;transform:translate(12px,12px);';
+    document.body.appendChild(dragQuantityBadgeEl);
+  }
+  dragQuantityBadgeEl.style.left = `${x}px`;
+  dragQuantityBadgeEl.style.top = `${y}px`;
+  dragQuantityBadgeEl.textContent = `x${quantity} / ${max}`;
+}
+function removeDragQuantityBadge() {
+  if (dragQuantityBadgeEl) {
+    dragQuantityBadgeEl.remove();
+    dragQuantityBadgeEl = null;
+  }
+}
+// Attached for the duration of one drag (onDragStart -> onDragEnd) so the
+// scroll wheel adjusts how much of a stack is being moved, and a right-click
+// cancels the whole move. Both are page-level because native HTML5 drag
+// events don't reliably fire on the dragged element itself once the OS-level
+// drag gesture takes over.
+function attachDragAdjustmentListeners(maxQuantity: number) {
+  const onWheel = (e: WheelEvent) => {
+    if (!globalDraggedItem) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1 : -1;
+    globalDraggedItem.quantity = Math.max(1, Math.min(maxQuantity, globalDraggedItem.quantity + delta));
+    updateDragQuantityBadge(e.clientX, e.clientY, globalDraggedItem.quantity, maxQuantity);
+  };
+  const onMove = (e: DragEvent) => {
+    if (!globalDraggedItem) return;
+    updateDragQuantityBadge(e.clientX, e.clientY, globalDraggedItem.quantity, maxQuantity);
+  };
+  const onContextMenu = (e: MouseEvent) => {
+    if (!globalDraggedItem) return;
+    e.preventDefault();
+    dragCancelled = true;
+    globalDraggedItem = null;
+    removeDragQuantityBadge();
+  };
+  document.addEventListener('wheel', onWheel, { passive: false });
+  document.addEventListener('dragover', onMove);
+  document.addEventListener('contextmenu', onContextMenu, true);
+  return () => {
+    document.removeEventListener('wheel', onWheel);
+    document.removeEventListener('dragover', onMove);
+    document.removeEventListener('contextmenu', onContextMenu, true);
+    removeDragQuantityBadge();
+  };
+}
 
 // QuantityAdjustDialog - for setting item quantity to an absolute value
 interface QuantityAdjustDialogProps {
@@ -16927,10 +17006,11 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     setIsDragOver(false);
     
     if (!item.isContainer || !canEdit) return;
-    
+    if (dragCancelled) { dragCancelled = false; return; }
+
     // Try dataTransfer first, fall back to global state (works on mobile)
     let draggedItemId: string | null = null;
-    
+
     try {
       const jsonData = e.dataTransfer.getData('application/json');
       if (jsonData) {
@@ -16942,16 +17022,16 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     } catch (err) {
       // dataTransfer failed, try global state
     }
-    
+
     // Fall back to global state if dataTransfer didn't work
     if (!draggedItemId && globalDraggedItem) {
       draggedItemId = globalDraggedItem.id;
     }
-    
+
     if (draggedItemId && draggedItemId !== item.id) {
       moveItemToContainer(draggedItemId, item.id);
     }
-    
+
     // Clear global state immediately after processing
     globalDraggedItem = null;
   };
@@ -16969,8 +17049,11 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             e.preventDefault();
             return;
           }
-          // Set global state for mobile fallback
-          globalDraggedItem = { id: item.id, item: item };
+          dragCancelled = false;
+          // Set global state for mobile fallback. Defaults to moving the
+          // whole stack - scroll wheel adjusts this down toward 1 mid-drag.
+          globalDraggedItem = { id: item.id, item: item, quantity: item.quantity || 1 };
+          (e.currentTarget as any)._dragCleanup = attachDragAdjustmentListeners(item.quantity || 1);
           // Also set dataTransfer for desktop
           e.dataTransfer.setData('application/json', JSON.stringify({
             type: 'item',
@@ -16984,6 +17067,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
         }}
         onDragEnd={(e) => {
           e.currentTarget.style.opacity = '1';
+          (e.currentTarget as any)._dragCleanup?.();
+          (e.currentTarget as any)._dragCleanup = null;
           // Clear global state
           globalDraggedItem = null;
         }}
@@ -20371,6 +20456,15 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     staleTime: 10 * 60 * 1000,
   });
   const [showManageTemplates, setShowManageTemplates] = useState(false);
+  const [showTokenShop, setShowTokenShop] = useState(false);
+  const { user: tokenShopViewer } = useAuth();
+  const { data: tokenShopCampaignCharacters } = useQuery<any[]>({
+    queryKey: ['characters', campaignId],
+    enabled: showTokenShop && !!campaignId,
+  });
+  const tokenShopMyCharacterId = isOwner
+    ? character.id
+    : (tokenShopCampaignCharacters?.find((c: any) => c.userId === tokenShopViewer?.id)?.id || null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
   const [selectedSpellbook, setSelectedSpellbook] = useState<any>(null);
@@ -21989,10 +22083,28 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // Handle moving item to container via API
   const moveItemToContainer = async (itemId: string, containerId: string | null) => {
     try {
+      // A drag that started on a DIFFERENT character's own sheet (only
+      // possible for a GM with two sheets open at once) is a real transfer
+      // of ownership, not just a container reassignment - the dragged
+      // item's own record (captured at drag-start) is how we know whose
+      // inventory it's actually coming from, since by drop time this
+      // component only knows about its OWN character's items.
+      const sourceCharacterId = globalDraggedItem?.id === itemId ? globalDraggedItem.item?.characterId : null;
+      if (sourceCharacterId && sourceCharacterId !== character.id) {
+        const quantity = globalDraggedItem?.quantity || 1;
+        const result: any = await api.transferItem(itemId, { toCharacterId: character.id, quantity });
+        if (containerId && result?.item?.id) {
+          await api.updateItem(result.item.id, { containerId });
+        }
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+        queryClient.invalidateQueries({ queryKey: ['items', sourceCharacterId] });
+        return;
+      }
       await api.updateItem(itemId, { containerId });
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
     } catch (error: any) {
       console.error('Failed to move item:', error);
+      toast({ title: 'Move failed', description: error?.message || 'Could not move this item', variant: 'destructive' });
     }
   };
 
@@ -25514,6 +25626,25 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                       <Layers className="h-4 w-4 mr-1" /> Templates
                     </Button>
                   )}
+                  {isGM && (
+                    <label
+                      className="flex items-center gap-1.5 text-xs text-stone-300 bg-stone-700 border border-stone-600 rounded px-2 cursor-pointer select-none"
+                      data-testid="label-token-shop-toggle"
+                      title="GM only: makes this character's real inventory browsable as a shop by other players"
+                    >
+                      <Checkbox
+                        checked={!!liveCharacter.isShop}
+                        onCheckedChange={(v) => onUpdate?.({ isShop: !!v } as any)}
+                        data-testid="checkbox-is-shop"
+                      />
+                      Shop
+                    </label>
+                  )}
+                  {!!liveCharacter.isShop && (
+                    <Button size="sm" variant="outline" onClick={() => setShowTokenShop(true)} data-testid="button-open-token-shop" className="bg-amber-900/30 border-amber-700 text-amber-300 hover:bg-amber-900/50">
+                      Open Shop
+                    </Button>
+                  )}
                   {canEditAsGM && (
                     <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
@@ -25599,10 +25730,11 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   onDrop={(e) => {
                     e.preventDefault();
                     if (!canEdit) return;
-                    
+                    if (dragCancelled) { dragCancelled = false; return; }
+
                     // Try dataTransfer first, fall back to global state (works on mobile)
                     let draggedItemId: string | null = null;
-                    
+
                     try {
                       const jsonData = e.dataTransfer.getData('application/json');
                       if (jsonData) {
@@ -25612,16 +25744,16 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                         }
                       }
                     } catch (err) {}
-                    
+
                     // Fall back to global state if dataTransfer didn't work
                     if (!draggedItemId && globalDraggedItem) {
                       draggedItemId = globalDraggedItem.id;
                     }
-                    
+
                     if (draggedItemId) {
                       moveItemToContainer(draggedItemId, null);
                     }
-                    
+
                     // Clear global state
                     globalDraggedItem = null;
                   }}
@@ -27622,6 +27754,17 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           onOpenChange={setShowManageTemplates}
           campaignId={campaignId}
           campaignSystem={campaignSystem}
+        />
+      )}
+
+      {/* Token Shop: buy/sell against this character's own real inventory */}
+      {showTokenShop && (
+        <TokenShopDialog
+          open={showTokenShop}
+          onOpenChange={setShowTokenShop}
+          shopCharacterId={character.id}
+          shopCharacterName={liveCharacter.name}
+          myCharacterId={tokenShopMyCharacterId}
         />
       )}
 
@@ -31562,6 +31705,323 @@ function CraftSection({ item, character, canCraft, isGM = false }: { item: any; 
   );
 }
 
+// Token Shop: buy/sell against a character flagged isShop, sourced from its
+// real live inventory and real currency holdings (see server routes for the
+// transfer semantics). Any campaign member can open this for a shop
+// character; `myCharacterId` is whichever character the viewer is buying or
+// selling as.
+interface TokenShopDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  shopCharacterId: string;
+  shopCharacterName: string;
+  myCharacterId: string | null;
+  defaultPosition?: { x: number; y: number };
+}
+export function TokenShopDialog({ open, onOpenChange, shopCharacterId, shopCharacterName, myCharacterId, defaultPosition }: TokenShopDialogProps) {
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<'buy' | 'sell'>('buy');
+  const [sellItemId, setSellItemId] = useState<string>('');
+  const [sellCurrencyName, setSellCurrencyName] = useState<string>('');
+
+  const listingQuery = useQuery({
+    queryKey: ['shop-listing', shopCharacterId],
+    queryFn: () => api.getCharacterShopListing(shopCharacterId),
+    enabled: open,
+  });
+  const myItemsQuery = useQuery<any[]>({
+    queryKey: ['items', myCharacterId],
+    enabled: open && !!myCharacterId,
+  });
+
+  const buyMutation = useMutation({
+    mutationFn: (itemId: string) => api.buyFromCharacterShop(shopCharacterId, { itemId, buyerCharacterId: myCharacterId!, quantity: 1 }),
+    onSuccess: () => {
+      toast({ title: 'Purchased', description: 'Item added to your inventory.' });
+      queryClient.invalidateQueries({ queryKey: ['shop-listing', shopCharacterId] });
+      queryClient.invalidateQueries({ queryKey: ['items', myCharacterId] });
+    },
+    onError: (err: any) => toast({ title: 'Purchase failed', description: err?.message || 'Could not buy this item', variant: 'destructive' }),
+  });
+
+  const sellMutation = useMutation({
+    mutationFn: () => api.sellToCharacterShop(shopCharacterId, { itemId: sellItemId, sellerCharacterId: myCharacterId!, quantity: 1, currencyName: sellCurrencyName }),
+    onSuccess: (data: any) => {
+      toast({ title: 'Sold', description: `Paid ${data?.earnings?.paid ?? 0}${data?.earnings?.cappedByBudget ? ' (shop budget capped this sale)' : ''}` });
+      setSellItemId('');
+      queryClient.invalidateQueries({ queryKey: ['shop-listing', shopCharacterId] });
+      queryClient.invalidateQueries({ queryKey: ['items', myCharacterId] });
+    },
+    onError: (err: any) => toast({ title: 'Sale failed', description: err?.message || 'Could not sell this item', variant: 'destructive' }),
+  });
+
+  const listing = listingQuery.data;
+  const myItems = (myItemsQuery.data || []).filter((i: any) => i.itemType !== 'currency' && i.characterId === myCharacterId);
+
+  return (
+    <FloatingPanel
+      open={open}
+      onClose={() => onOpenChange(false)}
+      title={`${shopCharacterName} - Shop`}
+      panelKey={`token-shop-${shopCharacterId}`}
+      defaultPosition={defaultPosition}
+      defaultSize={{ width: 420, height: 520 }}
+      resizable={false}
+    >
+      <div className="p-4 space-y-3 h-full flex flex-col">
+        <div className="flex gap-2">
+          <Button size="sm" variant={tab === 'buy' ? 'default' : 'outline'} onClick={() => setTab('buy')} data-testid="button-shop-tab-buy">Buy</Button>
+          <Button size="sm" variant={tab === 'sell' ? 'default' : 'outline'} onClick={() => setTab('sell')} data-testid="button-shop-tab-sell">Sell</Button>
+        </div>
+        <div className="text-xs text-stone-400">
+          Shop wallet: {listing?.wallet?.length ? listing.wallet.map(w => `${w.quantity} ${w.name}`).join(', ') : 'none'} (budget {listing?.budget ?? 0})
+        </div>
+        {!myCharacterId && (
+          <div className="text-xs text-red-400">You have no character assigned in this campaign to buy or sell with.</div>
+        )}
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {tab === 'buy' && (listing?.items || []).map((it: any) => (
+            <div key={it.id} className="flex items-center justify-between gap-2 bg-stone-800 border border-stone-700 rounded px-3 py-2" data-testid={`shop-item-${it.id}`}>
+              <div>
+                <div className="text-sm text-stone-200">{it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}</div>
+                <div className="text-xs text-amber-400">{it.price}</div>
+              </div>
+              <Button size="sm" disabled={!myCharacterId || buyMutation.isPending} onClick={() => buyMutation.mutate(it.id)} data-testid={`button-buy-${it.id}`}>
+                Buy
+              </Button>
+            </div>
+          ))}
+          {tab === 'buy' && (listing?.items || []).length === 0 && (
+            <div className="text-xs text-stone-500">This shop has nothing for sale right now.</div>
+          )}
+          {tab === 'sell' && myItems.map((it: any) => (
+            <label key={it.id} className={`flex items-center justify-between gap-2 rounded px-3 py-2 border cursor-pointer ${sellItemId === it.id ? 'bg-amber-900/30 border-amber-700' : 'bg-stone-800 border-stone-700'}`}>
+              <input type="radio" name="sell-item" className="hidden" checked={sellItemId === it.id} onChange={() => setSellItemId(it.id)} />
+              <div className="text-sm text-stone-200">{it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}</div>
+              <div className="text-xs text-amber-400">{it.price}</div>
+            </label>
+          ))}
+          {tab === 'sell' && myItems.length === 0 && (
+            <div className="text-xs text-stone-500">You have nothing to sell.</div>
+          )}
+        </div>
+        {tab === 'sell' && (
+          <div className="flex items-center gap-2 pt-2 border-t border-stone-700">
+            <Select value={sellCurrencyName} onValueChange={setSellCurrencyName}>
+              <SelectTrigger className="flex-1 bg-stone-900 border-stone-700 h-8 text-xs" data-testid="select-sell-currency">
+                <SelectValue placeholder="Get paid in..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(listing?.wallet || []).map(w => (
+                  <SelectItem key={w.name} value={w.name}>{w.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              disabled={!myCharacterId || !sellItemId || !sellCurrencyName || sellMutation.isPending}
+              onClick={() => sellMutation.mutate()}
+              data-testid="button-confirm-sell"
+            >
+              Sell
+            </Button>
+          </div>
+        )}
+      </div>
+    </FloatingPanel>
+  );
+}
+
+// Live, two-sided character trade. Both offer lists are edited freely until
+// that side locks (which freezes it - unlocking un-freezes editing but also
+// un-readies both sides' accept, so a change can't sneak in after an
+// accept). Once both are locked, both must accept before anything moves;
+// a deny at any point closes the trade with nothing transferred. Every
+// mutation goes through the server and comes back over the websocket as a
+// `trade_updated` broadcast, so both participants' panels update from the
+// same source of truth rather than optimistic local state.
+interface TradePanelProps {
+  tradeId: string;
+  myCharacterId: string;
+  onClose: () => void;
+  defaultPosition?: { x: number; y: number };
+}
+export function TradePanel({ tradeId, myCharacterId, onClose, defaultPosition }: TradePanelProps) {
+  const queryClient = useQueryClient();
+  const tradeQuery = useQuery<any>({
+    queryKey: ['trade', tradeId],
+    queryFn: () => api.getCharacterTrade(tradeId),
+  });
+  const trade = tradeQuery.data;
+  const mySide: 'A' | 'B' | null = trade ? (trade.characterAId === myCharacterId ? 'A' : trade.characterBId === myCharacterId ? 'B' : null) : null;
+  const theirCharacterId = trade && mySide ? (mySide === 'A' ? trade.characterBId : trade.characterAId) : null;
+
+  const myCharQuery = useQuery<any>({ queryKey: ['character', myCharacterId], queryFn: () => api.getCharacter(myCharacterId), enabled: !!myCharacterId });
+  const theirCharQuery = useQuery<any>({ queryKey: ['character', theirCharacterId], queryFn: () => api.getCharacter(theirCharacterId!), enabled: !!theirCharacterId });
+  const myItemsQuery = useQuery<any[]>({ queryKey: ['items', myCharacterId], enabled: !!myCharacterId });
+
+  const myOffer: { itemId: string; quantity: number }[] = trade ? (mySide === 'A' ? trade.offerA : trade.offerB) || [] : [];
+  const theirOffer: { itemId: string; quantity: number }[] = trade ? (mySide === 'A' ? trade.offerB : trade.offerA) || [] : [];
+  const myLocked = trade ? (mySide === 'A' ? trade.lockedA : trade.lockedB) : false;
+  const theirLocked = trade ? (mySide === 'A' ? trade.lockedB : trade.lockedA) : false;
+  const myAccepted = trade ? (mySide === 'A' ? trade.acceptedA : trade.acceptedB) : false;
+  const theirAccepted = trade ? (mySide === 'A' ? trade.acceptedB : trade.acceptedA) : false;
+  const bothLocked = !!(myLocked && theirLocked);
+
+  const offerMutation = useMutation({
+    mutationFn: (items: { itemId: string; quantity: number }[]) => api.setTradeOffer(tradeId, { characterId: myCharacterId, items }),
+    onSuccess: (updated) => queryClient.setQueryData(['trade', tradeId], updated),
+    onError: (err: any) => toast({ title: 'Could not update offer', description: err?.message, variant: 'destructive' }),
+  });
+  const lockMutation = useMutation({
+    mutationFn: (locked: boolean) => api.setTradeLock(tradeId, { characterId: myCharacterId, locked }),
+    onSuccess: (updated) => queryClient.setQueryData(['trade', tradeId], updated),
+  });
+  const respondMutation = useMutation({
+    mutationFn: (accept: boolean) => api.respondToTrade(tradeId, { characterId: myCharacterId, accept }),
+    onSuccess: (updated) => queryClient.setQueryData(['trade', tradeId], updated),
+  });
+
+  const addToOffer = (itemId: string) => {
+    if (myLocked) return;
+    const existing = myOffer.find(o => o.itemId === itemId);
+    const next = existing
+      ? myOffer.map(o => o.itemId === itemId ? { ...o, quantity: o.quantity + 1 } : o)
+      : [...myOffer, { itemId, quantity: 1 }];
+    offerMutation.mutate(next);
+  };
+  const removeFromOffer = (itemId: string) => {
+    if (myLocked) return;
+    offerMutation.mutate(myOffer.filter(o => o.itemId !== itemId));
+  };
+
+  const findItem = (itemId: string) => (myItemsQuery.data || []).find((i: any) => i.id === itemId);
+  const availableToOffer = (myItemsQuery.data || []).filter((i: any) => i.itemType !== 'currency' || true);
+
+  if (!trade || !mySide) {
+    return (
+      <FloatingPanel open={true} onClose={onClose} title="Trade" panelKey={`trade-${tradeId}`} defaultPosition={defaultPosition} defaultSize={{ width: 480, height: 300 }} resizable={false}>
+        <div className="p-4 text-sm text-stone-400">Loading trade...</div>
+      </FloatingPanel>
+    );
+  }
+
+  const statusBanner = trade.status === 'denied'
+    ? 'Trade denied.'
+    : trade.status === 'completed'
+    ? 'Trade completed successfully.'
+    : null;
+
+  return (
+    <FloatingPanel
+      open={true}
+      onClose={onClose}
+      title={`Trade with ${theirCharQuery.data?.name || '...'}`}
+      panelKey={`trade-${tradeId}`}
+      defaultPosition={defaultPosition}
+      defaultSize={{ width: 560, height: 480 }}
+      resizable={false}
+    >
+      <div className="p-4 space-y-3 h-full flex flex-col">
+        {statusBanner && (
+          <div className={`text-sm font-bold p-2 rounded ${trade.status === 'completed' ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'}`}>
+            {statusBanner}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
+          {/* My offer */}
+          <div className="flex flex-col border border-stone-700 rounded overflow-hidden">
+            <div className="bg-stone-800 px-2 py-1 text-xs font-bold text-stone-300 flex items-center justify-between">
+              <span>{myCharQuery.data?.name || 'You'} {myLocked && '🔒'}</span>
+              {myAccepted && <span className="text-green-400">Accepted</span>}
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {myOffer.map(entry => {
+                const item = findItem(entry.itemId);
+                return (
+                  <div key={entry.itemId} className="flex items-center justify-between text-xs bg-stone-900 rounded px-2 py-1">
+                    <span>{item?.name || '?'} x{entry.quantity}</span>
+                    {!myLocked && (
+                      <button onClick={() => removeFromOffer(entry.itemId)} className="text-red-400 hover:text-red-300" data-testid={`button-remove-trade-item-${entry.itemId}`}>
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {myOffer.length === 0 && <div className="text-xs text-stone-500">Nothing offered yet.</div>}
+            </div>
+            {!myLocked && trade.status === 'open' && (
+              <div className="border-t border-stone-700 p-1 max-h-32 overflow-y-auto">
+                <div className="text-[10px] text-stone-500 px-1 mb-1">Add from your inventory:</div>
+                {availableToOffer.filter((i: any) => !myOffer.some(o => o.itemId === i.id)).map((i: any) => (
+                  <button
+                    key={i.id}
+                    onClick={() => addToOffer(i.id)}
+                    className="w-full text-left text-xs px-2 py-1 hover:bg-stone-800 rounded text-stone-300"
+                    data-testid={`button-add-trade-item-${i.id}`}
+                  >
+                    + {i.name} {i.quantity > 1 ? `(x${i.quantity})` : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Their offer */}
+          <div className="flex flex-col border border-stone-700 rounded overflow-hidden">
+            <div className="bg-stone-800 px-2 py-1 text-xs font-bold text-stone-300 flex items-center justify-between">
+              <span>{theirCharQuery.data?.name || '...'} {theirLocked && '🔒'}</span>
+              {theirAccepted && <span className="text-green-400">Accepted</span>}
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {theirOffer.map((entry: any) => (
+                <div key={entry.itemId} className="text-xs bg-stone-900 rounded px-2 py-1">
+                  {entry.name || entry.itemId} x{entry.quantity}
+                </div>
+              ))}
+              {theirOffer.length === 0 && <div className="text-xs text-stone-500">Nothing offered yet.</div>}
+            </div>
+          </div>
+        </div>
+
+        {trade.status === 'open' && (
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-stone-700">
+            <Button
+              size="sm"
+              variant={myLocked ? 'outline' : 'default'}
+              onClick={() => lockMutation.mutate(!myLocked)}
+              disabled={lockMutation.isPending}
+              data-testid="button-trade-lock"
+            >
+              {myLocked ? 'Unlock' : 'Lock In'}
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => respondMutation.mutate(false)}
+                disabled={respondMutation.isPending}
+                data-testid="button-trade-deny"
+              >
+                Deny
+              </Button>
+              <Button
+                size="sm"
+                disabled={!bothLocked || myAccepted || respondMutation.isPending}
+                onClick={() => respondMutation.mutate(true)}
+                data-testid="button-trade-accept"
+              >
+                Accept
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </FloatingPanel>
+  );
+}
+
 export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes, initialDockedNoteId = null }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
@@ -31940,6 +32400,20 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               >
                 {absorbing ? 'Absorbing...' : 'Absorb'}
               </Button>
+            )}
+            {isGM && character?.isShop && item.itemType !== 'currency' && (
+              <label
+                className="flex items-center gap-1.5 text-xs text-stone-300 bg-stone-800 border border-stone-700 rounded px-2 h-8 cursor-pointer select-none"
+                data-testid="label-hide-from-shop"
+                title="GM only: excludes this item from the shop listing (it stays real inventory either way)"
+              >
+                <Checkbox
+                  checked={!!item.hiddenFromShop}
+                  onCheckedChange={(v) => onUpdate?.({ hiddenFromShop: !!v })}
+                  data-testid="checkbox-hidden-from-shop"
+                />
+                Hide from Shop
+              </label>
             )}
           </div>
 

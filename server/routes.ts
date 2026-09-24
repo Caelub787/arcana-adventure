@@ -3152,6 +3152,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Max stat pools (incl. AA V2 quick-edit "Temp Bonus" max additions) are GM/trusted-only
       'maxHp', 'maxEnergy', 'maxMana',
       'bonusMaxHp', 'bonusMaxEnergy', 'bonusMaxMana',
+      // Only the GM may turn a character's real inventory into a live shop
+      'isShop',
     ];
     
     if (!isGM) {
@@ -23082,6 +23084,492 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Failed to sell item:", err);
       res.status(500).json({ error: "Failed to sell item" });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Shared item-transfer primitive. Moves `quantity` units of an item from
+  // its current owner to a different character: splits the stack if fewer
+  // than the full quantity is moved, otherwise deletes the source row. A
+  // fresh row is always created on the destination (mirrors the existing
+  // shop buy/sell routes, which never merge into an existing stack either).
+  // Note permissions on the item's entity-note need no separate update -
+  // they're resolved live from `item.characterId` on every access check
+  // (see checkEntityNoteAccess), so reassigning characterId here is the
+  // entire fix for "notes should follow the item to its new owner."
+  // Callers are responsible for their own authorization and for
+  // broadcasting the result to the campaign.
+  // ---------------------------------------------------------------------
+  async function transferItemStack(itemId: string, toCharacterId: string, quantity: number) {
+    const item = await storage.getItem(itemId);
+    if (!item) throw new Error("Item not found");
+    const moveQty = Math.max(1, Math.min(Math.floor(quantity), item.quantity));
+    const { id, characterId, containerId, isEquipped, isAbsorbed, hiddenFromShop, ...rest } = item as any;
+    const newItem = await storage.createItem({
+      ...rest,
+      characterId: toCharacterId,
+      containerId: null,
+      isEquipped: false,
+      isAbsorbed: false,
+      hiddenFromShop: false,
+      quantity: moveQty,
+    } as any);
+    let sourceDeleted = false;
+    let sourceRemaining: any = null;
+    if (moveQty >= item.quantity) {
+      await storage.deleteItem(item.id);
+      sourceDeleted = true;
+    } else {
+      sourceRemaining = await storage.updateItem(item.id, { quantity: item.quantity - moveQty });
+    }
+    return { sourceItem: item, sourceDeleted, sourceRemaining, newItem, movedQuantity: moveQty };
+  }
+
+  function broadcastItemTransfer(campaignId: string, fromCharacterId: string, toCharacterId: string, result: Awaited<ReturnType<typeof transferItemStack>>) {
+    if (result.sourceDeleted) {
+      broadcastToCampaign(campaignId, { type: "item_deleted", characterId: fromCharacterId, itemId: result.sourceItem.id });
+    } else if (result.sourceRemaining) {
+      broadcastToCampaign(campaignId, { type: "item_updated", characterId: fromCharacterId, item: result.sourceRemaining });
+    }
+    broadcastToCampaign(campaignId, { type: "item_created", characterId: toCharacterId, item: result.newItem });
+  }
+
+  // GM-only: drag an item directly from one character's sheet onto another's.
+  // Both characters must be in the same campaign and the requester must have
+  // edit access to both (in practice: the GM, since a player never has edit
+  // access to someone else's sheet).
+  app.post("/api/items/:id/transfer", requireAuth, async (req, res) => {
+    try {
+      const { toCharacterId, quantity } = req.body;
+      if (!toCharacterId || !quantity || quantity < 1) {
+        return res.status(400).json({ error: "toCharacterId and a positive quantity are required" });
+      }
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.characterId) return res.status(404).json({ error: "Item not found" });
+      if (item.characterId === toCharacterId) return res.status(400).json({ error: "Item already belongs to that character" });
+
+      const fromAccess = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      if (!fromAccess.allowed) return res.status(403).json({ error: "You don't have permission to move items off this character" });
+      const toAccess = await checkCharacterAccess(toCharacterId, req.session.userId!, 'edit');
+      if (!toAccess.allowed) return res.status(403).json({ error: "You don't have permission to add items to that character" });
+      if (fromAccess.character?.campaignId !== toAccess.character?.campaignId) {
+        return res.status(400).json({ error: "Both characters must be in the same campaign" });
+      }
+
+      const result = await transferItemStack(item.id, toCharacterId, quantity);
+      const campaignId = fromAccess.character?.campaignId;
+      if (campaignId) broadcastItemTransfer(campaignId, item.characterId, toCharacterId, result);
+
+      res.json({ success: true, item: result.newItem, movedQuantity: result.movedQuantity });
+    } catch (err) {
+      console.error("Failed to transfer item:", err);
+      res.status(500).json({ error: "Failed to transfer item" });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Token Shop: a character flagged isShop (GM-only toggle, inventory tab)
+  // sells straight out of its own real inventory rather than a curated
+  // snapshot list. Its buying budget is simply whatever currency-type items
+  // it actually holds, and anything it buys or is sold really changes hands
+  // between real inventories - nothing is minted or destroyed the way the
+  // pin-shop's snapshot model does.
+  // ---------------------------------------------------------------------
+  const requireShopAccess = async (
+    shopCharacterId: string, userId: string, req: any
+  ): Promise<{ error: number; message: string } | { shopCharacter: any; campaign: any; isGM: boolean }> => {
+    const shopCharacter = await storage.getCharacter(shopCharacterId);
+    if (!shopCharacter) return { error: 404, message: "Character not found" };
+    if (!shopCharacter.isShop) return { error: 400, message: "This character is not set up as a shop" };
+    const campaign = await storage.getCampaign(shopCharacter.campaignId);
+    if (!campaign) return { error: 404, message: "Campaign not found" };
+    const isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId, req);
+    if (!isGM) {
+      const membership = await storage.getCampaignMembership(userId, campaign.id);
+      if (!membership) return { error: 403, message: "You are not a member of this campaign" };
+    }
+    return { shopCharacter, campaign, isGM };
+  };
+
+  const requireOwnCharacter = async (
+    characterId: string, userId: string, campaign: { id: string; gmUserId: string }, req: any
+  ): Promise<{ error: number; message: string } | { character: any }> => {
+    const character = await storage.getCharacter(characterId);
+    if (!character || character.campaignId !== campaign.id) return { error: 404, message: "Character not found" };
+    const isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId, req);
+    if (!isGM && character.userId !== userId) {
+      const membership = await storage.getCampaignMembership(userId, campaign.id);
+      if (!membership || membership.assignedCharacterId !== characterId) {
+        return { error: 403, message: "Character does not belong to you" };
+      }
+    }
+    return { character };
+  };
+
+  app.get("/api/characters/:shopCharacterId/shop-listing", requireAuth, async (req, res) => {
+    try {
+      const access = await requireShopAccess(req.params.shopCharacterId, req.session.userId!, req);
+      if ('error' in access) return res.status(access.error).json({ error: access.message });
+
+      const items = await storage.getItemsByCharacter(req.params.shopCharacterId);
+      const forSale = items.filter(i => !i.isAbsorbed && !i.hiddenFromShop && i.itemType !== 'currency');
+      const currencyHoldings = items.filter(i => i.itemType === 'currency');
+      const walletByName: Record<string, { name: string; image?: string | null; price: number; quantity: number }> = {};
+      for (const c of currencyHoldings) {
+        if (!walletByName[c.name]) walletByName[c.name] = { name: c.name, image: c.image, price: c.price, quantity: 0 };
+        walletByName[c.name].quantity += c.quantity;
+      }
+      const budget = currencyHoldings.reduce((sum, c) => sum + c.price * c.quantity, 0);
+      res.json({ items: forSale, wallet: Object.values(walletByName), budget });
+    } catch (err) {
+      console.error("Failed to fetch shop listing:", err);
+      res.status(500).json({ error: "Failed to fetch shop listing" });
+    }
+  });
+
+  app.post("/api/characters/:shopCharacterId/shop-buy", requireAuth, async (req, res) => {
+    try {
+      const { itemId, buyerCharacterId, quantity } = req.body;
+      if (!itemId || !buyerCharacterId) return res.status(400).json({ error: "itemId and buyerCharacterId are required" });
+      const qty = Math.max(1, Math.floor(quantity ?? 1));
+
+      const shopAccess = await requireShopAccess(req.params.shopCharacterId, req.session.userId!, req);
+      if ('error' in shopAccess) return res.status(shopAccess.error).json({ error: shopAccess.message });
+      const buyerAccess = await requireOwnCharacter(buyerCharacterId, req.session.userId!, shopAccess.campaign, req);
+      if ('error' in buyerAccess) return res.status(buyerAccess.error).json({ error: buyerAccess.message });
+
+      const item = await storage.getItem(itemId);
+      if (!item || item.characterId !== req.params.shopCharacterId || item.hiddenFromShop || item.itemType === 'currency') {
+        return res.status(404).json({ error: "Item is not available in this shop" });
+      }
+      const buyQty = Math.min(qty, item.quantity);
+      const cost = item.price * buyQty;
+
+      const buyerItems = await storage.getItemsByCharacter(buyerCharacterId);
+      const buyerCurrency = buyerItems.filter(i => i.itemType === 'currency');
+      const totalHeld = buyerCurrency.reduce((sum, ci) => sum + ci.price * ci.quantity, 0);
+      if (totalHeld < cost) {
+        return res.status(400).json({ error: "Insufficient funds", required: cost, available: totalHeld });
+      }
+
+      // Pay with the buyer's smallest-value stacks first, transferring the
+      // actual currency items into the shop's inventory (a real sale, not a
+      // mint-and-destroy) - this is what grows the shop's own buying power
+      // over time.
+      let remaining = cost;
+      const sortedCurrency = [...buyerCurrency].sort((a, b) => a.price - b.price);
+      for (const ci of sortedCurrency) {
+        if (remaining <= 0) break;
+        const stackValue = ci.price * ci.quantity;
+        const unitsToPay = stackValue <= remaining ? ci.quantity : Math.ceil(remaining / ci.price);
+        remaining -= Math.min(stackValue, unitsToPay * ci.price);
+        const payResult = await transferItemStack(ci.id, req.params.shopCharacterId, unitsToPay);
+        broadcastItemTransfer(shopAccess.campaign.id, buyerCharacterId, req.params.shopCharacterId, payResult);
+      }
+
+      const itemResult = await transferItemStack(itemId, buyerCharacterId, buyQty);
+      broadcastItemTransfer(shopAccess.campaign.id, req.params.shopCharacterId, buyerCharacterId, itemResult);
+
+      res.json({ success: true, item: itemResult.newItem, paid: cost });
+    } catch (err) {
+      console.error("Failed to buy from token shop:", err);
+      res.status(500).json({ error: "Failed to buy item" });
+    }
+  });
+
+  app.post("/api/characters/:shopCharacterId/shop-sell", requireAuth, async (req, res) => {
+    try {
+      const { itemId, sellerCharacterId, quantity, sellPercentage, currencyName } = req.body;
+      if (!itemId || !sellerCharacterId || !currencyName) {
+        return res.status(400).json({ error: "itemId, sellerCharacterId and currencyName are required" });
+      }
+      const qty = Math.max(1, Math.floor(quantity ?? 1));
+      const pct = sellPercentage != null ? sellPercentage : 100;
+
+      const shopAccess = await requireShopAccess(req.params.shopCharacterId, req.session.userId!, req);
+      if ('error' in shopAccess) return res.status(shopAccess.error).json({ error: shopAccess.message });
+      const sellerAccess = await requireOwnCharacter(sellerCharacterId, req.session.userId!, shopAccess.campaign, req);
+      if ('error' in sellerAccess) return res.status(sellerAccess.error).json({ error: sellerAccess.message });
+
+      const item = await storage.getItem(itemId);
+      if (!item || item.characterId !== sellerCharacterId) {
+        return res.status(404).json({ error: "Item not found in seller's inventory" });
+      }
+      const sellQty = Math.min(qty, item.quantity);
+      const sellValue = Math.floor(item.price * sellQty * (pct / 100));
+
+      const shopItems = await storage.getItemsByCharacter(req.params.shopCharacterId);
+      const shopCurrency = shopItems.filter(i => i.itemType === 'currency');
+      const shopBudget = shopCurrency.reduce((sum, c) => sum + c.price * c.quantity, 0);
+      const chosen = shopCurrency.find(c => c.name === currencyName);
+      if (!chosen) {
+        return res.status(400).json({ error: "This shop doesn't hold that currency" });
+      }
+      const payoutTarget = Math.min(sellValue, shopBudget);
+
+      // The item transfers into the shop's real inventory regardless of the
+      // payout cap - it's still a sale, the shop just can't fully cover it
+      // today (same reasoning as the pin-shop's budget cap).
+      const itemResult = await transferItemStack(itemId, req.params.shopCharacterId, sellQty);
+      broadcastItemTransfer(shopAccess.campaign.id, sellerCharacterId, req.params.shopCharacterId, itemResult);
+
+      // Pay out the chosen currency first, falling back across the rest of
+      // the shop's held currencies (largest value first) to close whatever
+      // gap the chosen denomination can't cover exactly.
+      const payoutOrder = [chosen, ...shopCurrency.filter(c => c.name !== chosen.name && c.id !== chosen.id).sort((a, b) => b.price - a.price)];
+      const breakdown: { name: string; quantity: number }[] = [];
+      let remainingPayout = payoutTarget;
+      for (const currency of payoutOrder) {
+        if (remainingPayout <= 0 || currency.price <= 0) continue;
+        const units = Math.min(currency.quantity, Math.floor(remainingPayout / currency.price));
+        if (units <= 0) continue;
+        remainingPayout -= units * currency.price;
+        breakdown.push({ name: currency.name, quantity: units });
+        const payResult = await transferItemStack(currency.id, sellerCharacterId, units);
+        broadcastItemTransfer(shopAccess.campaign.id, req.params.shopCharacterId, sellerCharacterId, payResult);
+      }
+      const actualPaid = payoutTarget - remainingPayout;
+
+      res.json({ success: true, earnings: { paid: actualPaid, sellValue, breakdown, cappedByBudget: sellValue > shopBudget } });
+    } catch (err) {
+      console.error("Failed to sell to token shop:", err);
+      res.status(500).json({ error: "Failed to sell item" });
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Character-to-character trading. Each side builds an offer list from
+  // their own real inventory, locks it in (editing again requires
+  // unlocking, which un-readies both sides' accept), and once both are
+  // locked, both must accept before anything actually moves - a deny at any
+  // point ends the negotiation with nothing transferred.
+  // ---------------------------------------------------------------------
+  const resolveTradeSide = async (trade: any, characterId: string, userId: string): Promise<'A' | 'B' | null> => {
+    if (characterId !== trade.characterAId && characterId !== trade.characterBId) return null;
+    const access = await checkCharacterAccess(characterId, userId, 'edit');
+    if (!access.allowed) return null;
+    return characterId === trade.characterAId ? 'A' : 'B';
+  };
+
+  app.post("/api/character-trades", requireAuth, async (req, res) => {
+    try {
+      const { characterAId, characterBId } = req.body;
+      if (!characterAId || !characterBId || characterAId === characterBId) {
+        return res.status(400).json({ error: "Two different characters are required" });
+      }
+      const accessA = await checkCharacterAccess(characterAId, req.session.userId!, 'edit');
+      if (!accessA.allowed) return res.status(403).json({ error: "You don't control that character" });
+      const charB = await storage.getCharacter(characterBId);
+      if (!charB || charB.campaignId !== accessA.character?.campaignId) {
+        return res.status(404).json({ error: "Character not found in this campaign" });
+      }
+
+      const existing = await storage.getOpenTradeForCharacter(characterAId);
+      if (existing && [existing.characterAId, existing.characterBId].includes(characterAId) && [existing.characterAId, existing.characterBId].includes(characterBId)) {
+        return res.json(existing);
+      }
+
+      const trade = await storage.createCharacterTrade({
+        campaignId: accessA.character!.campaignId!,
+        characterAId,
+        characterBId,
+        offerA: [],
+        offerB: [],
+        lockedA: false,
+        lockedB: false,
+        acceptedA: false,
+        acceptedB: false,
+        status: 'open',
+      } as any);
+      broadcastToCampaign(trade.campaignId, { type: 'trade_created', trade });
+      res.json(trade);
+    } catch (err) {
+      console.error("Failed to create trade:", err);
+      res.status(500).json({ error: "Failed to create trade" });
+    }
+  });
+
+  app.get("/api/character-trades/:id", requireAuth, async (req, res) => {
+    try {
+      const trade = await storage.getCharacterTrade(req.params.id);
+      if (!trade) return res.status(404).json({ error: "Trade not found" });
+      const accessA = await checkCharacterAccess(trade.characterAId, req.session.userId!, 'view');
+      const accessB = await checkCharacterAccess(trade.characterBId, req.session.userId!, 'view');
+      if (!accessA.allowed && !accessB.allowed) return res.status(403).json({ error: "Not part of this trade" });
+      res.json(trade);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch trade" });
+    }
+  });
+
+  app.patch("/api/character-trades/:id/offer", requireAuth, async (req, res) => {
+    try {
+      const { characterId, items } = req.body;
+      if (!characterId || !Array.isArray(items)) return res.status(400).json({ error: "characterId and items are required" });
+      const trade = await storage.getCharacterTrade(req.params.id);
+      if (!trade || trade.status !== 'open') return res.status(404).json({ error: "Trade not found or no longer open" });
+      const side = await resolveTradeSide(trade, characterId, req.session.userId!);
+      if (!side) return res.status(403).json({ error: "You don't control a side of this trade" });
+      if (side === 'A' ? trade.lockedA : trade.lockedB) {
+        return res.status(400).json({ error: "Unlock your offer before changing it" });
+      }
+
+      // Validate every offered item is real, owned by this character, and in
+      // enough quantity - trims/normalizes rather than trusting the client.
+      const characterItems = await storage.getItemsByCharacter(characterId);
+      const validated: { itemId: string; quantity: number; name: string }[] = [];
+      for (const entry of items) {
+        const owned = characterItems.find(i => i.id === entry.itemId);
+        if (!owned) continue;
+        const qty = Math.max(1, Math.min(Math.floor(entry.quantity) || 1, owned.quantity));
+        validated.push({ itemId: entry.itemId, quantity: qty, name: owned.name });
+      }
+
+      const updates: any = side === 'A'
+        ? { offerA: validated, acceptedA: false, acceptedB: false }
+        : { offerB: validated, acceptedA: false, acceptedB: false };
+      const updated = await storage.updateCharacterTrade(trade.id, updates);
+      broadcastToCampaign(trade.campaignId, { type: 'trade_updated', trade: updated });
+      res.json(updated);
+    } catch (err) {
+      console.error("Failed to update trade offer:", err);
+      res.status(500).json({ error: "Failed to update trade offer" });
+    }
+  });
+
+  app.patch("/api/character-trades/:id/lock", requireAuth, async (req, res) => {
+    try {
+      const { characterId, locked } = req.body;
+      if (!characterId || typeof locked !== 'boolean') return res.status(400).json({ error: "characterId and locked are required" });
+      const trade = await storage.getCharacterTrade(req.params.id);
+      if (!trade || trade.status !== 'open') return res.status(404).json({ error: "Trade not found or no longer open" });
+      const side = await resolveTradeSide(trade, characterId, req.session.userId!);
+      if (!side) return res.status(403).json({ error: "You don't control a side of this trade" });
+
+      const updates: any = side === 'A' ? { lockedA: locked } : { lockedB: locked };
+      // Unlocking always un-readies BOTH sides' accept - re-editing after a
+      // lock was broken means whatever was agreed to no longer holds.
+      if (!locked) { updates.acceptedA = false; updates.acceptedB = false; }
+      const updated = await storage.updateCharacterTrade(trade.id, updates);
+      broadcastToCampaign(trade.campaignId, { type: 'trade_updated', trade: updated });
+      res.json(updated);
+    } catch (err) {
+      console.error("Failed to update trade lock:", err);
+      res.status(500).json({ error: "Failed to update trade lock" });
+    }
+  });
+
+  app.patch("/api/character-trades/:id/respond", requireAuth, async (req, res) => {
+    try {
+      const { characterId, accept } = req.body;
+      if (!characterId || typeof accept !== 'boolean') return res.status(400).json({ error: "characterId and accept are required" });
+      const trade = await storage.getCharacterTrade(req.params.id);
+      if (!trade || trade.status !== 'open') return res.status(404).json({ error: "Trade not found or no longer open" });
+      const side = await resolveTradeSide(trade, characterId, req.session.userId!);
+      if (!side) return res.status(403).json({ error: "You don't control a side of this trade" });
+
+      const [charA, charB] = await Promise.all([
+        storage.getCharacter(trade.characterAId),
+        storage.getCharacter(trade.characterBId),
+      ]);
+
+      if (!accept) {
+        const denier = side === 'A' ? charA : charB;
+        const updated = await storage.updateCharacterTrade(trade.id, { status: 'denied' });
+        broadcastToCampaign(trade.campaignId, { type: 'trade_updated', trade: updated });
+        const chat = await storage.createChatMessage({
+          campaignId: trade.campaignId,
+          userId: req.session.userId!,
+          sender: 'System',
+          text: `${denier?.name || 'A character'} denied the trade.`,
+          type: 'system',
+        } as any);
+        broadcastToCampaign(trade.campaignId, { type: 'chat_message', message: chat });
+        return res.json(updated);
+      }
+
+      if (!trade.lockedA || !trade.lockedB) {
+        return res.status(400).json({ error: "Both sides must lock in before accepting" });
+      }
+
+      const newAcceptedA = side === 'A' ? true : trade.acceptedA;
+      const newAcceptedB = side === 'B' ? true : trade.acceptedB;
+
+      if (!(newAcceptedA && newAcceptedB)) {
+        const updated = await storage.updateCharacterTrade(trade.id, { acceptedA: newAcceptedA, acceptedB: newAcceptedB });
+        broadcastToCampaign(trade.campaignId, { type: 'trade_updated', trade: updated });
+        return res.json(updated);
+      }
+
+      // Both sides have now accepted - execute the transfer. Every item
+      // listed in a side's offer moves from that character to the other.
+      const aGave: { name: string; quantity: number }[] = [];
+      const bGave: { name: string; quantity: number }[] = [];
+      for (const entry of (trade.offerA || [])) {
+        const item = await storage.getItem(entry.itemId);
+        if (!item || item.characterId !== trade.characterAId) continue;
+        const qty = Math.min(entry.quantity, item.quantity);
+        const result = await transferItemStack(entry.itemId, trade.characterBId, qty);
+        broadcastItemTransfer(trade.campaignId, trade.characterAId, trade.characterBId, result);
+        aGave.push({ name: item.name, quantity: qty });
+      }
+      for (const entry of (trade.offerB || [])) {
+        const item = await storage.getItem(entry.itemId);
+        if (!item || item.characterId !== trade.characterBId) continue;
+        const qty = Math.min(entry.quantity, item.quantity);
+        const result = await transferItemStack(entry.itemId, trade.characterAId, qty);
+        broadcastItemTransfer(trade.campaignId, trade.characterBId, trade.characterAId, result);
+        bGave.push({ name: item.name, quantity: qty });
+      }
+
+      const completed = await storage.updateCharacterTrade(trade.id, {
+        acceptedA: true,
+        acceptedB: true,
+        status: 'completed',
+        completedSummary: { aGave, bGave },
+      });
+      broadcastToCampaign(trade.campaignId, { type: 'trade_updated', trade: completed });
+
+      const chat = await storage.createChatMessage({
+        campaignId: trade.campaignId,
+        userId: req.session.userId!,
+        sender: 'System',
+        text: `${charA?.name || 'A character'} and ${charB?.name || 'a character'} traded successfully.`,
+        type: 'system',
+      } as any);
+      broadcastToCampaign(trade.campaignId, { type: 'chat_message', message: chat });
+
+      // GM-only reveal of exactly what changed hands - same targeted
+      // delivery mechanism as the trusted-player audit log (emitTrustedAudit).
+      const campaign = await storage.getCampaign(trade.campaignId);
+      const room = campaignRooms.get(trade.campaignId);
+      if (room && campaign) {
+        const detailText = `Trade detail: ${charA?.name || '?'} gave [${aGave.map(g => `${g.quantity}x ${g.name}`).join(', ') || 'nothing'}], ${charB?.name || '?'} gave [${bGave.map(g => `${g.quantity}x ${g.name}`).join(', ') || 'nothing'}].`;
+        const gmChat = await storage.createChatMessage({
+          campaignId: trade.campaignId,
+          userId: req.session.userId!,
+          sender: 'System',
+          text: detailText,
+          type: 'gm-audit',
+        } as any);
+        const allMembers = await storage.getCampaignMembers(trade.campaignId);
+        const gmUserIds = new Set<string>();
+        if (campaign.gmUserId) gmUserIds.add(campaign.gmUserId);
+        for (const m of allMembers) {
+          if (m.role === 'gm' || m.role === 'assistant_gm') gmUserIds.add(m.userId);
+        }
+        const payload = JSON.stringify({ type: 'chat_message', message: gmChat });
+        room.forEach((client: any) => {
+          if (client.readyState === 1 && gmUserIds.has(client.userId)) {
+            client.send(payload);
+          }
+        });
+      }
+
+      res.json(completed);
+    } catch (err) {
+      console.error("Failed to respond to trade:", err);
+      res.status(500).json({ error: "Failed to respond to trade" });
     }
   });
 

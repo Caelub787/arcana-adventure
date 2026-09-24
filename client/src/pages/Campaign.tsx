@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, TradePanel, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { AuraCurrentField, AuraEdgeField } from "@/components/game/CAPanels";
 import { caAuraOf } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
@@ -6787,6 +6787,11 @@ export default function Campaign() {
   const [speciesFormOpen, setSpeciesFormOpen] = useState(false);
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
   const [openCharacterSheets, setOpenCharacterSheets] = useState<any[]>([]);
+  // Live character-to-character trades this client has a floating panel open
+  // for - populated either by initiating one (right-click a tracker chip ->
+  // Trade) or by a `trade_created`/`trade_updated` websocket broadcast that
+  // involves a character this user controls.
+  const [openTradeIds, setOpenTradeIds] = useState<string[]>([]);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
   // Tracks the active tab per open character sheet. The floating panel's
   // one-time fit-to-content measurement runs against whichever tab is active
@@ -8009,6 +8014,25 @@ export default function Campaign() {
     const list = (characters as any[] | undefined) || [];
     return list.find((c: any) => c.userId === user?.id) || null;
   }, [characters, user?.id]);
+
+  // Right-click a tracker chip -> Trade: creates (or reuses) an open trade
+  // between the viewer's own character and the target, then opens the panel
+  // locally. The other side's panel opens itself from the `trade_created`
+  // broadcast handled in the websocket message effect below.
+  const handleTradeRequest = async (targetCharacter: any) => {
+    if (!tutorialDemoCharacter?.id || !targetCharacter?.id) {
+      toast({ title: "Can't trade", description: "You need your own character in this campaign to trade.", variant: "destructive" });
+      return;
+    }
+    if (tutorialDemoCharacter.id === targetCharacter.id) return;
+    try {
+      const trade = await api.createCharacterTrade({ characterAId: tutorialDemoCharacter.id, characterBId: targetCharacter.id });
+      queryClient.setQueryData(['trade', trade.id], trade);
+      setOpenTradeIds(prev => prev.includes(trade.id) ? prev : [...prev, trade.id]);
+    } catch (err: any) {
+      toast({ title: "Could not start trade", description: err?.message, variant: "destructive" });
+    }
+  };
 
   // A throwaway character created on demand purely to demo the C.A. sheet on
   // for whoever has none of their own - deleted again once that section is
@@ -10007,10 +10031,23 @@ export default function Campaign() {
           }
           if (data.characterId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+            // No-op unless someone actually has that character's Token Shop
+            // panel open (the query only exists then), but any item change
+            // on a shop character can change its listing or its budget.
+            queryClientRef.current.invalidateQueries({ queryKey: ['shop-listing', data.characterId] });
           }
           if (data.type === 'item_deleted') {
             // A deleted item must vanish from V3 free-hotbar slots immediately.
             queryClientRef.current.refetchQueries({ queryKey: ['free-hotbar', effectiveCampaignIdRef.current] });
+          }
+        }
+        if ((data.type === 'trade_created' || data.type === 'trade_updated') && data.trade) {
+          queryClientRef.current.setQueryData(['trade', data.trade.id], data.trade);
+          const myOwnCharIds = new Set(
+            (charactersRef.current || []).filter((c: any) => c.userId === userIdRef.current).map((c: any) => c.id)
+          );
+          if (myOwnCharIds.has(data.trade.characterAId) || myOwnCharIds.has(data.trade.characterBId)) {
+            setOpenTradeIds(prev => prev.includes(data.trade.id) ? prev : [...prev, data.trade.id]);
           }
         }
         if (data.type === 'spell_created' || data.type === 'spell_updated' || data.type === 'spell_deleted') {
@@ -11168,6 +11205,7 @@ export default function Campaign() {
                 setCharacterSheetDefaultTab("overview");
                 openCharacterSheet(char);
               }}
+              onTradeRequest={handleTradeRequest}
             />
           </div>
         ) : (
@@ -11184,9 +11222,23 @@ export default function Campaign() {
                 setCharacterSheetDefaultTab("overview");
                 openCharacterSheet(char);
               }}
+              onTradeRequest={handleTradeRequest}
             />
           </div>
         )}
+
+        {/* Live character-to-character trade panels this client has open -
+            either started here (right-click a tracker chip -> Trade) or
+            popped open automatically by a trade_created/trade_updated
+            broadcast that involves a character this user controls. */}
+        {openTradeIds.map((tradeId) => (
+          <TradePanel
+            key={tradeId}
+            tradeId={tradeId}
+            myCharacterId={tutorialDemoCharacter?.id || ''}
+            onClose={() => setOpenTradeIds(prev => prev.filter(id => id !== tradeId))}
+          />
+        ))}
 
         {/* Right Side - panel tab icons. On desktop, a horizontal row pinned
             to the top-right corner - the side panel opens BELOW this row
