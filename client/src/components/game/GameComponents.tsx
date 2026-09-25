@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_RANK } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -16890,6 +16890,7 @@ interface InventoryItemRowProps {
   charPanelSuffix?: string;
   onOpenSpellbook?: (item: any) => void;
   isAAV3?: boolean;
+  isCA?: boolean;
   canEditQuantity?: boolean;
   onEquip?: (item: any, equipped: boolean) => void;
   // Touch-friendly (and desktop-usable) stand-in for the drag gesture that
@@ -16900,7 +16901,7 @@ interface InventoryItemRowProps {
   onTransferToCharacter?: (itemId: string, toCharacterId: string, quantity: number) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity, onEquip, mobileTransferTargets, onTransferToCharacter }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, isCA, canEditQuantity, onEquip, mobileTransferTargets, onTransferToCharacter }: InventoryItemRowProps) {
   const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null);
   const [moveQuantity, setMoveQuantity] = useState(1);
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
@@ -17213,8 +17214,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           
           {/* Action buttons — grouped so they wrap together onto their own line on narrow screens */}
           <div className="flex items-center gap-1 shrink-0 ml-auto">
-          {/* AA V3 equip/unequip toggle */}
-          {isAAV3 && canEdit && onEquip && (
+          {/* Equip/unequip toggle - AA V3, or C.A. (wounds system) */}
+          {(isAAV3 || isCA) && canEdit && onEquip && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -17453,6 +17454,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               charPanelSuffix={charPanelSuffix}
               onOpenSpellbook={onOpenSpellbook}
               isAAV3={isAAV3}
+              isCA={isCA}
               canEditQuantity={canEditQuantity}
               onEquip={onEquip}
               mobileTransferTargets={mobileTransferTargets}
@@ -25912,9 +25914,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           setShowItemDetail={setShowItemDetail}
                           onOpenSpellbook={handleOpenScroll}
                           isAAV3={isAAV3}
+                          isCA={isCA}
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
-                          onEquip={isAAV3 ? (it, equipped) => equipItemMutation.mutate({ id: it.id, equipped }) : undefined}
+                          onEquip={(isAAV3 || isCA) ? (it, equipped) => equipItemMutation.mutate({ id: it.id, equipped }) : undefined}
                           mobileTransferTargets={mobileTransferTargets}
                           onTransferToCharacter={handleMobileTransfer}
                           onDeleteItem={isAAV3 && !showInventoryDelete ? undefined : (id) => deleteItemMutation.mutate(id)}
@@ -30932,7 +30935,10 @@ function CAWoundConsumablePanel({ item, character, canUse }: { item: any; charac
 
   if (options.length === 0) return null;
 
-  const eligibleWounds = selectedOption ? wounds.filter((w) => w.severity === selectedOption.severity) : [];
+  // A heal option can also cure anything milder than its rated severity.
+  const eligibleWounds = selectedOption
+    ? wounds.filter((w) => CA_WOUND_SEVERITY_RANK[w.severity] <= CA_WOUND_SEVERITY_RANK[selectedOption.severity])
+    : [];
   const toggleWound = (id: string) => {
     if (!selectedOption) return;
     setSelectedWoundIds((prev) => {
@@ -30979,17 +30985,17 @@ function CAWoundConsumablePanel({ item, character, canUse }: { item: any; charac
       ) : (
         <div className="space-y-2">
           <p className="text-xs text-stone-400">
-            Pick {selectedOption.count} {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} wound{selectedOption.count > 1 ? 's' : ''} to heal
-            {' '}({selectedWoundIds.length}/{selectedOption.count} selected).
+            Pick {selectedOption.count} wound{selectedOption.count > 1 ? 's' : ''} at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} severity
+            or milder to heal ({selectedWoundIds.length}/{selectedOption.count} selected).
           </p>
           {eligibleWounds.length === 0 ? (
-            <p className="text-xs text-stone-500">No {CA_WOUND_SEVERITY_LABELS[selectedOption.severity].toLowerCase()} wounds to heal.</p>
+            <p className="text-xs text-stone-500">No wounds at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity].toLowerCase()} severity or milder to heal.</p>
           ) : (
             <div className="space-y-1">
               {eligibleWounds.map((w) => (
                 <label key={w.id} className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
                   <Checkbox checked={selectedWoundIds.includes(w.id)} onCheckedChange={() => toggleWound(w.id)} data-testid={`checkbox-ca-wound-${w.id}`} />
-                  {w.name || 'Unnamed wound'}
+                  {w.name || 'Unnamed wound'} <span className="text-stone-500">({CA_WOUND_SEVERITY_LABELS[w.severity]})</span>
                 </label>
               ))}
             </div>

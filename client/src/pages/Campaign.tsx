@@ -10036,6 +10036,11 @@ export default function Campaign() {
           } else if (data.characterId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['items', data.characterId] });
           }
+          if (data.type === 'item_updated' && data.item?.id) {
+            // Item image is cached separately (lazy-loaded thumbnail), so a
+            // library-driven propagation to this copy needs its own bust too.
+            queryClientRef.current.invalidateQueries({ queryKey: ['item-image', data.item.id] });
+          }
           if (data.characterId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
             // No-op unless someone actually has that character's Token Shop

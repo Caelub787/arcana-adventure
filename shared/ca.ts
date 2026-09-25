@@ -193,7 +193,11 @@ export function caConsumableWoundOptionLabel(opt: CAConsumableWoundOption): stri
   const verb = opt.mode === "heal" ? "Heal" : "Deal";
   const severityLabel = CA_WOUND_SEVERITY_LABELS[opt.severity];
   const count = Math.max(1, opt.count);
-  return `${verb} ${count} ${severityLabel} Wound${count > 1 ? "s" : ""}`;
+  const base = `${verb} ${count} ${severityLabel} Wound${count > 1 ? "s" : ""}`;
+  // A heal option can also cure anything milder than its rated severity -
+  // it just can't reach past it - so the label says so unless it's already
+  // the mildest tier there is.
+  return opt.mode === "heal" && opt.severity !== "minor" ? `${base} (or lesser)` : base;
 }
 
 // Tolerates missing/malformed data the same way normalizeCAWounds does.

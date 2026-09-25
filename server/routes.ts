@@ -21,7 +21,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound } from "@shared/ca";
+import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -10641,20 +10641,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.deleteRollEntry(detonateRoll.id);
         }
 
-        // Keep weapon technique-group assignments in sync with inventory copies.
-        // When a GM/admin changes which technique groups a library weapon grants,
-        // every player's inventory copy (items.templateItemId === this template)
-        // must follow along — mirrors the roll-template propagation system. We
-        // only fan out when v3TechniqueGroupIds was actually part of the patch so
-        // unrelated edits don't stomp per-instance state.
-        if ('v3TechniqueGroupIds' in patchBody) {
-          const newGroupIds: string[] = Array.isArray((updatedItem as any).v3TechniqueGroupIds)
-            ? (updatedItem as any).v3TechniqueGroupIds
-            : [];
+        // Keep every granted inventory copy of this System Item in sync with
+        // the library definition, live, in every campaign. Copies are linked
+        // back via items.templateItemId; propagate everything the admin
+        // actually changed EXCEPT fields that are inherently per-instance
+        // state (ownership, current stock/wear, equip/absorb state, and
+        // whatever's physically socketed into that specific copy). A
+        // blocklist (rather than an allowlist) is deliberate here: it's the
+        // same class of bug that let hiddenSections/consumableWoundOptions
+        // silently miss the old allowlist-based sync when they were added.
+        const perInstanceFields = new Set([
+          'id', 'characterId', 'campaignId', 'worldId', 'containerId', 'createdByUserId',
+          'isTemplate', 'isLiveTemplate', 'templatePriority', 'templateUseOwnOrder',
+          'templateItemId', 'quantity', 'durability', 'isEquipped', 'isAbsorbed',
+          'hiddenFromShop', 'isArchived', 'socketedRunes', 'system',
+        ]);
+        const propagatePayload: Record<string, unknown> = {};
+        for (const k of Object.keys(patchBody)) {
+          if (!perInstanceFields.has(k)) propagatePayload[k] = (patchBody as any)[k];
+        }
+        if (Object.keys(propagatePayload).length > 0) {
           const linkedCopies = await db.select().from(items)
             .where(eq(items.templateItemId, updatedItem.id));
           for (const copy of linkedCopies) {
-            const updatedCopy = await storage.updateItem(copy.id, { v3TechniqueGroupIds: newGroupIds } as any);
+            const updatedCopy = await storage.updateItem(copy.id, propagatePayload as any);
             if (copy.characterId) {
               const owner = await storage.getCharacter(copy.characterId);
               if (owner?.campaignId) {
@@ -16124,8 +16134,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const uniqueIds = new Set(woundIds);
         if (uniqueIds.size !== woundIds.length) return res.status(400).json({ error: "Duplicate wound in selection" });
         const matched = wounds.filter(w => uniqueIds.has(w.id));
-        if (matched.length !== woundIds.length || matched.some(w => w.severity !== option.severity)) {
-          return res.status(400).json({ error: `Selection must be exactly ${option.count} of the character's own ${option.severity} wounds` });
+        // A potion that can heal a given severity can also heal anything
+        // milder - it just can't reach past what it's rated for.
+        const maxRank = CA_WOUND_SEVERITY_RANK[option.severity];
+        if (matched.length !== woundIds.length || matched.some(w => CA_WOUND_SEVERITY_RANK[w.severity] > maxRank)) {
+          return res.status(400).json({ error: `Selection must be exactly ${option.count} of the character's own wounds at ${option.severity} severity or milder` });
         }
         nextWounds = wounds.filter(w => !uniqueIds.has(w.id));
       } else {
