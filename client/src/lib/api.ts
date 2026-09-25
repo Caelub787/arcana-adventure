@@ -1459,11 +1459,14 @@ class ApiClient {
 
   // C.A. only: use a consumable's wound heal/deal option. woundIds is
   // required (and must match the option's severity/count) for a "heal"
-  // option; omitted for a "deal" option.
-  async useWoundConsumable(characterId: string, itemId: string, optionId: string, woundIds?: string[]): Promise<{ success: boolean; character: any }> {
+  // option; placements (one {x,y} per new wound, percent position on the
+  // body diagram) is used for a "deal" option, defaulting to body-center
+  // for any left unset. itemConsumed in the response is true when this was
+  // the last one and the item no longer exists.
+  async useWoundConsumable(characterId: string, itemId: string, optionId: string, woundIds?: string[], placements?: { x: number; y: number }[]): Promise<{ success: boolean; character: any; itemConsumed: boolean }> {
     return this.request(`/characters/${characterId}/items/${itemId}/use-wound-item`, {
       method: 'POST',
-      body: JSON.stringify({ optionId, woundIds }),
+      body: JSON.stringify({ optionId, woundIds, placements }),
     });
   }
 

@@ -243,6 +243,7 @@ export function LibraryItemSheet({
   characterMana,
   characterItems,
   characterCustomSkills,
+  renderAfterHandling,
 }: {
   item: any;
   systemSlug: string;
@@ -277,6 +278,14 @@ export function LibraryItemSheet({
   characterMana?: number;
   characterItems?: any[];
   characterCustomSkills?: any[];
+  /**
+   * Extra content rendered right after Handling and before the type-specific
+   * sections - Identity and Handling always show, so this is the spot for
+   * something that should feel like it's always there too. Used in-game to
+   * put the "Use this item" control (e.g. C.A.'s wound consumable panel) up
+   * top rather than buried under every optional section.
+   */
+  renderAfterHandling?: React.ReactNode;
 }) {
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const queryClient = useQueryClient();
@@ -537,6 +546,8 @@ export function LibraryItemSheet({
             </div>
           </>
         ))}
+
+        {renderAfterHandling}
 
         {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
           <>

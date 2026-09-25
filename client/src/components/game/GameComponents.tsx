@@ -30882,26 +30882,51 @@ function V3ConsumableUsePanel({ item, character, canUse }: { item: any; characte
   );
 }
 
+const CA_WOUND_CONSUMABLE_SEVERITY_DOT: Record<string, string> = {
+  minor: 'bg-stone-400',
+  moderate: 'bg-orange-700',
+  serious: 'bg-red-800',
+};
+
 // C.A. only: lets a player use a consumable's GM-authored wound heal/deal
-// options. Picking a "heal" option then shows the character's own wounds of
-// that severity to choose which to cure; "deal" just confirms and adds new
-// ones. Renders nothing if the item has no wound options configured.
-function CAWoundConsumablePanel({ item, character, canUse }: { item: any; character: any; canUse: boolean }) {
+// options, picked and placed on the same body diagram the Overview tab's own
+// wound editor uses (rather than a plain checkbox list). Picking a "heal"
+// option lets them click the exact existing wound(s) to cure; "deal" has
+// them click where each new wound lands. Renders nothing if the item has no
+// wound options configured. `onConsumed` fires once the mutation reports the
+// item itself is gone (the last one was just used), so the host dialog can
+// close - there's nothing left to show.
+function CAWoundConsumablePanel({ item, character, canUse, campaignSystem, onConsumed }: { item: any; character: any; canUse: boolean; campaignSystem?: string | null; onConsumed?: () => void }) {
   const queryClient = useQueryClient();
   const options = normalizeCAConsumableWoundOptions(item?.consumableWoundOptions);
   const wounds = normalizeCAWounds(character?.caWounds);
+  const woundRules = woundSystemRules(campaignSystem);
+  const bodySex = woundRules.bodySexOf(character);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [selectedWoundIds, setSelectedWoundIds] = useState<string[]>([]);
+  const [placements, setPlacements] = useState<{ x: number; y: number }[]>([]);
   const selectedOption = options.find((o) => o.id === selectedOptionId) || null;
 
+  const resetPicker = () => {
+    setSelectedOptionId(null);
+    setSelectedWoundIds([]);
+    setPlacements([]);
+  };
+
   const useMut = useMutation({
-    mutationFn: (optionId: string) => api.useWoundConsumable(character.id, item.id, optionId, selectedOption?.mode === 'heal' ? selectedWoundIds : undefined),
-    onSuccess: () => {
+    mutationFn: () => api.useWoundConsumable(
+      character.id,
+      item.id,
+      selectedOption!.id,
+      selectedOption?.mode === 'heal' ? selectedWoundIds : undefined,
+      selectedOption?.mode === 'deal' ? placements : undefined,
+    ),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
-      setSelectedOptionId(null);
-      setSelectedWoundIds([]);
+      resetPicker();
+      if (res?.itemConsumed) onConsumed?.();
     },
     onError: (err: any) => {
       toast({ title: 'Could not use item', description: err?.message || 'Failed to use item', variant: 'destructive' });
@@ -30911,20 +30936,33 @@ function CAWoundConsumablePanel({ item, character, canUse }: { item: any; charac
   if (options.length === 0) return null;
 
   // A heal option can also cure anything milder than its rated severity.
-  const eligibleWounds = selectedOption
-    ? wounds.filter((w) => CA_WOUND_SEVERITY_RANK[w.severity] <= CA_WOUND_SEVERITY_RANK[selectedOption.severity])
-    : [];
+  const eligibleIds = new Set(
+    selectedOption?.mode === 'heal'
+      ? wounds.filter((w) => CA_WOUND_SEVERITY_RANK[w.severity] <= CA_WOUND_SEVERITY_RANK[selectedOption.severity]).map((w) => w.id)
+      : []
+  );
   const toggleWound = (id: string) => {
-    if (!selectedOption) return;
+    if (!selectedOption || selectedOption.mode !== 'heal' || !eligibleIds.has(id)) return;
     setSelectedWoundIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= selectedOption.count) return prev;
       return [...prev, id];
     });
   };
+  const placeOnDiagram = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!selectedOption || selectedOption.mode !== 'deal' || placements.length >= selectedOption.count) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    setPlacements((prev) => [...prev, { x, y }]);
+  };
+
+  const readyToConfirm = selectedOption
+    ? (selectedOption.mode === 'heal' ? selectedWoundIds.length === selectedOption.count : placements.length === selectedOption.count)
+    : false;
 
   return (
-    <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-ca-wound-consumable">
+    <div className="pt-2 pb-4 border-b border-stone-700 space-y-3" data-testid="section-ca-wound-consumable">
       <h3 className="text-sm font-bold text-green-300 flex items-center gap-2">
         <Heart className="h-4 w-4" /> Use
       </h3>
@@ -30938,50 +30976,79 @@ function CAWoundConsumablePanel({ item, character, canUse }: { item: any; charac
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => { setSelectedOptionId(opt.id); setSelectedWoundIds([]); }}
+              onClick={() => { setSelectedOptionId(opt.id); setSelectedWoundIds([]); setPlacements([]); }}
               data-testid={`button-ca-wound-option-${opt.id}`}
             >
               {caConsumableWoundOptionLabel(opt)}
             </Button>
           ))}
         </div>
-      ) : selectedOption.mode === 'deal' ? (
-        <div className="space-y-2">
-          <p className="text-xs text-stone-400">
-            {caConsumableWoundOptionLabel(selectedOption)} — this adds {selectedOption.count} new wound{selectedOption.count > 1 ? 's' : ''}.
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setSelectedOptionId(null)}>Back</Button>
-            <Button size="sm" className="bg-red-700 hover:bg-red-600 text-white" disabled={useMut.isPending} onClick={() => useMut.mutate(selectedOption.id)} data-testid="button-ca-wound-option-confirm">
-              Confirm
-            </Button>
-          </div>
-        </div>
       ) : (
         <div className="space-y-2">
           <p className="text-xs text-stone-400">
-            Pick {selectedOption.count} wound{selectedOption.count > 1 ? 's' : ''} at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} severity
-            or milder to heal ({selectedWoundIds.length}/{selectedOption.count} selected).
+            {selectedOption.mode === 'heal'
+              ? <>Click {selectedOption.count} wound{selectedOption.count > 1 ? 's' : ''} on the body at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} severity or milder to heal ({selectedWoundIds.length}/{selectedOption.count} selected).</>
+              : <>Click the body to place {selectedOption.count} new {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} wound{selectedOption.count > 1 ? 's' : ''} ({placements.length}/{selectedOption.count} placed).</>}
           </p>
-          {eligibleWounds.length === 0 ? (
-            <p className="text-xs text-stone-500">No wounds at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity].toLowerCase()} severity or milder to heal.</p>
-          ) : (
-            <div className="space-y-1">
-              {eligibleWounds.map((w) => (
-                <label key={w.id} className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
-                  <Checkbox checked={selectedWoundIds.includes(w.id)} onCheckedChange={() => toggleWound(w.id)} data-testid={`checkbox-ca-wound-${w.id}`} />
-                  {w.name || 'Unnamed wound'} <span className="text-stone-500">({CA_WOUND_SEVERITY_LABELS[w.severity]})</span>
-                </label>
-              ))}
-            </div>
+          <div
+            className={`relative w-full max-w-[200px] mx-auto aspect-[2/3] rounded-lg border bg-stone-900/70 overflow-hidden ${selectedOption.mode === 'deal' && placements.length < selectedOption.count ? 'cursor-crosshair ring-2 ring-amber-500' : ''}`}
+            style={{ borderColor: 'var(--ca-gilt-line-soft)' }}
+            onClick={placeOnDiagram}
+            data-testid="area-ca-wound-consumable-diagram"
+          >
+            <img
+              src={woundBodyImage(woundRules.slug, bodySex)}
+              alt=""
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+              style={woundBodyImageStyle(woundRules.slug)}
+              draggable={false}
+              data-testid="img-ca-wound-consumable-body"
+            />
+            {wounds.map((w) => {
+              const eligible = eligibleIds.has(w.id);
+              const selected = selectedWoundIds.includes(w.id);
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  disabled={selectedOption.mode !== 'heal' || !eligible}
+                  onClick={(e) => { e.stopPropagation(); toggleWound(w.id); }}
+                  className={`absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 ${CA_WOUND_CONSUMABLE_SEVERITY_DOT[w.severity]} ${selected ? 'ring-2 ring-offset-1 ring-yellow-300' : ''} ${selectedOption.mode === 'heal' && !eligible ? 'opacity-30 cursor-not-allowed' : ''} ${selectedOption.mode === 'deal' ? 'opacity-50 pointer-events-none' : ''}`}
+                  style={{ left: `${w.x}%`, top: `${w.y}%` }}
+                  title={w.name || 'Unnamed wound'}
+                  data-testid={`marker-ca-wound-consumable-${w.id}`}
+                />
+              );
+            })}
+            {placements.map((p, i) => (
+              <div
+                key={i}
+                className="absolute w-3.5 h-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black/40 bg-emerald-500 ring-2 ring-offset-1 ring-emerald-300"
+                style={{ left: `${p.x}%`, top: `${p.y}%` }}
+                data-testid={`marker-ca-wound-consumable-placement-${i}`}
+              />
+            ))}
+          </div>
+          {selectedOption.mode === 'deal' && placements.length > 0 && (
+            <button
+              type="button"
+              className="text-[11px] text-stone-400 hover:text-stone-200 block mx-auto"
+              onClick={() => setPlacements((prev) => prev.slice(0, -1))}
+              data-testid="button-ca-wound-consumable-undo-placement"
+            >
+              Undo last placement
+            </button>
+          )}
+          {selectedOption.mode === 'heal' && eligibleIds.size === 0 && (
+            <p className="text-xs text-stone-500 text-center">No wounds at {CA_WOUND_SEVERITY_LABELS[selectedOption.severity].toLowerCase()} severity or milder to heal.</p>
           )}
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setSelectedOptionId(null)}>Back</Button>
+            <Button size="sm" variant="outline" onClick={resetPicker}>Back</Button>
             <Button
               size="sm"
-              className="bg-green-700 hover:bg-green-600 text-white"
-              disabled={useMut.isPending || selectedWoundIds.length !== selectedOption.count}
-              onClick={() => useMut.mutate(selectedOption.id)}
+              className={selectedOption.mode === 'heal' ? 'bg-green-700 hover:bg-green-600 text-white' : 'bg-red-700 hover:bg-red-600 text-white'}
+              disabled={useMut.isPending || !readyToConfirm}
+              onClick={() => useMut.mutate()}
               data-testid="button-ca-wound-option-confirm"
             >
               Confirm
@@ -32670,6 +32737,15 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             characterMana={character?.mana}
             characterItems={items}
             characterCustomSkills={characterCustomSkills as any[]}
+            renderAfterHandling={currentData.itemType === 'consumable' && isWoundSystem(campaignSystem) && (
+              <CAWoundConsumablePanel
+                item={currentData}
+                character={character}
+                canUse={isOwner || isGM}
+                campaignSystem={campaignSystem}
+                onConsumed={() => onOpenChange(false)}
+              />
+            )}
           />
 
           <div className="space-y-4 mt-4">
@@ -32688,10 +32764,6 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
 
             {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && (
               <V3ConsumableUsePanel item={currentData} character={character} canUse={isOwner || isGM} />
-            )}
-
-            {currentData.itemType === 'consumable' && isWoundSystem(campaignSystem) && (
-              <CAWoundConsumablePanel item={currentData} character={character} canUse={isOwner || isGM} />
             )}
           </div>
         </div>

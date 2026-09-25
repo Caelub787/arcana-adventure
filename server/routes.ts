@@ -16142,11 +16142,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         nextWounds = wounds.filter(w => !uniqueIds.has(w.id));
       } else {
-        const added = Array.from({ length: option.count }, () => ({
-          ...makeCAWound(50, 50),
-          severity: option.severity,
-          name: item.name || "Unnamed",
-        }));
+        // The player places each new wound on their own body diagram rather
+        // than always landing dead-center - placements must match count 1:1
+        // when supplied; fall back to center for any that are missing or
+        // malformed so an old/mismatched client can't crash the request.
+        const rawPlacements: unknown = req.body?.placements;
+        const placements: { x: number; y: number }[] = Array.isArray(rawPlacements) ? rawPlacements as any[] : [];
+        const added = Array.from({ length: option.count }, (_, i) => {
+          const p = placements[i];
+          const x = p && Number.isFinite(Number(p.x)) ? Number(p.x) : 50;
+          const y = p && Number.isFinite(Number(p.y)) ? Number(p.y) : 50;
+          return {
+            ...makeCAWound(x, y),
+            severity: option.severity,
+            name: item.name || "Unnamed",
+          };
+        });
         nextWounds = [...wounds, ...added];
       }
 
@@ -16155,7 +16166,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         broadcastToCampaign(updatedCharacter.campaignId, { type: "character_updated", characterId: updatedCharacter.id, character: updatedCharacter });
       }
 
-      if ((item.quantity ?? 1) > 1) {
+      // Tells the client whether this was the last one, so the item's own
+      // sheet/dialog can close itself - there's nothing left to show.
+      const itemConsumed = (item.quantity ?? 1) <= 1;
+      if (!itemConsumed) {
         const updatedItem = await storage.updateItem(item.id, { quantity: (item.quantity ?? 1) - 1 });
         if (access.character?.campaignId) {
           broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedItem });
@@ -16167,7 +16181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json({ success: true, character: updatedCharacter });
+      res.json({ success: true, character: updatedCharacter, itemConsumed });
     } catch (err) {
       res.status(400).json({ error: "Failed to use item" });
     }
