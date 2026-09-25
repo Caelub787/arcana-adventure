@@ -9694,8 +9694,8 @@ export default function Campaign() {
         if (data.type === 'admin_data_changed') {
           const cid = effectiveCampaignIdRef.current;
           const adminQueryMap: Record<string, string[][]> = {
-            'system-items': [['system-items-summary'], ['template-items-summary'], ['system-items'], [`/api/campaigns/${cid}/template-items`]],
-            'item-templates': [['system-items-summary'], ['template-items-summary'], ['item-templates'], [`/api/campaigns/${cid}/template-items`]],
+            'system-items': [['system-items-summary'], ['template-items-summary'], ['system-items'], [`/api/campaigns/${cid}/template-items`], ['item-image']],
+            'item-templates': [['system-items-summary'], ['template-items-summary'], ['item-templates'], [`/api/campaigns/${cid}/template-items`], ['item-image']],
             'system-spells': [['system-spells-summary'], ['v3-character-spells'], ['system-spells']],
             'crafter-recipe-templates': [['crafter-recipe-templates'], ['craft-recipes-play']],
             'craft-recipes': [['craft-recipes-play'], ['craft-recipes']],

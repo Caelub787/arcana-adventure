@@ -648,6 +648,9 @@ export const items = pgTable("items", {
   description: text("description"), // GM only editable
   rules: text("rules"), // Rules text, GM only editable
   rulesVisible: boolean("rules_visible").default(true).notNull(), // Whether rules are visible to players
+  // Section keys the GM has hidden on this item's own sheet (e.g. "when-used",
+  // "effects", "rolls") - never "identity" or "handling", which always show.
+  hiddenSections: text("hidden_sections").array().default(sql`ARRAY[]::text[]`).notNull(),
   damage: text("damage"), // Dice notation e.g. "1d8"
   damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
   mod: integer("mod").default(0), // Flat bonus added after dice roll

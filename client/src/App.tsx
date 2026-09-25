@@ -67,7 +67,7 @@ function SiteUpdateBanner() {
           }
           if (data.type === 'admin_data_changed') {
             const entityQueryMap: Record<string, string[][]> = {
-              'system-items': [['system-items-summary'], ['system-items'], ['admin-archived-items']],
+              'system-items': [['system-items-summary'], ['system-items'], ['admin-archived-items'], ['item-image']],
               'classes': [['admin-classes'], ['classes']],
               'system-spells': [['system-spells'], ['system-spells-summary'], ['admin-archived-spells']],
               'system-species': [['system-species'], ['species']],
@@ -82,7 +82,7 @@ function SiteUpdateBanner() {
               'token-effects': [['token-effects']],
               'spell-effects': [['system-spells'], ['token-effects']],
               'item-effects': [['system-items'], ['system-items-summary'], ['token-effects']],
-              'item-templates': [['item-templates'], ['system-items'], ['system-items-summary']],
+              'item-templates': [['item-templates'], ['system-items'], ['system-items-summary'], ['item-image']],
               'crafter-recipe-templates': [['crafter-recipe-templates'], ['crafter-recipe-template'], ['crafter-template-links'], ['craft-recipes-play']],
               'craft-recipes': [['craft-recipes'], ['craft-recipes-template'], ['crafter-recipe-template'], ['craft-recipes-play']],
             };

@@ -276,6 +276,13 @@ export function LibraryItemSheet({
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const queryClient = useQueryClient();
   const craftAccessAllowed = isGM ?? canEdit;
+  // Which optional sections the GM has hidden from this item's own sheet -
+  // never Identity or Handling, which always apply. Everything else starts
+  // visible; nothing is pre-hidden on the GM's behalf.
+  const hiddenSections: string[] = Array.isArray(item?.hiddenSections) ? item.hiddenSections : [];
+  const setSectionHidden = (key: string, hide: boolean) => {
+    onUpdate({ hiddenSections: hide ? [...hiddenSections, key] : hiddenSections.filter((k) => k !== key) });
+  };
   // A crafter viewed on a character sheet is an inventory COPY; its recipes
   // and their "add a recipe" writes live against the library item it was
   // added from (`templateItemId`), not this row's own id.
@@ -385,6 +392,32 @@ export function LibraryItemSheet({
     </>
   );
 
+  // Every section except Identity and Handling: shown by default, with a
+  // "Show" checkbox in its own header the GM can uncheck to collapse just
+  // that section's body (the header stays, so it's never lost).
+  const toggleableSection = (key: string, icon: React.ReactNode, title: string, body: React.ReactNode) => {
+    const hidden = hiddenSections.includes(key);
+    return (
+      <>
+        <CaDivider />
+        <CaSection
+          icon={icon}
+          title={title}
+          value={canEdit ? (
+            <ToggleRow
+              label="Show"
+              value={!hidden}
+              onChange={(v) => setSectionHidden(key, !v)}
+              testId={`toggle-library-item-section-${key}`}
+            />
+          ) : undefined}
+        >
+          {!hidden && body}
+        </CaSection>
+      </>
+    );
+  };
+
   return (
     <CaSheetFrame className="w-full max-w-3xl">
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-b" style={{ borderColor: "var(--ca-gilt-line-soft)" }}>
@@ -486,7 +519,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && section(<Sword className="h-3.5 w-3.5" />, "Attack", (
+        {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="damage" label="Damage" value={item?.damage} placeholder="1d8" testId="library-item-damage" />
@@ -540,7 +573,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {type === "armor" && section(<Shield className="h-3.5 w-3.5" />, "Protection", (
+        {type === "armor" && toggleableSection("protection", <Shield className="h-3.5 w-3.5" />, "Protection", (
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="armorSlot" label="Slot" value={item?.armorSlot} kind="select" options={opts(ARMOR_SLOTS, "None")} testId="library-item-armor-slot" />
@@ -572,7 +605,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {type === "consumable" && section(<FlaskConical className="h-3.5 w-3.5" />, "When used", (
+        {type === "consumable" && toggleableSection("when-used", <FlaskConical className="h-3.5 w-3.5" />, "When used", (
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="rationServings" label="Ration servings" value={item?.rationServings ?? 0} kind="number" min={0} testId="library-item-ration-servings" />
@@ -602,7 +635,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {type === "ammunition" && section(<Crosshair className="h-3.5 w-3.5" />, "Ammunition", (
+        {type === "ammunition" && toggleableSection("ammunition", <Crosshair className="h-3.5 w-3.5" />, "Ammunition", (
           <CaFieldGrid>
             <CaInlineField edit={edit} field="ammunitionType" label="Ammunition type" value={item?.ammunitionType} placeholder="arrow, bolt…" testId="library-item-ammo-type" />
             <CaInlineField edit={edit} field="breakChance" label="Break chance" value={item?.breakChance ?? 10} kind="number" min={0} max={100} suffix="%" testId="library-item-break-chance" />
@@ -620,7 +653,7 @@ export function LibraryItemSheet({
           </CaFieldGrid>
         ))}
 
-        {type === "rune" && section(<Gem className="h-3.5 w-3.5" />, "Rune", (
+        {type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="runeTargetItemType" label="Sockets into" value={item?.runeTargetItemType ?? "any"} kind="select" options={V3_RUNE_TARGET_ITEM_TYPES.map((t) => ({ value: t.value, label: t.label }))} testId="library-item-rune-target" />
@@ -653,7 +686,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {type === "scroll" && section(<ScrollText className="h-3.5 w-3.5" />, "Scroll", (
+        {type === "scroll" && toggleableSection("scroll", <ScrollText className="h-3.5 w-3.5" />, "Scroll", (
           <CaFieldGrid>
             <CaInlineField edit={edit} field="scrollEffectMode" label="Does" value={item?.scrollEffectMode ?? "spell"} kind="select" options={SCROLL_MODES} wide testId="library-item-scroll-mode" />
             {item?.scrollEffectMode === "knowledge" && (
@@ -672,13 +705,13 @@ export function LibraryItemSheet({
           </CaFieldGrid>
         ))}
 
-        {type === "spellbook" && section(<BookOpen className="h-3.5 w-3.5" />, "Spellbook", (
+        {type === "spellbook" && toggleableSection("spellbook", <BookOpen className="h-3.5 w-3.5" />, "Spellbook", (
           <CaFieldGrid>
             <CaInlineField edit={edit} field="maxSpells" label="Capacity" value={item?.maxSpells ?? 10} kind="number" min={0} suffix="spells (0 = unlimited)" wide testId="library-item-max-spells" />
           </CaFieldGrid>
         ))}
 
-        {type === "crafter" && craftAccessAllowed && section(<Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
+        {type === "crafter" && craftAccessAllowed && toggleableSection("crafting-recipes", <Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">
               GM only. Recipes made here belong only to this crafter. To reuse the same recipes across
@@ -697,7 +730,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {isV3 && type !== "crafter" && section(<Hammer className="h-3.5 w-3.5" />, "Repair", (
+        {isV3 && type !== "crafter" && toggleableSection("repair", <Hammer className="h-3.5 w-3.5" />, "Repair", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">What a crafter's Repair recipe restores and consumes when it targets this item.</p>
             <CaFieldGrid>
@@ -761,7 +794,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {!!item?.isTemplate && craftAccessAllowed && section(<Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
+        {!!item?.isTemplate && craftAccessAllowed && toggleableSection("build-recipe", <Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">
               GM only. What this item is built from - a crafter can pick it up later via "Add from items".
@@ -856,7 +889,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {section(<Sparkles className="h-3.5 w-3.5" />, "Effects", (
+        {toggleableSection("effects", <Sparkles className="h-3.5 w-3.5" />, "Effects", (
           <>
             <p className="text-[11px] text-stone-500 mb-1">
               What holding this item does to its owner. Each one says for itself whether it needs the item equipped.
@@ -887,7 +920,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {item?.id && liveTemplates.length > 0 && section(<Layers className="h-3.5 w-3.5" />, "Roll templates", (
+        {item?.id && liveTemplates.length > 0 && toggleableSection("roll-templates", <Layers className="h-3.5 w-3.5" />, "Roll templates", (
           <>
             <p className="text-[11px] text-stone-500 mb-1">Rolls this item inherits from a shared template.</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -912,7 +945,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {item?.id && section(<Dices className="h-3.5 w-3.5" />, "Rolls", (
+        {item?.id && toggleableSection("rolls", <Dices className="h-3.5 w-3.5" />, "Rolls", (
           <RollEntriesEditor
             ownerType="item"
             ownerId={item.id}

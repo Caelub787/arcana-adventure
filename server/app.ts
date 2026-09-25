@@ -498,6 +498,10 @@ async function ensureKnowledgeSystemSchema() {
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
     )`,
+    // Per-item GM toggles for which optional sheet sections show (Identity
+    // and Handling always do). Same every-read-selects-every-column risk as
+    // everything else here: a missing column 500s every item read/write.
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS hidden_sections text[] NOT NULL DEFAULT ARRAY[]::text[]`,
   ];
   return runSchemaGuard("knowledge", statements);
 }

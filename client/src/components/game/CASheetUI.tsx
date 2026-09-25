@@ -157,6 +157,10 @@ export function useCaInlineEdit(write: (updates: Record<string, any>) => void, c
     setDraft(null);
   };
   const save = (name: string, transform?: CaInlineTransform) => {
+    // Guards against a field already closed (e.g. blur firing after Escape,
+    // or after the Save button's own click already saved it) re-writing a
+    // stale draft.
+    if (field !== name) return;
     write({ [name]: transform ? transform(draft) : draft });
     close();
   };
@@ -188,6 +192,11 @@ export function useCaInlineEdit(write: (updates: Record<string, any>) => void, c
       if (e.key === "Enter") { e.preventDefault(); save(name, transform); }
       if (e.key === "Escape") { e.preventDefault(); close(); }
     },
+    // Clicking away - or double-clicking straight into another field, which
+    // blurs this one first - saves whatever was last typed instead of
+    // silently discarding it. The Save/Cancel buttons pre-empt this (see
+    // CaInlineActions) so they aren't racing their own click handler.
+    onBlur: () => save(name, transform),
   });
 
   return { field, draft, setDraft, open, close, save, pressHandlers, keyHandlers, canEdit };
@@ -212,6 +221,7 @@ export function CaInlineActions({
       <Button
         size="sm"
         className="h-7 w-7 p-0 bg-emerald-700 hover:bg-emerald-600 text-white shrink-0"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => { e.stopPropagation(); edit.save(field, transform); }}
         aria-label={saveLabel}
         data-testid={`button-ca-save-${field}`}
@@ -222,6 +232,7 @@ export function CaInlineActions({
         size="sm"
         variant="outline"
         className="h-7 w-7 p-0 border-stone-700 text-stone-300 shrink-0"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => { e.stopPropagation(); edit.close(); }}
         aria-label="Cancel"
         data-testid={`button-ca-cancel-${field}`}
@@ -713,6 +724,7 @@ export function CaInlineField({
               onChange={(e) => edit.setDraft(e.target.value)}
               className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs px-1.5"
               data-testid={id}
+              {...edit.keyHandlers(field)}
             >
               {options?.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -727,6 +739,7 @@ export function CaInlineField({
               placeholder={placeholder}
               className="flex-1 min-w-0 rounded border border-stone-700 bg-stone-900 text-stone-200 text-xs p-1.5 resize-y"
               data-testid={id}
+              {...edit.keyHandlers(field)}
             />
           ) : (
             <CaInlineText edit={edit} field={field} placeholder={placeholder} testId={id} />
