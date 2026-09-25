@@ -173,7 +173,10 @@ export function createArcanaApiTransport(
     async patch<T>(kind: SyncKind, id: string, body: Partial<T> & { externalUpdatedAt?: string }): Promise<SyncEnvelope<T>> {
       switch (kind) {
         case "item":
-          return envelope("item", (await api.updateItem(id, body as Record<string, unknown>)) as unknown as T);
+          // NOT api.updateItem - that hits the character-inventory route,
+          // which 400s on any item with no characterId (every template /
+          // library item, which is all ItemDialog ever edits).
+          return envelope("item", (await api.updateSystemItem(id, body as Record<string, unknown>)) as unknown as T);
         case "spell":
           return envelope("spell", (await api.updateSystemSpell(id, body as Record<string, unknown>)) as unknown as T);
         case "roll-template":
@@ -195,7 +198,7 @@ export function createArcanaApiTransport(
 
     async delete(kind: SyncKind, id: string): Promise<{ ok: true }> {
       switch (kind) {
-        case "item":               await api.deleteItem(id); break;
+        case "item":               await api.deleteSystemItem(id); break;
         case "spell":              await api.deleteSystemSpell(id); break;
         case "roll-template":      await api.deleteItemTemplate(id); break;
         case "species":            await api.deleteSystemSpecies(id); break;
