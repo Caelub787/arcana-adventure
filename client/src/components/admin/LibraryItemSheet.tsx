@@ -46,6 +46,11 @@ import {
   makeCAItemEffect,
   normalizeCAItemEffects,
   type CAItemEffect,
+  CA_WOUND_SEVERITIES,
+  CA_WOUND_SEVERITY_LABELS,
+  makeCAConsumableWoundOption,
+  normalizeCAConsumableWoundOptions,
+  type CAConsumableWoundOption,
 } from "@shared/ca";
 import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
 import { V3_SKILLS, V3_RUNE_TARGET_ITEM_TYPES, V3_RUNE_STAT_TARGETS } from "@shared/v3";
@@ -275,7 +280,9 @@ export function LibraryItemSheet({
 }) {
   const edit = useCaInlineEdit(onUpdate, canEdit);
   const queryClient = useQueryClient();
-  const craftAccessAllowed = isGM ?? canEdit;
+  // Same "GM or admin" flag used both to gate crafting-recipe authoring and
+  // to decide who can ever see a section the GM has hidden below.
+  const isSheetGM = isGM ?? canEdit;
   // Which optional sections the GM has hidden from this item's own sheet -
   // never Identity or Handling, which always apply. Everything else starts
   // visible; nothing is pre-hidden on the GM's behalf.
@@ -283,6 +290,15 @@ export function LibraryItemSheet({
   const setSectionHidden = (key: string, hide: boolean) => {
     onUpdate({ hiddenSections: hide ? [...hiddenSections, key] : hiddenSections.filter((k) => k !== key) });
   };
+
+  // C.A. consumable wound heal/deal options - see shared/ca.ts.
+  const woundOptions: CAConsumableWoundOption[] = normalizeCAConsumableWoundOptions(item?.consumableWoundOptions);
+  const writeWoundOptions = (next: CAConsumableWoundOption[]) => onUpdate({ consumableWoundOptions: next });
+  const updateWoundOption = (id: string, patch: Partial<CAConsumableWoundOption>) => {
+    writeWoundOptions(woundOptions.map((o) => (o.id === id ? { ...o, ...patch } : o)));
+  };
+  const removeWoundOption = (id: string) => writeWoundOptions(woundOptions.filter((o) => o.id !== id));
+  const addWoundOption = () => writeWoundOptions([...woundOptions, makeCAConsumableWoundOption()]);
   // A crafter viewed on a character sheet is an inventory COPY; its recipes
   // and their "add a recipe" writes live against the library item it was
   // added from (`templateItemId`), not this row's own id.
@@ -393,17 +409,20 @@ export function LibraryItemSheet({
   );
 
   // Every section except Identity and Handling: shown by default, with a
-  // "Show" checkbox in its own header the GM can uncheck to collapse just
-  // that section's body (the header stays, so it's never lost).
+  // "Show" checkbox only the GM/admin sees in its own header to collapse
+  // just that section's body for their own view (the header stays for them,
+  // so it's never lost). A player - including a trusted player - never sees
+  // a hidden section at all: not the body, not even its header.
   const toggleableSection = (key: string, icon: React.ReactNode, title: string, body: React.ReactNode) => {
     const hidden = hiddenSections.includes(key);
+    if (hidden && !isSheetGM) return null;
     return (
       <>
         <CaDivider />
         <CaSection
           icon={icon}
           title={title}
-          value={canEdit ? (
+          value={isSheetGM ? (
             <ToggleRow
               label="Show"
               value={!hidden}
@@ -632,6 +651,81 @@ export function LibraryItemSheet({
                 <ToggleRow label="Can be detonated" value={!!item?.isDetonatable} disabled={!canEdit} onChange={(v) => onUpdate({ isDetonatable: v })} testId="toggle-library-item-detonatable" />
               </div>
             )}
+            {isCA && (
+              <div className="mt-3">
+                <span className="text-xs text-stone-400 block mb-1">Wound effect options</span>
+                <p className="text-[11px] text-stone-500 mb-2">
+                  Each option is one way to use this potion - the player picks one on use. "Heal" removes that
+                  many of the player's own wounds at that severity (they choose which); "Deal" adds new ones.
+                </p>
+                <div className="space-y-1" data-testid="library-item-wound-options">
+                  {woundOptions.length === 0 && (
+                    <p className="text-[11px] text-stone-500">No wound options yet.</p>
+                  )}
+                  {woundOptions.map((opt, i) => (
+                    <div key={opt.id} className="flex items-center gap-1 flex-wrap">
+                      <select
+                        value={opt.mode}
+                        disabled={!canEdit}
+                        onChange={(e) => updateWoundOption(opt.id, { mode: e.target.value === "deal" ? "deal" : "heal" })}
+                        className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                        data-testid={`library-item-wound-option-${i}-mode`}
+                      >
+                        <option value="heal">Heal</option>
+                        <option value="deal">Deal</option>
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        value={opt.count}
+                        disabled={!canEdit}
+                        onChange={(e) => updateWoundOption(opt.id, { count: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+                        className="w-14 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                        data-testid={`library-item-wound-option-${i}-count`}
+                      />
+                      <select
+                        value={opt.severity}
+                        disabled={!canEdit}
+                        onChange={(e) => updateWoundOption(opt.id, { severity: e.target.value as any })}
+                        className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                        data-testid={`library-item-wound-option-${i}-severity`}
+                      >
+                        {CA_WOUND_SEVERITIES.map((s) => (
+                          <option key={s} value={s}>{CA_WOUND_SEVERITY_LABELS[s]}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={opt.label ?? ""}
+                        disabled={!canEdit}
+                        onChange={(e) => updateWoundOption(opt.id, { label: e.target.value })}
+                        placeholder="Custom label (optional)"
+                        className="flex-1 min-w-[140px] h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                        data-testid={`library-item-wound-option-${i}-label`}
+                      />
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => removeWoundOption(opt.id)}
+                        className="text-stone-500 hover:text-red-400 shrink-0 disabled:opacity-40"
+                        data-testid={`library-item-wound-option-${i}-remove`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-amber-500 hover:text-amber-400"
+                      onClick={addWoundOption}
+                      data-testid="library-item-wound-option-add"
+                    >
+                      + Add option
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         ))}
 
@@ -711,7 +805,7 @@ export function LibraryItemSheet({
           </CaFieldGrid>
         ))}
 
-        {type === "crafter" && craftAccessAllowed && toggleableSection("crafting-recipes", <Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
+        {type === "crafter" && isSheetGM && toggleableSection("crafting-recipes", <Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">
               GM only. Recipes made here belong only to this crafter. To reuse the same recipes across
@@ -794,7 +888,7 @@ export function LibraryItemSheet({
           </>
         ))}
 
-        {!!item?.isTemplate && craftAccessAllowed && toggleableSection("build-recipe", <Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
+        {!!item?.isTemplate && isSheetGM && toggleableSection("build-recipe", <Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">
               GM only. What this item is built from - a crafter can pick it up later via "Add from items".

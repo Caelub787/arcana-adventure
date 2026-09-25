@@ -21,7 +21,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf, isCASkillKey } from "@shared/ca";
+import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -16088,6 +16088,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to un-absorb item" });
+    }
+  });
+
+  // C.A. only: use a consumable's wound heal/deal option. A "heal" option
+  // removes `woundIds` (must match the option's severity and count) from
+  // the character's wounds; a "deal" option adds `count` fresh wounds of
+  // that severity at a default body position. Consumes the item like any
+  // other single-use consumable (see use-scroll above).
+  app.post("/api/characters/:characterId/items/:itemId/use-wound-item", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "Wound consumables are C.A. only" });
+
+      const item = await storage.getItem(req.params.itemId);
+      if (!item || item.characterId !== req.params.characterId) return res.status(404).json({ error: "Item not found" });
+      if (item.itemType !== 'consumable') return res.status(400).json({ error: "That item is not a consumable" });
+
+      const options = normalizeCAConsumableWoundOptions((item as any).consumableWoundOptions);
+      const option = options.find(o => o.id === req.body?.optionId);
+      if (!option) return res.status(400).json({ error: "That option isn't defined on this item" });
+
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+      const wounds = normalizeCAWounds((character as any).caWounds);
+
+      let nextWounds;
+      if (option.mode === 'heal') {
+        const woundIds: string[] = Array.isArray(req.body?.woundIds) ? req.body.woundIds : [];
+        if (woundIds.length !== option.count) {
+          return res.status(400).json({ error: `Pick exactly ${option.count} ${option.severity} wound${option.count > 1 ? 's' : ''} to heal` });
+        }
+        const uniqueIds = new Set(woundIds);
+        if (uniqueIds.size !== woundIds.length) return res.status(400).json({ error: "Duplicate wound in selection" });
+        const matched = wounds.filter(w => uniqueIds.has(w.id));
+        if (matched.length !== woundIds.length || matched.some(w => w.severity !== option.severity)) {
+          return res.status(400).json({ error: `Selection must be exactly ${option.count} of the character's own ${option.severity} wounds` });
+        }
+        nextWounds = wounds.filter(w => !uniqueIds.has(w.id));
+      } else {
+        const added = Array.from({ length: option.count }, () => ({
+          ...makeCAWound(50, 50),
+          severity: option.severity,
+          name: item.name || "Unnamed",
+        }));
+        nextWounds = [...wounds, ...added];
+      }
+
+      const updatedCharacter = await storage.updateCharacter(req.params.characterId, { caWounds: nextWounds } as any);
+      if (updatedCharacter?.campaignId) {
+        broadcastToCampaign(updatedCharacter.campaignId, { type: "character_updated", characterId: updatedCharacter.id, character: updatedCharacter });
+      }
+
+      if ((item.quantity ?? 1) > 1) {
+        const updatedItem = await storage.updateItem(item.id, { quantity: (item.quantity ?? 1) - 1 });
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedItem });
+        }
+      } else {
+        await storage.deleteItem(item.id);
+        if (access.character?.campaignId) {
+          broadcastToCampaign(access.character.campaignId, { type: "item_deleted", characterId: req.params.characterId, itemId: item.id });
+        }
+      }
+
+      res.json({ success: true, character: updatedCharacter });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to use item" });
     }
   });
 

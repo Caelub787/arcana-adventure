@@ -502,6 +502,8 @@ async function ensureKnowledgeSystemSchema() {
     // and Handling always do). Same every-read-selects-every-column risk as
     // everything else here: a missing column 500s every item read/write.
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS hidden_sections text[] NOT NULL DEFAULT ARRAY[]::text[]`,
+    // C.A. consumable wound heal/deal options (see shared/ca.ts).
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS consumable_wound_options jsonb NOT NULL DEFAULT '[]'::jsonb`,
   ];
   return runSchemaGuard("knowledge", statements);
 }

@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -30904,6 +30904,114 @@ function V3ConsumableUsePanel({ item, character, canUse }: { item: any; characte
   );
 }
 
+// C.A. only: lets a player use a consumable's GM-authored wound heal/deal
+// options. Picking a "heal" option then shows the character's own wounds of
+// that severity to choose which to cure; "deal" just confirms and adds new
+// ones. Renders nothing if the item has no wound options configured.
+function CAWoundConsumablePanel({ item, character, canUse }: { item: any; character: any; canUse: boolean }) {
+  const queryClient = useQueryClient();
+  const options = normalizeCAConsumableWoundOptions(item?.consumableWoundOptions);
+  const wounds = normalizeCAWounds(character?.caWounds);
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [selectedWoundIds, setSelectedWoundIds] = useState<string[]>([]);
+  const selectedOption = options.find((o) => o.id === selectedOptionId) || null;
+
+  const useMut = useMutation({
+    mutationFn: (optionId: string) => api.useWoundConsumable(character.id, item.id, optionId, selectedOption?.mode === 'heal' ? selectedWoundIds : undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
+      setSelectedOptionId(null);
+      setSelectedWoundIds([]);
+    },
+    onError: (err: any) => {
+      toast({ title: 'Could not use item', description: err?.message || 'Failed to use item', variant: 'destructive' });
+    },
+  });
+
+  if (options.length === 0) return null;
+
+  const eligibleWounds = selectedOption ? wounds.filter((w) => w.severity === selectedOption.severity) : [];
+  const toggleWound = (id: string) => {
+    if (!selectedOption) return;
+    setSelectedWoundIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= selectedOption.count) return prev;
+      return [...prev, id];
+    });
+  };
+
+  return (
+    <div className="pt-4 border-t border-stone-700 space-y-3" data-testid="section-ca-wound-consumable">
+      <h3 className="text-sm font-bold text-green-300 flex items-center gap-2">
+        <Heart className="h-4 w-4" /> Use
+      </h3>
+      {!canUse ? (
+        <p className="text-xs text-stone-500">Only the owner or the GM can use this.</p>
+      ) : !selectedOption ? (
+        <div className="flex flex-wrap gap-2">
+          {options.map((opt) => (
+            <Button
+              key={opt.id}
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => { setSelectedOptionId(opt.id); setSelectedWoundIds([]); }}
+              data-testid={`button-ca-wound-option-${opt.id}`}
+            >
+              {caConsumableWoundOptionLabel(opt)}
+            </Button>
+          ))}
+        </div>
+      ) : selectedOption.mode === 'deal' ? (
+        <div className="space-y-2">
+          <p className="text-xs text-stone-400">
+            {caConsumableWoundOptionLabel(selectedOption)} — this adds {selectedOption.count} new wound{selectedOption.count > 1 ? 's' : ''}.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setSelectedOptionId(null)}>Back</Button>
+            <Button size="sm" className="bg-red-700 hover:bg-red-600 text-white" disabled={useMut.isPending} onClick={() => useMut.mutate(selectedOption.id)} data-testid="button-ca-wound-option-confirm">
+              Confirm
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs text-stone-400">
+            Pick {selectedOption.count} {CA_WOUND_SEVERITY_LABELS[selectedOption.severity]} wound{selectedOption.count > 1 ? 's' : ''} to heal
+            {' '}({selectedWoundIds.length}/{selectedOption.count} selected).
+          </p>
+          {eligibleWounds.length === 0 ? (
+            <p className="text-xs text-stone-500">No {CA_WOUND_SEVERITY_LABELS[selectedOption.severity].toLowerCase()} wounds to heal.</p>
+          ) : (
+            <div className="space-y-1">
+              {eligibleWounds.map((w) => (
+                <label key={w.id} className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
+                  <Checkbox checked={selectedWoundIds.includes(w.id)} onCheckedChange={() => toggleWound(w.id)} data-testid={`checkbox-ca-wound-${w.id}`} />
+                  {w.name || 'Unnamed wound'}
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setSelectedOptionId(null)}>Back</Button>
+            <Button
+              size="sm"
+              className="bg-green-700 hover:bg-green-600 text-white"
+              disabled={useMut.isPending || selectedWoundIds.length !== selectedOption.count}
+              onClick={() => useMut.mutate(selectedOption.id)}
+              data-testid="button-ca-wound-option-confirm"
+            >
+              Confirm
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Read-only list of the techniques a V3 character has unlocked (globally, via
 // weapon Unlock buttons). Shown in the character sheet's Traits tab.
 function V3UnlockedTechniquesList({ character, canManage = false }: { character: any; canManage?: boolean }) {
@@ -32599,6 +32707,10 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
 
             {currentData.itemType === 'consumable' && campaignSystem === 'aa-v3' && (
               <V3ConsumableUsePanel item={currentData} character={character} canUse={isOwner || isGM} />
+            )}
+
+            {currentData.itemType === 'consumable' && isWoundSystem(campaignSystem) && (
+              <CAWoundConsumablePanel item={currentData} character={character} canUse={isOwner || isGM} />
             )}
           </div>
         </div>

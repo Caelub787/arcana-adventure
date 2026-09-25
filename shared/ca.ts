@@ -165,6 +165,59 @@ export function caWoundTotalCost(wounds: unknown): number {
   return total;
 }
 
+// ---------------------------------------------------------------------------
+// Consumable wound effects — a GM-authored menu of ways a CA consumable can
+// touch a character's wounds when used: heal (remove) a number of existing
+// wounds at a severity, or deal (add) a new one. An item can offer several
+// of these at once ("Heal 1 Moderate", "Heal 2 Minor") - the player picks
+// one when they use it, and for a heal picks which of their own wounds of
+// that severity it applies to.
+// ---------------------------------------------------------------------------
+
+export type CAWoundEffectMode = "heal" | "deal";
+
+export interface CAConsumableWoundOption {
+  id: string;
+  mode: CAWoundEffectMode;
+  severity: CAWoundSeverity;
+  count: number; // how many wounds of that severity to heal or deal
+  label?: string; // optional override; auto-generated from mode/severity/count if blank
+}
+
+export function makeCAConsumableWoundOption(): CAConsumableWoundOption {
+  return { id: makeCAWoundId(), mode: "heal", severity: "minor", count: 1 };
+}
+
+export function caConsumableWoundOptionLabel(opt: CAConsumableWoundOption): string {
+  if (opt.label?.trim()) return opt.label.trim();
+  const verb = opt.mode === "heal" ? "Heal" : "Deal";
+  const severityLabel = CA_WOUND_SEVERITY_LABELS[opt.severity];
+  const count = Math.max(1, opt.count);
+  return `${verb} ${count} ${severityLabel} Wound${count > 1 ? "s" : ""}`;
+}
+
+// Tolerates missing/malformed data the same way normalizeCAWounds does.
+export function normalizeCAConsumableWoundOptions(raw: unknown): CAConsumableWoundOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CAConsumableWoundOption[] = [];
+  for (const o of raw) {
+    if (!o || typeof o !== "object") continue;
+    const anyO = o as any;
+    const mode: CAWoundEffectMode = anyO.mode === "deal" ? "deal" : "heal";
+    const severity: CAWoundSeverity =
+      anyO.severity === "moderate" || anyO.severity === "serious" ? anyO.severity : "minor";
+    const count = Number.isFinite(Number(anyO.count)) ? Math.max(1, Math.trunc(Number(anyO.count))) : 1;
+    out.push({
+      id: typeof anyO.id === "string" && anyO.id ? anyO.id : makeCAWoundId(),
+      mode,
+      severity,
+      count,
+      label: typeof anyO.label === "string" && anyO.label.trim() ? anyO.label : undefined,
+    });
+  }
+  return out;
+}
+
 // Wound Capacity — the full "HP" bar, drained by the point cost of each
 // active (untreated) wound. Not flat: it scales with Rank, since Rank (not
 // Race) is what determines how much punishment a character can take. A

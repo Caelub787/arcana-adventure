@@ -1457,6 +1457,16 @@ class ApiClient {
     });
   }
 
+  // C.A. only: use a consumable's wound heal/deal option. woundIds is
+  // required (and must match the option's severity/count) for a "heal"
+  // option; omitted for a "deal" option.
+  async useWoundConsumable(characterId: string, itemId: string, optionId: string, woundIds?: string[]): Promise<{ success: boolean; character: any }> {
+    return this.request(`/characters/${characterId}/items/${itemId}/use-wound-item`, {
+      method: 'POST',
+      body: JSON.stringify({ optionId, woundIds }),
+    });
+  }
+
   // GM-only: reverse a permanent V3 skill-boost (from skill scrolls). action
   // 'decrement' lowers the boost by `amount` (default 1, removed at <= 0);
   // 'clear' removes the entry entirely. AA V3 only.
