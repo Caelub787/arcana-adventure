@@ -30001,56 +30001,31 @@ function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaign
   const handleAddFromTemplate = async (templateSummary: any, quantity: number = 1) => {
     // Fetch full item data from the server (summaries only have basic fields)
     try {
-      const template = await api.getSystemItem(templateSummary.id);
+      const template: any = await api.getSystemItem(templateSummary.id);
+      // Copy every field the template carries EXCEPT identity/per-instance
+      // ones - a hand-picked allowlist here is exactly what silently dropped
+      // consumableWoundOptions (and would drop the next new field too): it
+      // has to be actively kept in sync with every column ever added to the
+      // items table, and nobody remembers to do that. A blocklist only has
+      // to name the fields a fresh copy must NOT inherit.
+      const {
+        id: _id, characterId: _characterId, campaignId: _campaignId, worldId: _worldId,
+        containerId: _containerId, createdByUserId: _createdByUserId,
+        isTemplate: _isTemplate, isLiveTemplate: _isLiveTemplate,
+        templatePriority: _templatePriority, templateUseOwnOrder: _templateUseOwnOrder,
+        templateItemId: _templateItemId, quantity: _templateQuantity,
+        isEquipped: _isEquipped, isAbsorbed: _isAbsorbed, hiddenFromShop: _hiddenFromShop,
+        isArchived: _isArchived, socketedRunes: _socketedRunes,
+        ...rest
+      } = template;
       const itemData = {
-        name: template.name,
-        image: template.image || '',
-        description: template.description || '',
-        rules: template.rules || '',
-        rulesVisible: template.rulesVisible ?? true,
-        itemType: template.itemType,
-        rarity: template.rarity,
-        quantity: quantity,
-        damage: template.damage || '',
-        damageType: template.damageType || '',
-        mod: template.mod || 0,
-        range: template.range || 0,
-        aoe: template.aoe || '',
-        attribute: template.attribute || '',
-        size: template.size || '',
-        weight: template.weight || 'light',
-        itemWeight: template.itemWeight || 0,
-        price: template.price || 0,
-        durability: template.durability || 10,
-        isContainer: template.isContainer || false,
-        carryCapacity: template.carryCapacity || 0,
-        ammunitionType: template.ammunitionType || '',
-        weaponCategory: template.weaponCategory || '',
-        isHeavy: template.isHeavy || false,
-        armorSlot: template.armorSlot || '',
-        armorBonus: template.armorBonus || 0,
-        damageReduction: template.damageReduction || 0,
-        damageReductionType: template.damageReductionType || '',
-        breakChance: template.breakChance ?? 10,
-        rationServings: template.rationServings || 0,
-        isDamaging: template.isDamaging || false,
-        isDetonatable: template.isDetonatable || false,
-        detonateAoeShape: template.detonateAoeShape || '',
-        detonateAoeRange: template.detonateAoeRange || 10,
-        grantsDcBonus: template.grantsDcBonus || false,
-        dcBonusValue: template.dcBonusValue || 0,
-        v3ArmorBoosts: template.v3ArmorBoosts || [],
-        canApplyEffects: template.canApplyEffects || false,
-        socketedRunes: template.socketedRunes || [],
-        runeTargetItemType: template.runeTargetItemType || 'any',
-        runeStatEffects: template.runeStatEffects || [],
-        runeUseMode: template.runeUseMode || 'none',
-        runeSkillKey: template.runeSkillKey ?? null,
-        runeSkillAdjustment: template.runeSkillAdjustment || 0,
-        runeRemoveDurabilityCost: template.runeRemoveDurabilityCost ?? 1,
-        runeUnremovable: template.runeUnremovable || false,
-        runeWeaponDamageLevelBonus: template.runeWeaponDamageLevelBonus || 0,
-        v3TechniqueGroupIds: template.v3TechniqueGroupIds || [],
+        ...rest,
+        quantity,
+        isEquipped: false,
+        isAbsorbed: false,
+        hiddenFromShop: false,
+        isArchived: false,
+        socketedRunes: [],
         sourceTemplateId: template.id,
       };
       onSave(itemData);
