@@ -13885,6 +13885,7 @@ export default function Campaign() {
                   const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                   return !!m?.trustedPlayer;
                 })()}
+                mobileTransferTargets={openCharacterSheets.filter(s => s.id !== openCharacterSheets[0].id).map(s => ({ id: s.id, name: s.name }))}
               />
             )}
           </DialogContent>
@@ -13979,6 +13980,7 @@ export default function Campaign() {
                 const m = (members as any[] | undefined)?.find((x: any) => x.userId === user?.id);
                 return !!m?.trustedPlayer;
               })()}
+              mobileTransferTargets={openCharacterSheets.filter(s => s.id !== sheet.id).map(s => ({ id: s.id, name: s.name }))}
             />
             </div>
             {dockedCharNotes[sheet.id] && (

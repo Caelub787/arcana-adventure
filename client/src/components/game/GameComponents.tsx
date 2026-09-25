@@ -11739,6 +11739,10 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
   const glowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rollAnimTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Touch long-press -> Trade, the mobile equivalent of the desktop
+  // right-click context menu (which never fires from a touch gesture).
+  const tradePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tradePressFiredRef = useRef(false);
   // Timestamp a fresh roll should stay visible until, even through a brief
   // hover-then-leave while the mouse merely passes over the tracker - without
   // this, mouseleave's quick 400ms hide could cut a just-landed roll's
@@ -11890,7 +11894,19 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
       <div
         role={onOpenSheet ? 'button' : undefined}
         tabIndex={onOpenSheet ? 0 : undefined}
-        onClick={onOpenSheet}
+        onClick={(e) => {
+          if (tradePressFiredRef.current) { tradePressFiredRef.current = false; return; }
+          onOpenSheet?.();
+        }}
+        onTouchStart={onTrade ? () => {
+          tradePressFiredRef.current = false;
+          tradePressTimerRef.current = setTimeout(() => {
+            tradePressFiredRef.current = true;
+            onTrade();
+          }, 550);
+        } : undefined}
+        onTouchEnd={onTrade ? () => { if (tradePressTimerRef.current) clearTimeout(tradePressTimerRef.current); } : undefined}
+        onTouchMove={onTrade ? () => { if (tradePressTimerRef.current) clearTimeout(tradePressTimerRef.current); } : undefined}
         className={`chrome-frame chrome-frame-lg relative rounded-lg border-2 bg-stone-900/90 backdrop-blur-sm shadow-lg transition-shadow ${
           compact ? 'flex flex-col gap-0.5 p-1' : 'flex items-center gap-1.5 p-1.5'
         } ${onOpenSheet ? 'cursor-pointer hover:shadow-xl' : ''}`}
@@ -16876,9 +16892,18 @@ interface InventoryItemRowProps {
   isAAV3?: boolean;
   canEditQuantity?: boolean;
   onEquip?: (item: any, equipped: boolean) => void;
+  // Touch-friendly (and desktop-usable) stand-in for the drag gesture that
+  // moves an item to another open character sheet - native HTML5 drag has
+  // no mobile equivalent, so this is the only way to do a cross-sheet move
+  // on a phone/tablet. Populated only when other sheets are actually open.
+  mobileTransferTargets?: { id: string; name: string }[];
+  onTransferToCharacter?: (itemId: string, toCharacterId: string, quantity: number) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity, onEquip }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront, charPanelSuffix = '', onOpenSpellbook, isAAV3, canEditQuantity, onEquip, mobileTransferTargets, onTransferToCharacter }: InventoryItemRowProps) {
+  const [moveTarget, setMoveTarget] = useState<{ id: string; name: string } | null>(null);
+  const [moveQuantity, setMoveQuantity] = useState(1);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const qtyPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -17221,6 +17246,77 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             </button>
           )}
           
+          {/* Move to another open character sheet - the touch/mobile
+              equivalent of dragging the item onto that sheet, since native
+              HTML5 drag has no touch counterpart. Works on desktop too, as
+              a click alternative to dragging. */}
+          {canEdit && !item.isContainer && !!mobileTransferTargets?.length && onTransferToCharacter && (
+            <Popover open={moveMenuOpen} onOpenChange={(o) => { setMoveMenuOpen(o); if (!o) setMoveTarget(null); }}>
+              <PopoverTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0 p-1.5 hover:bg-stone-700 rounded text-stone-400 hover:text-amber-400"
+                  title="Move to another character"
+                  data-testid={`button-move-to-character-${item.id}`}
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" onClick={(e) => e.stopPropagation()}>
+                {!moveTarget ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-stone-400 px-1 pb-1">Move to...</div>
+                    {mobileTransferTargets.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => {
+                          if (item.quantity > 1) {
+                            setMoveQuantity(item.quantity);
+                            setMoveTarget(t);
+                          } else {
+                            onTransferToCharacter(item.id, t.id, 1);
+                            setMoveMenuOpen(false);
+                          }
+                        }}
+                        className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-stone-700 text-stone-200"
+                        data-testid={`button-move-target-${t.id}`}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-xs text-stone-400 px-1">Move how many to {moveTarget.name}?</div>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={item.quantity}
+                      value={moveQuantity}
+                      onChange={(e) => setMoveQuantity(Math.max(1, Math.min(item.quantity, parseInt(e.target.value) || 1)))}
+                      className="h-8 bg-stone-900 border-stone-700"
+                      data-testid="input-move-quantity"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setMoveTarget(null)}>Back</Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          onTransferToCharacter(item.id, moveTarget.id, moveQuantity);
+                          setMoveMenuOpen(false);
+                        }}
+                        data-testid="button-confirm-move"
+                      >
+                        Move
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
+          )}
+
           {/* Delete item button */}
           {canEdit && onDeleteItem && (
             <button
@@ -17359,11 +17455,13 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               isAAV3={isAAV3}
               canEditQuantity={canEditQuantity}
               onEquip={onEquip}
+              mobileTransferTargets={mobileTransferTargets}
+              onTransferToCharacter={onTransferToCharacter}
             />
           ))}
         </div>
       )}
-      
+
       {/* Empty container drop zone */}
       {item.isContainer && isExpanded && (!item.children || item.children.length === 0) && (
         <div 
@@ -17480,6 +17578,11 @@ interface CharacterSheetProps {
    * between the sheet and its notes, reads as two panels rather than one.
    */
   hideAuraEdge?: boolean;
+  // Other character sheets currently open (GM only, in practice - a player
+  // never has more than their own sheet open). Populates the inventory's
+  // touch-friendly "Move to..." picker, the mobile/no-drag equivalent of
+  // dragging an item onto another open sheet.
+  mobileTransferTargets?: { id: string; name: string }[];
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -19557,7 +19660,7 @@ export function DetachedSpellbookPanel({ character, item, isGM, isOwner, bringTo
   );
 }
 
-export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes, onOpenItemNotes, hideAuraEdge = false }: CharacterSheetProps) {
+export const CharacterSheet = React.memo(function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", activeTab, onTabChange, campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem, trustedPlayer = false, onOpenItemDetail, onOpenSpellbook, onOpenNotes, onOpenItemNotes, hideAuraEdge = false, mobileTransferTargets }: CharacterSheetProps) {
   const charPanelSuffix = character?.id ? '-' + character.id : '';
   const isAAV2 = (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3');
   const isAAV3 = (campaignSystem === 'aa-v3');
@@ -22102,6 +22205,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       }
       await api.updateItem(itemId, { containerId });
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+    } catch (error: any) {
+      console.error('Failed to move item:', error);
+      toast({ title: 'Move failed', description: error?.message || 'Could not move this item', variant: 'destructive' });
+    }
+  };
+
+  // Touch-friendly (and desktop-clickable) stand-in for dragging an item
+  // onto another open character sheet - same server-side transfer the drag
+  // gesture uses, just triggered from a picker instead of a drop event.
+  const handleMobileTransfer = async (itemId: string, toCharacterId: string, quantity: number) => {
+    try {
+      await api.transferItem(itemId, { toCharacterId, quantity });
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['items', toCharacterId] });
     } catch (error: any) {
       console.error('Failed to move item:', error);
       toast({ title: 'Move failed', description: error?.message || 'Could not move this item', variant: 'destructive' });
@@ -25780,6 +25897,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
                           onEquip={isAAV3 ? (it, equipped) => equipItemMutation.mutate({ id: it.id, equipped }) : undefined}
+                          mobileTransferTargets={mobileTransferTargets}
+                          onTransferToCharacter={handleMobileTransfer}
                           onDeleteItem={isAAV3 && !showInventoryDelete ? undefined : (id) => deleteItemMutation.mutate(id)}
                           onUpdateQuantity={(itemId, quantityChange) => {
                             if (!stack.items || stack.items.length === 0) return;
@@ -31928,7 +32047,7 @@ export function TradePanel({ tradeId, myCharacterId, onClose, defaultPosition }:
             {statusBanner}
           </div>
         )}
-        <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto sm:overflow-visible">
           {/* My offer */}
           <div className="flex flex-col border border-stone-700 rounded overflow-hidden">
             <div className="bg-stone-800 px-2 py-1 text-xs font-bold text-stone-300 flex items-center justify-between">
