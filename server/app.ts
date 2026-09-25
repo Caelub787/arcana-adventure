@@ -473,6 +473,31 @@ async function ensureKnowledgeSystemSchema() {
     // selects every declared column, so a missing one here 500s all of them.
     `ALTER TABLE IF EXISTS note_folders ADD COLUMN IF NOT EXISTS visibility_permission text NOT NULL DEFAULT 'edit'`,
     `ALTER TABLE IF EXISTS notes ADD COLUMN IF NOT EXISTS visibility_permission text NOT NULL DEFAULT 'edit'`,
+    // Token Shop + character trading. isShop/hiddenFromShop hit the same
+    // every-read-selects-every-column problem as everything else in this
+    // list: a missing hidden_from_shop 500s EVERY item read/write (not just
+    // shop-related ones), and a missing is_shop 500s EVERY characters read -
+    // including the character list a campaign loads on open, so a build-time
+    // db:push miss here doesn't just break the shop, it breaks entering any
+    // campaign at all.
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS is_shop boolean NOT NULL DEFAULT false`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS hidden_from_shop boolean NOT NULL DEFAULT false`,
+    `CREATE TABLE IF NOT EXISTS character_trades (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      campaign_id varchar NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      character_a_id varchar NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+      character_b_id varchar NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+      offer_a jsonb NOT NULL DEFAULT '[]'::jsonb,
+      offer_b jsonb NOT NULL DEFAULT '[]'::jsonb,
+      locked_a boolean NOT NULL DEFAULT false,
+      locked_b boolean NOT NULL DEFAULT false,
+      accepted_a boolean NOT NULL DEFAULT false,
+      accepted_b boolean NOT NULL DEFAULT false,
+      status text NOT NULL DEFAULT 'open',
+      completed_summary jsonb,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )`,
   ];
   return runSchemaGuard("knowledge", statements);
 }
