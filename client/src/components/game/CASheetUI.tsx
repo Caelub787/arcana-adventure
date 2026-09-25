@@ -243,6 +243,7 @@ export function CaInlineNumber({
   className = "bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm min-w-0",
   min = 0,
   max,
+  integer = true,
 }: {
   edit: CaInlineEdit;
   field: string;
@@ -251,9 +252,12 @@ export function CaInlineNumber({
   min?: number;
   /** Used where a value is spent from a budget and can't exceed what's left. */
   max?: number;
+  /** Set false for fields like weight that take fractional values. */
+  integer?: boolean;
 }) {
   const transform: CaInlineTransform = (d) => {
-    const n = Math.floor(Number(d) || 0);
+    const raw = Number(d) || 0;
+    const n = integer ? Math.floor(raw) : raw;
     return Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min, n));
   };
   return (
@@ -261,6 +265,7 @@ export function CaInlineNumber({
       <NumberInput
         min={min}
         max={max}
+        integer={integer}
         value={edit.draft}
         onChange={(v) => edit.setDraft(v ?? min)}
         className={className}
@@ -667,6 +672,7 @@ export function CaInlineField({
   wide = false,
   empty = "—",
   testId,
+  decimal = false,
 }: {
   edit: CaInlineEdit;
   field: string;
@@ -684,6 +690,8 @@ export function CaInlineField({
   /** What to show when the value is unset. */
   empty?: string;
   testId?: string;
+  /** Set true for `kind="number"` fields like weight that take fractional values. */
+  decimal?: boolean;
 }) {
   const open = edit.field === field;
   const id = testId ?? `ca-inline-${field}`;
@@ -697,7 +705,7 @@ export function CaInlineField({
       <CaField label={label} wide={wide}>
         <div className="flex items-center gap-1">
           {kind === "number" ? (
-            <CaInlineNumber edit={edit} field={field} min={min} max={max} testId={id} />
+            <CaInlineNumber edit={edit} field={field} min={min} max={max} integer={!decimal} testId={id} />
           ) : kind === "select" ? (
             <select
               autoFocus

@@ -13,6 +13,8 @@ export interface DetachedItemPanel {
   item: any;
   panelKey: string;
   offsetIndex: number;
+  /** True only for a row `createBlankInventoryItem` just made, still untouched. */
+  isNew?: boolean;
 }
 
 export function itemPanelKey(characterId: string, itemId: string): string {
@@ -31,11 +33,12 @@ export function openItemPanel(
   panels: DetachedItemPanel[],
   character: any,
   item: any,
+  isNew?: boolean,
 ): DetachedItemPanel[] {
   const panelKey = itemPanelKey(character.id, item.id);
   if (panels.some((p) => p.panelKey === panelKey)) return panels;
   const offsetIndex = panels.length === 0 ? 0 : Math.max(...panels.map((p) => p.offsetIndex)) + 1;
-  return [...panels, { character, item, panelKey, offsetIndex }];
+  return [...panels, { character, item, panelKey, offsetIndex, isNew }];
 }
 
 /** Remove exactly the panel with `panelKey`; all other panels are untouched. */

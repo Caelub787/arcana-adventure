@@ -360,6 +360,10 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   
   // The item opened as an inline-edit sheet, rather than in the full form.
   const [sheetItem, setSheetItem] = useState<Item | null>(null);
+  // True only for a row `createBlankItem` just made and nothing has touched
+  // yet. Closing the sheet in that state deletes it instead of leaving an
+  // "Untitled Item" behind - flips to false the moment any field is written.
+  const [sheetItemIsUneditedNew, setSheetItemIsUneditedNew] = useState(false);
 
   // @arcana/library-dialogs host adapter — wraps existing api.* calls behind a
   // session-cookie LibraryTransport, bridges Arcana's <ImageBrowser> as the
@@ -431,6 +435,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
       setSheetItem(created as Item);
+      setSheetItemIsUneditedNew(true);
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Could not create the item', variant: 'destructive' });
     }
@@ -439,6 +444,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   /** One field, written on its own, straight from the sheet. */
   const writeSheetItem = async (updates: Record<string, any>) => {
     if (!sheetItem) return;
+    setSheetItemIsUneditedNew(false);
     // Shown immediately: the sheet is the thing you are looking at, and a
     // round trip before the value changes reads as the edit not taking.
     setSheetItem((prev) => (prev ? ({ ...prev, ...updates } as Item) : prev));
@@ -1324,6 +1330,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
               // links, crafter recipes, V3 boosts).
               const fullItem = await api.getSystemItem(itemId);
               setSheetItem(fullItem);
+              setSheetItemIsUneditedNew(false);
             }}
             onDeleteItem={(id) => {
               if (confirm('Are you sure you want to delete this item?')) {
@@ -1526,6 +1533,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
             onEditItem={async (itemId) => {
               const fullItem = await api.getSystemItem(itemId);
               setSheetItem(fullItem);
+              setSheetItemIsUneditedNew(false);
             }}
             systemSlug={systemSlug}
             personal={personalMode}
@@ -1558,9 +1566,22 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
                 if (!confirm('Delete this item?')) return;
                 const id = sheetItem.id;
                 setSheetItem(null);
+                setSheetItemIsUneditedNew(false);
                 deleteItemMutation.mutate(id);
               }}
-              onClose={() => setSheetItem(null)}
+              onClose={() => {
+                if (sheetItemIsUneditedNew) {
+                  const id = sheetItem.id;
+                  setSheetItem(null);
+                  setSheetItemIsUneditedNew(false);
+                  api.deleteSystemItem(id).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ['system-items'] });
+                    queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+                  }).catch(() => {});
+                  return;
+                }
+                setSheetItem(null);
+              }}
             />
           </div>
         )}
@@ -12403,7 +12424,7 @@ function CrafterRecipeTemplatesView({ systemSlug, personal }: { systemSlug: stri
   const { data: templates = [], isLoading } = useQuery<any[]>({
     queryKey: ['crafter-recipe-templates', systemSlug, personal],
     queryFn: () => api.listCrafterRecipeTemplates(systemSlug, personal),
-    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
+    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3' || systemSlug === 'ca',
   });
 
   const templatesKey = ['crafter-recipe-templates', systemSlug, personal];
@@ -12647,7 +12668,7 @@ function AddItemRecipeToTemplate({ templateId, systemSlug }: { templateId: strin
   const { data: items = [] } = useQuery<Array<{ id: string; name: string; image?: string | null; itemType?: string; price: number }>>({
     queryKey: ['items-with-build-recipes', systemSlug],
     queryFn: () => api.getItemsWithBuildRecipes(systemSlug),
-    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3',
+    enabled: systemSlug === 'aa-v2' || systemSlug === 'aa-v3' || systemSlug === 'ca',
   });
 
   const addMut = useMutation({

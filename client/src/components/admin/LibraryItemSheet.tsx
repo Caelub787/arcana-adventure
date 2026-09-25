@@ -35,6 +35,8 @@ import {
   type CaInlineEdit,
 } from "@/components/game/CASheetUI";
 import { RollEntriesEditor } from "@/components/game/RollEntriesEditor";
+import { CraftRecipesEditor } from "@/components/game/CraftRecipesEditor";
+import { CrafterTemplateLinksPanel } from "@/components/admin/CrafterTemplateLinksPanel";
 import { getEffectTypes } from "@/lib/effectTypes";
 import { useImageBrowserBridge } from "@/lib/library-dialog-bridges";
 import {
@@ -403,7 +405,7 @@ export function LibraryItemSheet({
           <>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="quantity" label="Quantity" value={item?.quantity ?? 1} kind="number" min={0} testId="library-item-quantity" />
-              <CaInlineField edit={edit} field="itemWeight" label="Weight" value={item?.itemWeight ?? 0} kind="number" min={0} suffix="lb" testId="library-item-weight" />
+              <CaInlineField edit={edit} field="itemWeight" label="Weight" value={item?.itemWeight ?? 0} kind="number" min={0} decimal suffix="lb" testId="library-item-weight" />
               <CaInlineField edit={edit} field="price" label="Value" value={item?.price ?? 0} kind="number" min={0} testId="library-item-price" />
               <CaInlineField edit={edit} field="durability" label="Durability" value={item?.durability ?? 10} kind="number" min={0} testId="library-item-durability" />
               <CaInlineField edit={edit} field="maxDurability" label="Max durability" value={item?.maxDurability ?? 10} kind="number" min={0} testId="library-item-max-durability" />
@@ -624,8 +626,22 @@ export function LibraryItemSheet({
           </CaFieldGrid>
         ))}
 
-        {type === "crafter" && section(<Hammer className="h-3.5 w-3.5" />, "Repair", (
+        {type === "crafter" && section(<Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
           <>
+            <p className="text-[11px] text-stone-500 mb-2">
+              Recipes made here belong only to this crafter. To reuse the same recipes across several
+              crafters, author them on a Crafter Recipe Template instead and link it below.
+            </p>
+            {item?.id && <CraftRecipesEditor itemId={item.id} systemSlug={systemSlug} />}
+            <div className="mt-3">
+              {item?.id && <CrafterTemplateLinksPanel itemId={item.id} systemSlug={systemSlug} personal={personal} />}
+            </div>
+          </>
+        ))}
+
+        {isV3 && type !== "crafter" && section(<Hammer className="h-3.5 w-3.5" />, "Repair", (
+          <>
+            <p className="text-[11px] text-stone-500 mb-2">What a crafter's Repair recipe restores and consumes when it targets this item.</p>
             <CaFieldGrid>
               <CaInlineField edit={edit} field="repairAmount" label="Durability restored" value={item?.repairAmount ?? 0} kind="number" min={0} wide testId="library-item-repair-amount" />
             </CaFieldGrid>

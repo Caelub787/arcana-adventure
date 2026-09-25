@@ -14425,7 +14425,7 @@ interface HotbarsTabContentProps {
   isGM: boolean;
   isOwner: boolean;
   campaignSystem?: string;
-  onOpenItemDetail?: (item: any) => void;
+  onOpenItemDetail?: (item: any, isNew?: boolean) => void;
 }
 
 // Type guard for items with weapon fields
@@ -15624,7 +15624,7 @@ interface HotbarSlotProps {
   allHotbars?: Hotbar[];
   allItems?: any[];
   campaignSystem?: string;
-  onOpenItemDetail?: (item: any) => void;
+  onOpenItemDetail?: (item: any, isNew?: boolean) => void;
 }
 
 function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems, campaignSystem, onOpenItemDetail }: HotbarSlotProps) {
@@ -17560,7 +17560,7 @@ interface CharacterSheetProps {
   floatingZIndices?: Record<string, number>;
   campaignSystem?: string;
   trustedPlayer?: boolean;
-  onOpenItemDetail?: (item: any) => void;
+  onOpenItemDetail?: (item: any, isNew?: boolean) => void;
   onOpenSpellbook?: (item: any) => void;
   /**
    * `variant` picks which of the sheet's notes to open. C.A. characters have
@@ -19480,7 +19480,7 @@ function V3ActionTokensSection({ characterId, characterName, characterUserId, is
 // Self-contained item-detail panel hosted OUTSIDE the character sheet (by the
 // Campaign page) so it keeps living when the character sheet is closed. It owns
 // its own items query + update/delete mutations so the host page stays thin.
-export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition, onOpenNotes, initialDockedNoteId }: {
+export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campaignSystem, bringToFront, floatingZIndices, onClose, trustedPlayer = false, panelSuffix: externalPanelSuffix, defaultPosition, onOpenNotes, initialDockedNoteId, initialUneditedNew = false }: {
   character: any;
   item: any;
   isGM: boolean;
@@ -19494,9 +19494,14 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
   defaultPosition?: { x: number; y: number };
   onOpenNotes?: (item: any) => void;
   initialDockedNoteId?: string | null;
+  /** True only for a row `createBlankInventoryItem` just made, still untouched
+   * - closing the panel then deletes it instead of leaving an "Untitled Item"
+   * behind. Flips false the moment any field is written. */
+  initialUneditedNew?: boolean;
 }) {
   const queryClient = useQueryClient();
   const charPanelSuffix = externalPanelSuffix ?? (character?.id ? '-' + character.id : '');
+  const [uneditedNew, setUneditedNew] = useState(initialUneditedNew);
   const { data: items = [] } = useQuery({
     queryKey: ['items', character.id],
     queryFn: () => api.getItems(character.id),
@@ -19549,12 +19554,19 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
     <ItemDetailDialog
       item={liveItem}
       open={true}
-      onOpenChange={(open: boolean) => { if (!open) onClose(); }}
+      onOpenChange={(open: boolean) => {
+        if (open) return;
+        if (uneditedNew) {
+          deleteItemMutation.mutate(item.id);
+          return;
+        }
+        onClose();
+      }}
       isGM={isGM}
       isOwner={isOwner}
       character={character}
       items={items}
-      onUpdate={(data: any) => updateItemMutation.mutate({ id: item.id, data })}
+      onUpdate={(data: any) => { setUneditedNew(false); updateItemMutation.mutate({ id: item.id, data }); }}
       onDelete={() => deleteItemMutation.mutate(item.id)}
       bringToFront={bringToFront}
       floatingZIndices={floatingZIndices}
@@ -20570,6 +20582,10 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     : (tokenShopCampaignCharacters?.find((c: any) => c.userId === tokenShopViewer?.id)?.id || null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
+  // True only for a row `createBlankInventoryItem` just made, still untouched
+  // - closing the dialog then deletes it instead of leaving an "Untitled Item"
+  // behind. Flips false the moment any field is written.
+  const [selectedItemIsUneditedNew, setSelectedItemIsUneditedNew] = useState(false);
   const [selectedSpellbook, setSelectedSpellbook] = useState<any>(null);
   const [showSpellbook, setShowSpellbook] = useState(false);
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
@@ -21654,6 +21670,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
           if (!created?.id) return;
           setSelectedItem(created);
           setShowItemDetail(true);
+          setSelectedItemIsUneditedNew(true);
           bringToFront?.(`item-detail${charPanelSuffix}`);
         },
       },
@@ -21771,11 +21788,12 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   // so the in-sheet copies don't also render.
   useEffect(() => {
     if (onOpenItemDetail && showItemDetail && selectedItem) {
-      onOpenItemDetail(selectedItem);
+      onOpenItemDetail(selectedItem, selectedItemIsUneditedNew);
       setShowItemDetail(false);
       setSelectedItem(null);
+      setSelectedItemIsUneditedNew(false);
     }
-  }, [onOpenItemDetail, showItemDetail, selectedItem]);
+  }, [onOpenItemDetail, showItemDetail, selectedItem, selectedItemIsUneditedNew]);
 
   useEffect(() => {
     if (onOpenSpellbook && showSpellbook && selectedSpellbook) {
@@ -27805,6 +27823,13 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         item={selectedItem ? { ...selectedItem, ...(items?.find((it: any) => it.id === selectedItem.id) || {}) } : selectedItem}
         open={showItemDetail}
         onOpenChange={(open) => {
+          if (!open && selectedItemIsUneditedNew && selectedItem?.id) {
+            setIsEditingItem(false);
+            setEditItemData(null);
+            setSelectedItemIsUneditedNew(false);
+            deleteItemMutation.mutate(selectedItem.id);
+            return;
+          }
           setShowItemDetail(open);
           if (!open) {
             setIsEditingItem(false);
@@ -27815,7 +27840,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         isOwner={isOwner}
         character={character}
         items={items}
-        onUpdate={(data) => updateItemMutation.mutate({ id: selectedItem.id, data })}
+        onUpdate={(data) => { setSelectedItemIsUneditedNew(false); updateItemMutation.mutate({ id: selectedItem.id, data }); }}
         onDelete={() => deleteItemMutation.mutate(selectedItem.id)}
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}

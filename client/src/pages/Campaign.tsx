@@ -6871,9 +6871,9 @@ export default function Campaign() {
   // Notes button.
   const [detachedItemDockedNotes, setDetachedItemDockedNotes] = useState<Record<string, string>>({});
 
-  const openDetachedItemDetail = (character: any, item: any) => {
+  const openDetachedItemDetail = (character: any, item: any, isNew?: boolean) => {
     const panelKey = itemPanelKey(character.id, item.id);
-    setDetachedItemPanels(prev => openItemPanel(prev, character, item));
+    setDetachedItemPanels(prev => openItemPanel(prev, character, item, isNew));
     bringToFront(panelKey);
   };
   const closeDetachedItemDetail = (panelKey: string) => {
@@ -9697,7 +9697,14 @@ export default function Campaign() {
             'system-items': [['system-items-summary'], ['template-items-summary'], ['system-items'], [`/api/campaigns/${cid}/template-items`]],
             'item-templates': [['system-items-summary'], ['template-items-summary'], ['item-templates'], [`/api/campaigns/${cid}/template-items`]],
             'system-spells': [['system-spells-summary'], ['v3-character-spells'], ['system-spells']],
-            'crafter-recipe-templates': [['crafter-recipe-templates']],
+            'crafter-recipe-templates': [['crafter-recipe-templates'], ['craft-recipes-play']],
+            'craft-recipes': [['craft-recipes-play'], ['craft-recipes']],
+            'skills': [['system-skills']],
+            'system-species': [['species']],
+            'classes': [['classes']],
+            'system-traits': [['system-traits']],
+            'ca-abilities': [['ca-abilities-assign'], ['ca-abilities']],
+            'character-templates': [['character-templates']],
           };
           const keys = adminQueryMap[data.entity];
           if (keys) {
@@ -13972,7 +13979,7 @@ export default function Campaign() {
               bringToFront={bringToFront}
               floatingZIndices={floatingZIndicesRef.current}
               campaignSystem={(campaign as any)?.system}
-              onOpenItemDetail={(item) => openDetachedItemDetail(sheet, item)}
+              onOpenItemDetail={(item, isNew) => openDetachedItemDetail(sheet, item, isNew)}
               onOpenSpellbook={(item) => openDetachedSpellbook(sheet, item)}
               onOpenNotes={handleOpenCharacterNotes}
               hideAuraEdge={!!dockedCharNotes[sheet.id] || !!overlayCharNotes[sheet.id]}
@@ -14082,6 +14089,7 @@ export default function Campaign() {
           })()}
           onOpenNotes={handleOpenItemNotes}
           initialDockedNoteId={detachedItemDockedNotes[p.panelKey] ?? null}
+          initialUneditedNew={p.isNew}
         />
       ))}
 
