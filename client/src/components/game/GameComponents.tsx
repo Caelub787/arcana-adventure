@@ -32571,6 +32571,7 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             item={item}
             systemSlug={campaignSystem || ''}
             canEdit={canEditItem}
+            isGM={isGM}
             onUpdate={onUpdate}
             onDelete={onDelete}
             onClose={() => onOpenChange(false)}

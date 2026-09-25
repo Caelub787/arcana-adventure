@@ -18,12 +18,13 @@
  * has been socketed into this item during play.
  */
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Package, Sword, Shield, Coins, Trash2, X, Sparkles, ImageIcon,
   FlaskConical, Crosshair, Gem, ScrollText, BookOpen, Hammer, Dices, Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NumberInput } from "@/components/ui/number-input";
 import { api } from "@/lib/api";
 import {
   useCaInlineEdit,
@@ -75,7 +76,6 @@ function itemTypeOptions(systemSlug: string, current: string) {
   return opts(list.sort());
 }
 const RARITIES = ["common", "uncommon", "rare", "epic", "legendary"];
-const WEIGHT_CLASSES = ["light", "medium", "heavy"];
 const ATTRIBUTES = ["might", "finesse", "wit", "presence", "will", "craft"];
 const ARMOR_SLOTS = ["helm", "chest", "arm", "legs", "boots"];
 const AOE_SHAPES = ["cone", "sphere", "line", "cube", "cylinder"];
@@ -228,6 +228,7 @@ export function LibraryItemSheet({
   systemSlug,
   personal = false,
   canEdit = true,
+  isGM,
   onUpdate,
   onDelete,
   onClose,
@@ -243,6 +244,14 @@ export function LibraryItemSheet({
   /** Scopes the V3 lookup lists to the viewer's own library. */
   personal?: boolean;
   canEdit?: boolean;
+  /**
+   * Gates crafting-recipe authoring specifically. In Admin/My Library there
+   * is no "owner" distinct from the editor, so this is left unset and falls
+   * back to `canEdit`. The in-game item view passes the real GM flag so a
+   * player who merely owns a crafter (which is also `canEdit`) can't author
+   * its recipes - only view/use them via the separate play-mode Craft panel.
+   */
+  isGM?: boolean;
   onUpdate: (updates: Record<string, any>) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -265,6 +274,12 @@ export function LibraryItemSheet({
   characterCustomSkills?: any[];
 }) {
   const edit = useCaInlineEdit(onUpdate, canEdit);
+  const queryClient = useQueryClient();
+  const craftAccessAllowed = isGM ?? canEdit;
+  // A crafter viewed on a character sheet is an inventory COPY; its recipes
+  // and their "add a recipe" writes live against the library item it was
+  // added from (`templateItemId`), not this row's own id.
+  const craftRecipeItemId: string | undefined = item?.isTemplate ? item?.id : (item?.templateItemId || item?.id);
   const type = String(item?.itemType || "");
   const isV3 = systemSlug === "aa-v3";
   // C.A. has one roll system and it is the Rolls panel at the bottom of this
@@ -320,6 +335,48 @@ export function LibraryItemSheet({
   });
   const linkedTemplateIds: string[] = templateLinks?.templateIds ?? [];
   const liveTemplates = (rollTemplates as any[]).filter((t) => t.isLiveTemplate);
+
+  // Build recipe: "what this item is built from", authored on the item's own
+  // library row so a crafter can later pick it up via "Add from items". Only
+  // meaningful on a library item itself (isTemplate), not a character's copy.
+  const { data: buildRecipeData } = useQuery({
+    queryKey: ["item-build-recipe", item?.id],
+    queryFn: () => api.getItemBuildRecipe(item.id),
+    enabled: !!item?.id && !!item?.isTemplate,
+  });
+  const buildRecipe = buildRecipeData?.buildRecipe ?? null;
+  const buildIngredients: any[] = buildRecipe?.ingredients ?? [];
+  const buildOutputQuantity: number = buildRecipe?.outputQuantity ?? 1;
+  const saveBuildRecipeMut = useMutation({
+    mutationFn: (data: { outputQuantity: number; ingredients: any[] }) => api.saveItemBuildRecipe(item.id, data),
+    onSuccess: (res) => {
+      queryClient.setQueryData(["item-build-recipe", item.id], { buildRecipe: res.buildRecipe });
+    },
+  });
+  const writeBuildRecipe = (outputQuantity: number, ingredients: any[]) => {
+    saveBuildRecipeMut.mutate({
+      outputQuantity,
+      ingredients: ingredients.map(({ itemId, itemName, quantity }) => ({ itemId: itemId ?? null, itemName, quantity })),
+    });
+  };
+  const buildRecipeRaritySurcharge = (rarity?: string | null) =>
+    ({ common: 2, uncommon: 5, rare: 10, epic: 30, legendary: 50 } as Record<string, number>)[(rarity ?? "common").toLowerCase()] ?? 0;
+  const recommendBuildPrice = (value: number): number => {
+    if (value <= 0) return 0;
+    const step = value < 10 ? 1 : value < 100 ? 5 : value < 1000 ? 10 : 50;
+    return Math.ceil(value / step) * step;
+  };
+  const buildIngredientsValue = buildIngredients.reduce((sum, ing) => {
+    const found = (rollTemplates as any[]).find((it) => it.id === ing.itemId);
+    if (!found) return sum;
+    const perUnit = (Number(found.price) || 0) + buildRecipeRaritySurcharge(found.rarity);
+    return sum + perUnit * (ing.quantity || 0);
+  }, 0);
+  const buildOutputRarityValue = buildRecipeRaritySurcharge(item?.rarity) * Math.max(1, buildOutputQuantity);
+  const buildPerUnitValue = buildIngredients.length > 0
+    ? Math.ceil(((buildIngredientsValue + buildOutputRarityValue) * 1.2) / Math.max(1, buildOutputQuantity))
+    : 0;
+  const buildRecommendedPrice = recommendBuildPrice(buildPerUnitValue);
 
   const section = (icon: React.ReactNode, title: string, body: React.ReactNode) => (
     <>
@@ -393,11 +450,7 @@ export function LibraryItemSheet({
               <CaInlineField edit={edit} field="rarity" label="Rarity" value={item?.rarity} kind="select" options={opts(RARITIES)} testId="library-item-rarity" />
               <CaInlineField edit={edit} field="size" label="Size" value={item?.size} testId="library-item-size" />
               <CaInlineField edit={edit} field="description" label="Description" value={item?.description} kind="textarea" wide placeholder="What it is." testId="library-item-description" />
-              <CaInlineField edit={edit} field="rules" label="Rules" value={item?.rules} kind="textarea" wide placeholder="What it does." testId="library-item-rules" />
             </CaFieldGrid>
-          </div>
-          <div className="mt-2 space-y-1">
-            <ToggleRow label="Rules visible to players" value={item?.rulesVisible ?? true} disabled={!canEdit} onChange={(v) => onUpdate({ rulesVisible: v })} testId="toggle-library-item-rules-visible" />
           </div>
         </CaSection>
 
@@ -409,7 +462,6 @@ export function LibraryItemSheet({
               <CaInlineField edit={edit} field="price" label="Value" value={item?.price ?? 0} kind="number" min={0} testId="library-item-price" />
               <CaInlineField edit={edit} field="durability" label="Durability" value={item?.durability ?? 10} kind="number" min={0} testId="library-item-durability" />
               <CaInlineField edit={edit} field="maxDurability" label="Max durability" value={item?.maxDurability ?? 10} kind="number" min={0} testId="library-item-max-durability" />
-              <CaInlineField edit={edit} field="weight" label="Weight class" value={item?.weight} kind="select" options={opts(WEIGHT_CLASSES)} testId="library-item-weight-class" />
               <CaInlineField edit={edit} field="carryCapacity" label="Carry capacity" value={item?.carryCapacity ?? 0} kind="number" min={0} testId="library-item-carry-capacity" />
               {isV3 && (
                 <CaInlineField
@@ -626,15 +678,21 @@ export function LibraryItemSheet({
           </CaFieldGrid>
         ))}
 
-        {type === "crafter" && section(<Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
+        {type === "crafter" && craftAccessAllowed && section(<Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
           <>
             <p className="text-[11px] text-stone-500 mb-2">
-              Recipes made here belong only to this crafter. To reuse the same recipes across several
-              crafters, author them on a Crafter Recipe Template instead and link it below.
+              GM only. Recipes made here belong only to this crafter. To reuse the same recipes across
+              several crafters, author them on a Crafter Recipe Template instead and link it below.
+              {!item?.isTemplate && !item?.templateItemId && (
+                <span className="block mt-1 text-amber-600">
+                  This crafter isn't linked to a library item, so new recipes may fail to save - open its
+                  library version instead, or re-add it to the character from the library.
+                </span>
+              )}
             </p>
-            {item?.id && <CraftRecipesEditor itemId={item.id} systemSlug={systemSlug} />}
+            {craftRecipeItemId && <CraftRecipesEditor itemId={craftRecipeItemId} systemSlug={systemSlug} />}
             <div className="mt-3">
-              {item?.id && <CrafterTemplateLinksPanel itemId={item.id} systemSlug={systemSlug} personal={personal} />}
+              {craftRecipeItemId && <CrafterTemplateLinksPanel itemId={craftRecipeItemId} systemSlug={systemSlug} personal={personal} />}
             </div>
           </>
         ))}
@@ -700,6 +758,101 @@ export function LibraryItemSheet({
                 )}
               </div>
             </div>
+          </>
+        ))}
+
+        {!!item?.isTemplate && craftAccessAllowed && section(<Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
+          <>
+            <p className="text-[11px] text-stone-500 mb-2">
+              GM only. What this item is built from - a crafter can pick it up later via "Add from items".
+              Ingredient values are summed, +20% markup, rounded up to a clean number.
+            </p>
+            <div className="mb-2" style={{ maxWidth: 160 }}>
+              <span className="text-xs text-stone-400 block mb-1">Output quantity</span>
+              <NumberInput
+                min={1}
+                value={buildOutputQuantity}
+                disabled={!canEdit}
+                onChange={(v) => writeBuildRecipe(v ?? 1, buildIngredients)}
+                className="h-7 bg-stone-800 border-stone-700 text-stone-200 text-xs"
+                data-testid="input-library-item-build-output-quantity"
+              />
+            </div>
+            <div className="space-y-1" data-testid="library-item-build-ingredients">
+              {buildIngredients.length === 0 && (
+                <p className="text-[11px] text-stone-500">No ingredients yet.</p>
+              )}
+              {buildIngredients.map((ing: any, i: number) => (
+                <div key={i} className="flex items-center gap-1">
+                  <select
+                    value={ing.itemId ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) => {
+                      const found = (rollTemplates as any[]).find((it) => it.id === e.target.value);
+                      const next = [...buildIngredients];
+                      next[i] = { ...ing, itemId: e.target.value || null, itemName: found?.name ?? ing.itemName };
+                      writeBuildRecipe(buildOutputQuantity, next);
+                    }}
+                    className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                    data-testid={`library-item-build-ingredient-${i}-item`}
+                  >
+                    <option value="">— item —</option>
+                    {(rollTemplates as any[]).map((it) => (
+                      <option key={it.id} value={it.id}>{it.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={ing.quantity ?? 1}
+                    disabled={!canEdit}
+                    onChange={(e) => {
+                      const next = [...buildIngredients];
+                      next[i] = { ...ing, quantity: Math.max(1, Math.round(Number(e.target.value) || 1)) };
+                      writeBuildRecipe(buildOutputQuantity, next);
+                    }}
+                    className="w-16 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                    data-testid={`library-item-build-ingredient-${i}-qty`}
+                  />
+                  <button
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => writeBuildRecipe(buildOutputQuantity, buildIngredients.filter((_: any, j: number) => j !== i))}
+                    className="text-stone-500 hover:text-red-400 shrink-0 disabled:opacity-40"
+                    data-testid={`library-item-build-ingredient-${i}-remove`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {canEdit && (
+                <button
+                  type="button"
+                  className="text-[11px] text-amber-500 hover:text-amber-400"
+                  onClick={() => writeBuildRecipe(buildOutputQuantity, [...buildIngredients, { itemId: null, itemName: "", quantity: 1 }])}
+                  data-testid="library-item-build-ingredient-add"
+                >
+                  + Add ingredient
+                </button>
+              )}
+            </div>
+            {buildIngredients.length > 0 && (
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[11px] text-stone-500">
+                  Recommended value: <span className="text-amber-500 font-semibold" data-testid="text-library-item-build-recommended-price">{buildRecommendedPrice}</span>
+                </span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-amber-500 hover:text-amber-400 underline"
+                    onClick={() => onUpdate({ price: buildRecommendedPrice })}
+                    data-testid="button-library-item-build-apply-price"
+                  >
+                    Apply to Value
+                  </button>
+                )}
+              </div>
+            )}
           </>
         ))}
 
