@@ -113,6 +113,24 @@ export async function requireLibraryAaV2(
   return true;
 }
 
+// Same shape as requireLibraryAaV2, scoped to items and item/roll templates
+// specifically (which C.A. now fully supports too, as blank customizable
+// items - see the ItemDialog/LibraryItemSheet work) rather than the general
+// personal-library policy that AA V2/V3-only mechanics like classes, feat
+// trees, and spells still enforce - C.A. has none of those.
+export async function requireLibraryItemSystem(
+  req: any,
+  res: any,
+  system: string | undefined,
+): Promise<boolean> {
+  if (await isAdminUser(req.session?.userId)) return true;
+  if (system && system !== 'aa-v2' && system !== 'aa-v3' && system !== 'ca') {
+    res.status(400).json({ error: "Personal library items are only available for the AA V2, AA V3, and C.A. systems" });
+    return false;
+  }
+  return true;
+}
+
 // Same shape as requireLibraryAaV2, scoped to the crafter/recipe write
 // routes specifically (which C.A. now supports too) rather than the
 // general personal-library policy those other routes (classes, feat trees,

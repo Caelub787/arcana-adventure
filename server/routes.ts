@@ -10291,7 +10291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Library ACL helpers moved to server/lib/library-acl.ts (single source of
   // truth shared with the sync API). Imported here so existing references
   // continue to work unchanged.
-  const { getLibraryScope, enforceLibraryWrite, enforceLibraryRead, requireLibraryAaV2, requireLibraryCraftingSystem } = await import("./lib/library-acl");
+  const { getLibraryScope, enforceLibraryWrite, enforceLibraryRead, requireLibraryAaV2, requireLibraryItemSystem, requireLibraryCraftingSystem } = await import("./lib/library-acl");
 
   // Helper to sanitize user object (exclude password)
   const sanitizeUserForAdmin = (user: any) => ({
@@ -10581,8 +10581,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           campaignId: null,
         });
       } else {
-        if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-        const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+        if (!await requireLibraryItemSystem(req, res, req.body.system)) return;
+        const requestedItemSystem = req.body.system === 'aa-v3' ? 'aa-v3' : req.body.system === 'ca' ? 'ca' : 'aa-v2';
         const personal = req.body.personal === true;
         if (personal) delete req.body.personal;
         const body = (isA && !personal) ? req.body : { ...req.body, system: requestedItemSystem, createdByUserId: req.session.userId };
@@ -11991,8 +11991,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/item-templates", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!await requireLibraryAaV2(req, res, req.body.system)) return;
-      const requestedTplSystem = req.body.system === 'aa-v3' ? 'aa-v3' : 'aa-v2';
+      if (!await requireLibraryItemSystem(req, res, req.body.system)) return;
+      const requestedTplSystem = req.body.system === 'aa-v3' ? 'aa-v3' : req.body.system === 'ca' ? 'ca' : 'aa-v2';
       const personal = req.body.personal === true;
       if (personal) delete req.body.personal;
       const body = (isA && !personal) ? req.body : { ...req.body, system: requestedTplSystem, createdByUserId: req.session.userId };
@@ -12659,10 +12659,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-species", requireAuth, async (req, res) => {
     try {
       const isA = await isAdminUser(req.session.userId);
-      if (!isA && req.body.systemName && req.body.systemName !== 'A.A. V2' && req.body.systemName !== 'A.A. V3') {
-        return res.status(400).json({ error: "Personal library is only available for the AA V2 and AA V3 systems" });
+      if (!isA && req.body.systemName && req.body.systemName !== 'A.A. V2' && req.body.systemName !== 'A.A. V3' && req.body.systemName !== 'C.A.') {
+        return res.status(400).json({ error: "Personal library species are only available for the AA V2, AA V3, and C.A. systems" });
       }
-      const requestedSpeciesSystem = req.body.systemName === 'A.A. V3' ? 'A.A. V3' : 'A.A. V2';
+      const requestedSpeciesSystem = req.body.systemName === 'A.A. V3' ? 'A.A. V3' : req.body.systemName === 'C.A.' ? 'C.A.' : 'A.A. V2';
       const personal = req.body.personal === true;
       if (personal) delete req.body.personal;
       const body = (isA && !personal) ? req.body : { ...req.body, systemName: requestedSpeciesSystem, ownerUserId: req.session.userId };
