@@ -464,6 +464,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // paths (e.g. the Vite HMR 'vite-hmr' upgrade) are left for other listeners.
   const wss = new WebSocketServer({ noServer: true });
 
+  // Detect and prune connections a reverse proxy (or a client's own network
+  // drop) silently killed without a clean close handshake ever reaching us.
+  // Without this, a dead connection can sit in campaignRooms looking fully
+  // OPEN to Node indefinitely - readyState alone never catches it - so once
+  // the client notices and reconnects/rejoins, the room briefly holds two
+  // live-looking entries for the same user. Any broadcast sent to the whole
+  // room in that window (dice_roll especially, which has no sender
+  // exclusion) then gets delivered twice. Standard ws heartbeat: ping every
+  // connection each round, terminate anyone who didn't pong since the last one.
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if ((ws as any).isAlive === false) { ws.terminate(); return; }
+      (ws as any).isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+  wss.on("close", () => clearInterval(heartbeatInterval));
+
   // Initialize Canvas Realms realtime (Yjs) ws server with host session auth.
   initCanvasRealtime(sessionMiddleware);
 
@@ -1141,6 +1159,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   wss.on("connection", async (ws, req) => {
+    // Heartbeat bookkeeping (see the interval set up above this handler).
+    (ws as any).isAlive = true;
+    ws.on("pong", () => { (ws as any).isAlive = true; });
+
     // Buffer messages received during async setup
     const messageBuffer: any[] = [];
     let setupComplete = false;
