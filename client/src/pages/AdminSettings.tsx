@@ -1558,9 +1558,11 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
         {sheetItem && (
           <div className="fixed inset-0 z-[10000] bg-stone-950/95 flex items-start justify-center overflow-auto p-4" data-testid="overlay-library-item-sheet">
             <LibraryItemSheet
+              key={sheetItem.id}
               item={sheetItem}
               systemSlug={systemSlug}
               personal={personalMode}
+              initialEditing={sheetItemIsUneditedNew}
               onUpdate={writeSheetItem}
               onDelete={() => {
                 if (!confirm('Delete this item?')) return;

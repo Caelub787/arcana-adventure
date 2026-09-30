@@ -19578,6 +19578,7 @@ export function DetachedItemDetailPanel({ character, item, isGM, isOwner, campai
       defaultPosition={defaultPosition}
       onOpenNotes={onOpenNotes}
       initialDockedNoteId={initialDockedNoteId}
+      initialEditing={uneditedNew}
     />
   );
 }
@@ -27851,6 +27852,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
         charPanelSuffix={charPanelSuffix}
         trustedPlayer={trustedPlayer}
         onOpenNotes={onOpenItemNotes}
+        initialEditing={selectedItemIsUneditedNew}
       />
       )}
 
@@ -30560,6 +30562,9 @@ interface ItemDetailDialogProps {
   // the dialog is opened from a sidebar note click rather than the sheet's
   // own Notes button.
   initialDockedNoteId?: string | null;
+  // Opens the embedded LibraryItemSheet straight into Edit mode - for a
+  // just-created blank item, which has nothing worth looking at in View yet.
+  initialEditing?: boolean;
 }
 
 // AA V3 rune socketing surface (Task #198). Shows the host item's rune slots
@@ -32322,7 +32327,7 @@ export function TradePanel({ tradeId, myCharacterId, onClose, defaultPosition }:
   );
 }
 
-export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes, initialDockedNoteId = null }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem, charPanelSuffix = '', trustedPlayer = false, defaultPosition, onOpenNotes, initialDockedNoteId = null, initialEditing = false }: ItemDetailDialogProps) {
   const isAAV3 = campaignSystem === 'aa-v3';
   const queryClient = useQueryClient();
   const [syncingTechniques, setSyncingTechniques] = useState(false);
@@ -32724,10 +32729,12 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
               that stay their own thing rather than being folded into the
               sheet itself. */}
           <LibraryItemSheet
+            key={item?.id}
             item={item}
             systemSlug={campaignSystem || ''}
             canEdit={canEditItem}
             isGM={isGM}
+            initialEditing={initialEditing}
             onUpdate={onUpdate}
             onDelete={onDelete}
             onClose={() => onOpenChange(false)}
