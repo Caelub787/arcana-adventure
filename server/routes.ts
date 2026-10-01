@@ -16029,9 +16029,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
       if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "This rune system is C.A. only" });
 
-      const { runeItemId, slotIndex } = req.body || {};
+      const { runeItemId } = req.body || {};
       if (!runeItemId) return res.status(400).json({ error: "runeItemId required" });
-      if (slotIndex === undefined || slotIndex === null) return res.status(400).json({ error: "slotIndex required" });
 
       const host = await storage.getItem(req.params.itemId);
       const rune = await storage.getItem(runeItemId);
@@ -16040,14 +16039,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (caNormalizeItemType(rune.itemType) !== 'rune') return res.status(400).json({ error: "That item is not a rune" });
       if (host.id === rune.id) return res.status(400).json({ error: "Cannot socket a rune into itself" });
 
-      const slotCount = (host as any).runeSlotCount ?? 0;
-      if (slotIndex < 0 || slotIndex >= slotCount) return res.status(400).json({ error: "Invalid rune slot" });
-
+      // No slot limit - a C.A. item can carry as many attached runes as a GM
+      // or player attaches.
       const sockets = normalizeCASocketedRunes((host as any).caRuneSockets);
-      if (sockets.some((s) => s.slotIndex === slotIndex)) return res.status(400).json({ error: "That slot is already filled" });
-
       const snapshot = {
-        slotIndex,
+        id: `rs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
         runeItemId: rune.id,
         name: rune.name,
         image: rune.image ?? null,
@@ -16081,15 +16077,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
       if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "This rune system is C.A. only" });
 
-      const { slotIndex } = req.body || {};
-      if (slotIndex === undefined || slotIndex === null) return res.status(400).json({ error: "slotIndex required" });
+      const { socketId } = req.body || {};
+      if (!socketId) return res.status(400).json({ error: "socketId required" });
 
       const host = await storage.getItem(req.params.itemId);
       if (!host || host.characterId !== req.params.characterId) return res.status(404).json({ error: "Host item not found" });
 
       const sockets = normalizeCASocketedRunes((host as any).caRuneSockets);
-      const idx = sockets.findIndex((s) => s.slotIndex === slotIndex);
-      if (idx < 0) return res.status(404).json({ error: "No rune in that slot" });
+      const idx = sockets.findIndex((s) => s.id === socketId);
+      if (idx < 0) return res.status(404).json({ error: "That rune isn't attached to this item" });
       const socket = sockets[idx];
 
       const updatedHost = await storage.updateItem(host.id, { caRuneSockets: sockets.filter((_, i) => i !== idx) } as any);

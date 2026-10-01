@@ -828,8 +828,9 @@ export const items = pgTable("items", {
   // generic `effects` column) or a Storage Ring (its own separate weight
   // limit via the existing isContainer/carryCapacity/containerId mechanic).
   caContainerKind: text("ca_container_kind").default("backpack").notNull(), // 'backpack' | 'storage_ring'
-  // C.A. only: fixed number of rune sockets this item has, set by the GM
-  // ahead of time (not derived from rarity the way AA-V3's is).
+  // Deprecated: C.A. runes are no longer slot-limited - any number can be
+  // attached (see caRuneSockets below). Column kept, unused, rather than
+  // dropped outright.
   runeSlotCount: integer("rune_slot_count").default(0).notNull(),
   // C.A. only, rune items only: what THIS rune grants once socketed — the
   // GM-authored list (see shared/ca.ts CARuneBoost). Snapshotted into the

@@ -1114,10 +1114,15 @@ export const CA_CONTAINER_KIND_DESCRIPTIONS: Record<CAContainerKind, string> = {
 // "Steady increase" adds a flat amount per rung climbed off the item's base
 // value; "Set value per rank" is a GM-typed table, one entry per rung on the
 // same 25-rung ladder a character's Rank uses, falling back to the base value
-// for any rung the GM hasn't filled in yet.
+// for any rung the GM hasn't filled in yet; "Percentage per rank" compounds a
+// percentage onto the base value, but only for a rung that crosses into a
+// NEW rank name (Bronze -> Silver -> Gold -> Obsidian -> Terran) - climbing
+// a star within the same rank doesn't trigger it. "None" is an explicit,
+// stored "off", distinct from no config having been saved at all (see
+// CA_DEFAULT_PRICE_SCALING below, the one stat that reads unset as active).
 // ---------------------------------------------------------------------------
 
-export type CARankScalingMode = "steady" | "table";
+export type CARankScalingMode = "steady" | "table" | "percent" | "none";
 
 export interface CARankScaling {
   mode: CARankScalingMode;
@@ -1125,16 +1130,29 @@ export interface CARankScaling {
   perRank: number;
   /** "table" mode: one entry per CA_RANK_LADDER rung; null = use the base value. */
   table: (number | null)[];
+  /** "percent" mode: compounded once per RANK crossed (not per star/rung). */
+  percentPerRank: number;
 }
 
 export function makeDefaultCARankScaling(): CARankScaling {
-  return { mode: "steady", perRank: 0, table: new Array(CA_RANK_LADDER.length).fill(null) };
+  return { mode: "steady", perRank: 0, percentPerRank: 0, table: new Array(CA_RANK_LADDER.length).fill(null) };
+}
+
+/** An explicit, stored "off" — distinct from an unset (null) config. */
+export function makeNoCARankScaling(): CARankScaling {
+  return { mode: "none", perRank: 0, percentPerRank: 0, table: new Array(CA_RANK_LADDER.length).fill(null) };
+}
+
+/** Value's own default: every rank up (not star up) is worth 50% more. */
+export function makeDefaultPriceCARankScaling(): CARankScaling {
+  return { mode: "percent", perRank: 0, percentPerRank: 50, table: new Array(CA_RANK_LADDER.length).fill(null) };
 }
 
 export function normalizeCARankScaling(raw: unknown): CARankScaling | null {
   if (!raw || typeof raw !== "object") return null;
   const anyR = raw as any;
-  const mode: CARankScalingMode = anyR.mode === "table" ? "table" : "steady";
+  const mode: CARankScalingMode =
+    anyR.mode === "table" ? "table" : anyR.mode === "percent" ? "percent" : anyR.mode === "none" ? "none" : "steady";
   const table: (number | null)[] = new Array(CA_RANK_LADDER.length).fill(null);
   if (Array.isArray(anyR.table)) {
     for (let i = 0; i < table.length; i++) {
@@ -1145,27 +1163,57 @@ export function normalizeCARankScaling(raw: unknown): CARankScaling | null {
   return {
     mode,
     perRank: Number.isFinite(Number(anyR.perRank)) ? Number(anyR.perRank) : 0,
+    percentPerRank: Number.isFinite(Number(anyR.percentPerRank)) ? Number(anyR.percentPerRank) : 0,
     table,
   };
 }
 
 /**
+ * How many rungs between rung 0 and `rankIndex` cross into a new rank NAME
+ * (Bronze -> Silver, etc.) — climbing a star within the same rank doesn't
+ * count. Used by "percent" mode, which is meant to fire on rank-ups only.
+ */
+export function caRankCrossingCount(rankIndex: number): number {
+  const index = Math.max(0, Math.min(CA_RANK_LADDER.length - 1, Math.trunc(rankIndex)));
+  let count = 0;
+  for (let i = 1; i <= index; i++) {
+    if (CA_RANK_LADDER[i].star.star === 1) count++;
+  }
+  return count;
+}
+
+/**
  * The effective value of a rank-scalable stat at a given rung. `rankIndex`
  * null/undefined (item has no Rank tag) always returns the base value
- * unscaled.
+ * unscaled, same as a `scaling` of null or `{mode: "none"}`.
  */
 export function caRankScaledValue(
   base: number,
   scaling: CARankScaling | null | undefined,
   rankIndex: number | null | undefined,
 ): number {
-  if (!scaling || rankIndex == null) return base;
+  if (!scaling || scaling.mode === "none" || rankIndex == null) return base;
   const index = Math.max(0, Math.min(CA_RANK_LADDER.length - 1, Math.trunc(rankIndex)));
   if (scaling.mode === "table") {
     const tableValue = scaling.table?.[index];
     return tableValue != null ? tableValue : base;
   }
+  if (scaling.mode === "percent") {
+    const crossings = caRankCrossingCount(index);
+    return Math.round(base * Math.pow(1 + (scaling.percentPerRank || 0) / 100, crossings));
+  }
   return base + scaling.perRank * index;
+}
+
+/**
+ * Value's rank scaling specifically: unlike every other stat, an unset
+ * (null) config reads as the 50%-per-rank-up default rather than "off" — a
+ * GM has to actively set it to {mode: "none"} to turn it off. Pass whatever
+ * is stored in the item's own `priceScaling` field.
+ */
+export function caEffectivePriceScaling(stored: unknown): CARankScaling {
+  const normalized = normalizeCARankScaling(stored);
+  return normalized ?? makeDefaultPriceCARankScaling();
 }
 
 /** "Gold 3" for an item's own Rank tag, same ladder a character's Rank reads. */
@@ -1212,12 +1260,15 @@ export function normalizeCARuneBoosts(raw: unknown): CARuneBoost[] {
   return out;
 }
 
-/** A rune socketed into a host item — a snapshot taken when it was socketed,
- * so the host still shows what the rune does even if the rune item is later
- * edited or deleted from the library. */
+/**
+ * A rune attached to a host item — a snapshot taken when it was attached, so
+ * the host still shows what the rune does even if the rune item is later
+ * edited or deleted from the library. There is no slot/capacity limit: an
+ * item can carry as many of these as a GM or player attaches.
+ */
 export interface CASocketedRune {
-  slotIndex: number;
-  /** The rune item it came from, if it still exists — for unsocketing it back. */
+  id: string;
+  /** The rune item it came from, if it still exists — for detaching it back. */
   runeItemId: string | null;
   name: string;
   image: string | null;
@@ -1232,7 +1283,7 @@ export function normalizeCASocketedRunes(raw: unknown): CASocketedRune[] {
     if (!r || typeof r !== "object") continue;
     const anyR = r as any;
     out.push({
-      slotIndex: Number.isFinite(Number(anyR.slotIndex)) ? Math.trunc(Number(anyR.slotIndex)) : 0,
+      id: typeof anyR.id === "string" && anyR.id ? anyR.id : makeCAWoundId(),
       runeItemId: typeof anyR.runeItemId === "string" ? anyR.runeItemId : null,
       name: typeof anyR.name === "string" ? anyR.name : "Unnamed Rune",
       image: typeof anyR.image === "string" ? anyR.image : null,
@@ -1244,16 +1295,16 @@ export function normalizeCASocketedRunes(raw: unknown): CASocketedRune[] {
 }
 
 // ---------------------------------------------------------------------------
-// Description GM notes — "## text ##" anywhere in an item's (or anything
-// else's) description is visible to GMs/admins only. Works like a note
-// embedded in the description rather than a separate field, so a GM can drop
-// a private aside right next to the public sentence it's about.
+// Description GM notes — "#text#" anywhere in an item's (or anything else's)
+// description is visible to GMs/admins only. Works like a note embedded in
+// the description rather than a separate field, so a GM can drop a private
+// aside right next to the public sentence it's about.
 // ---------------------------------------------------------------------------
 
 export interface CADescriptionParts {
-  /** The description with every ##...## span removed — what a player sees. */
+  /** The description with every #...# span removed — what a player sees. */
   player: string;
-  /** Every ##...## span's inner text, joined by a blank line. Empty if none. */
+  /** Every #...# span's inner text, joined by a blank line. Empty if none. */
   gm: string;
   hasGmNotes: boolean;
 }
@@ -1262,7 +1313,7 @@ export function caSplitDescriptionGmNotes(description: string | null | undefined
   const text = String(description ?? "");
   const gmParts: string[] = [];
   const player = text
-    .replace(/##([\s\S]*?)##/g, (_match, inner) => {
+    .replace(/#([^#]*)#/g, (_match, inner) => {
       const trimmed = String(inner).trim();
       if (trimmed) gmParts.push(trimmed);
       return "";

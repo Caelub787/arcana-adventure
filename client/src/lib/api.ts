@@ -1438,18 +1438,19 @@ class ApiClient {
     });
   }
 
-  // C.A.'s own rune socketing — independent of the AA V3 pair above.
-  async caSocketRune(characterId: string, hostItemId: string, runeItemId: string, slotIndex: number): Promise<Item> {
+  // C.A.'s own rune attaching — independent of the AA V3 pair above, and
+  // uncapped: any number of runes can be attached to one item.
+  async caSocketRune(characterId: string, hostItemId: string, runeItemId: string): Promise<Item> {
     return this.request(`/characters/${characterId}/items/${hostItemId}/ca-socket-rune`, {
       method: 'POST',
-      body: JSON.stringify({ runeItemId, slotIndex }),
+      body: JSON.stringify({ runeItemId }),
     });
   }
 
-  async caUnsocketRune(characterId: string, hostItemId: string, slotIndex: number): Promise<{ host: Item; rune: Item }> {
+  async caUnsocketRune(characterId: string, hostItemId: string, socketId: string): Promise<{ host: Item; rune: Item }> {
     return this.request(`/characters/${characterId}/items/${hostItemId}/ca-unsocket-rune`, {
       method: 'POST',
-      body: JSON.stringify({ slotIndex }),
+      body: JSON.stringify({ socketId }),
     });
   }
 

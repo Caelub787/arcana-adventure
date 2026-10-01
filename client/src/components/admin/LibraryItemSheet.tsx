@@ -82,6 +82,9 @@ import {
   type CARankScalingMode,
   normalizeCARankScaling,
   makeDefaultCARankScaling,
+  makeNoCARankScaling,
+  makeDefaultPriceCARankScaling,
+  caEffectivePriceScaling,
   caRankScaledValue,
   caItemRankLabel,
   CA_RANK_LADDER,
@@ -347,22 +350,27 @@ function RankScalingEditor({
   scaling,
   onChange,
   suffix,
+  defaultOnValue,
   testId,
 }: {
+  /** The item's current config - pass the resolved effective value (see
+   * caEffectivePriceScaling for Value's own GM-facing default). */
   scaling: CARankScaling | null;
-  onChange: (next: CARankScaling | null) => void;
+  onChange: (next: CARankScaling) => void;
   suffix?: string;
+  /** What checking the box on sets it to. Defaults to a blank Steady increase. */
+  defaultOnValue?: CARankScaling;
   testId: string;
 }) {
-  const active = !!scaling;
-  const s = scaling ?? makeDefaultCARankScaling();
+  const active = !!scaling && scaling.mode !== "none";
+  const s = scaling && scaling.mode !== "none" ? scaling : makeDefaultCARankScaling();
   return (
     <div className="rounded border border-stone-700 bg-stone-900/40 p-1.5 space-y-1.5" data-testid={testId}>
       <label className="flex items-center gap-1.5 text-[10px] text-stone-400 cursor-pointer w-fit">
         <input
           type="checkbox"
           checked={active}
-          onChange={(e) => onChange(e.target.checked ? makeDefaultCARankScaling() : null)}
+          onChange={(e) => onChange(e.target.checked ? (defaultOnValue ?? makeDefaultCARankScaling()) : makeNoCARankScaling())}
           className="accent-amber-600 h-3 w-3"
           data-testid={`${testId}-toggle`}
         />
@@ -379,6 +387,7 @@ function RankScalingEditor({
             >
               <option value="steady">Steady increase</option>
               <option value="table">Set value per rank</option>
+              <option value="percent">Percentage per rank up</option>
             </select>
             {s.mode === "steady" && (
               <div className="flex items-center gap-1">
@@ -390,6 +399,18 @@ function RankScalingEditor({
                   data-testid={`${testId}-per-rank`}
                 />
                 <span className="text-[10px] text-stone-500">per rank{suffix ? ` (${suffix})` : ""}</span>
+              </div>
+            )}
+            {s.mode === "percent" && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={s.percentPerRank}
+                  onChange={(e) => onChange({ ...s, percentPerRank: Number(e.target.value) || 0 })}
+                  className="w-16 h-7 text-xs rounded border border-stone-700 bg-stone-800 text-stone-200 px-1.5"
+                  data-testid={`${testId}-percent-per-rank`}
+                />
+                <span className="text-[10px] text-stone-500">% per rank up (not star)</span>
               </div>
             )}
           </div>
@@ -573,15 +594,19 @@ export function LibraryItemSheet({
    * which has nothing worth looking at in View yet. */
   initialEditing?: boolean;
   /**
-   * C.A. rune-slot socketing. Both unset (as the admin library's templates
-   * do - there's no real inventory to pull a rune from) collapses Rune Slots
-   * to a read-only "Empty"/name-only display; the in-game item view passes
-   * real handlers so a player can actually fill/empty a slot.
+   * C.A. rune attaching - unlimited, no slots. Both unset (as the admin
+   * library's templates do - there's no real inventory to pull a rune from)
+   * collapses Runes to a read-only, name-only list; the in-game item view
+   * passes real handlers so a player can actually attach/detach one.
    */
-  onCaSocketRune?: (runeItemId: string, slotIndex: number) => void;
-  onCaUnsocketRune?: (slotIndex: number) => void;
+  onCaSocketRune?: (runeItemId: string) => void;
+  onCaUnsocketRune?: (socketId: string) => void;
 }) {
   const [isEditing, setIsEditing] = useState(!!initialEditing);
+  // A rune picked (via the add dropdown) or dropped onto the Runes section,
+  // awaiting the player's confirmation before it's actually attached.
+  const [pendingRuneAttach, setPendingRuneAttach] = useState<{ id: string; name: string } | null>(null);
+  const [isRuneDragOver, setIsRuneDragOver] = useState(false);
   const { draft, patch: setDraft, isDirty, clear: clearDraft } = useItemDraft(isEditing);
   const queryClient = useQueryClient();
 
@@ -670,13 +695,19 @@ export function LibraryItemSheet({
     ...CA_RANK_LADDER.map((rung, i) => ({ value: String(i), label: `${rung.rank.name} ${rung.star.star}` })),
   ];
   const scaledStat = (base: number, field: string): number =>
-    caRankScaledValue(base, normalizeCARankScaling(val(field)), itemRankIndex);
+    caRankScaledValue(
+      base,
+      field === "priceScaling" ? caEffectivePriceScaling(val(field)) : normalizeCARankScaling(val(field)),
+      itemRankIndex,
+    );
   // C.A.'s own rune boosts - what THIS item (a rune) grants once socketed, or
   // what's currently filled into THIS item's own rune slots (any item type).
   const runeBoosts: CARuneBoost[] = normalizeCARuneBoosts(val("caRuneBoosts"));
   const writeRuneBoosts = (next: CARuneBoost[]) => setDraft({ caRuneBoosts: next });
   const runeSockets = normalizeCASocketedRunes(val("caRuneSockets"));
-  const runeSlotCount: number = Math.max(0, Math.trunc(Number(val("runeSlotCount")) || 0));
+  const availableRunesToAttach = (characterItems ?? []).filter(
+    (it: any) => caNormalizeItemType(it.itemType) === "rune" && it.id !== item?.id,
+  );
   // GM-only text embedded in the description between ## marks - a GM's aside
   // written right next to the public line it's about, rather than a second
   // field. Only C.A. parses this; every other system's description is shown
@@ -997,12 +1028,12 @@ export function LibraryItemSheet({
                 )}
                 <ItemField
                   field="description"
-                  label={isCA ? "Description (wrap GM-only text in ## marks)" : "Description"}
+                  label={isCA ? "Description (wrap GM-only text in # marks)" : "Description"}
                   value={val("description")}
                   onChange={chg("description")}
                   kind="textarea"
                   wide
-                  placeholder={isCA ? "What it is. ##A GM-only aside.##" : "What it is."}
+                  placeholder={isCA ? "What it is. #A GM-only aside.#" : "What it is."}
                   testId="library-item-description"
                 />
               </CaFieldGrid>
@@ -1060,10 +1091,12 @@ export function LibraryItemSheet({
                   <div>
                     <span className="text-[10px] text-stone-500 block mb-1">Value scaling</span>
                     <RankScalingEditor
-                      scaling={normalizeCARankScaling(val("priceScaling"))}
+                      scaling={caEffectivePriceScaling(val("priceScaling"))}
                       onChange={(next) => setDraft({ priceScaling: next })}
+                      defaultOnValue={makeDefaultPriceCARankScaling()}
                       testId="library-item-price-scaling"
                     />
+                    <p className="text-[10px] text-stone-500 mt-1">On by default: +50% value per rank up (not star up).</p>
                   </div>
                   {val("isContainer") && (
                     <div>
@@ -1694,73 +1727,109 @@ export function LibraryItemSheet({
           )
         ))}
 
-        {/* =========================== C.A. RUNE SLOTS =========================== */}
-        {isCA && type !== "rune" && toggleableSection("rune-slots", <Gem className="h-3.5 w-3.5" />, "Rune Slots", (
+        {/* ================================ RUNES ================================ */}
+        {/* No slots, no cap - any number of runes can be attached. Attach via
+            the dropdown or by dragging a rune in from inventory; either way
+            it's confirmed before it actually attaches. */}
+        {isCA && type !== "rune" && toggleableSection("runes", <Gem className="h-3.5 w-3.5" />, "Runes", (
           <>
-            {isEditing && (
-              <div className="mb-2" style={{ maxWidth: 160 }}>
-                <ItemField field="runeSlotCount" label="Slot count" value={runeSlotCount} onChange={chg("runeSlotCount")} kind="number" min={0} testId="library-item-rune-slot-count" />
-              </div>
-            )}
-            {runeSlotCount === 0 ? (
-              <p className="text-xs text-stone-500 italic">No rune slots on this item.</p>
+            {runeSockets.length === 0 ? (
+              <p className="text-xs text-stone-500 italic">No runes attached.</p>
             ) : (
-              <div className="space-y-1.5" data-testid="library-item-rune-slots">
-                {Array.from({ length: runeSlotCount }, (_, slotIndex) => {
-                  const socket = runeSockets.find((s) => s.slotIndex === slotIndex);
-                  const availableRunes = (characterItems ?? []).filter(
-                    (it: any) => caNormalizeItemType(it.itemType) === "rune" && it.id !== item?.id,
-                  );
-                  return (
-                    <div
-                      key={slotIndex}
-                      className="flex items-center justify-between gap-2 rounded-lg border bg-stone-900/50 px-2.5 py-1.5"
-                      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
-                      data-testid={`library-item-rune-slot-${slotIndex}`}
-                    >
-                      {socket ? (
-                        <>
-                          <div className="min-w-0">
-                            <span className="text-xs font-semibold text-stone-200 block truncate">{socket.name}</span>
-                            {socket.boosts.length > 0 && (
-                              <span className="text-[10px] text-stone-500 block truncate">
-                                {socket.boosts.map((b) => `${b.label || "?"} ${b.amount > 0 ? "+" : ""}${b.amount}`).join(", ")}
-                              </span>
-                            )}
-                          </div>
-                          {!!onCaUnsocketRune && (
-                            <button
-                              type="button"
-                              onClick={() => onCaUnsocketRune(slotIndex)}
-                              className="text-stone-500 hover:text-red-400 shrink-0"
-                              title="Unsocket"
-                              data-testid={`button-library-item-rune-slot-${slotIndex}-unsocket`}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </>
-                      ) : onCaSocketRune && availableRunes.length > 0 ? (
-                        <select
-                          defaultValue=""
-                          onChange={(e) => {
-                            if (e.target.value) onCaSocketRune(e.target.value, slotIndex);
-                          }}
-                          className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
-                          data-testid={`select-library-item-rune-slot-${slotIndex}-socket`}
-                        >
-                          <option value="">Socket a rune…</option>
-                          {availableRunes.map((r: any) => (
-                            <option key={r.id} value={r.id}>{r.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-xs text-stone-500 italic">Empty</span>
+              <div className="space-y-1.5" data-testid="library-item-runes">
+                {runeSockets.map((socket) => (
+                  <div
+                    key={socket.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border bg-stone-900/50 px-2.5 py-1.5"
+                    style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+                    data-testid={`library-item-rune-${socket.id}`}
+                  >
+                    <div className="min-w-0">
+                      <span className="text-xs font-semibold text-stone-200 block truncate">{socket.name}</span>
+                      {socket.boosts.length > 0 && (
+                        <span className="text-[10px] text-stone-500 block truncate">
+                          {socket.boosts.map((b) => `${b.label || "?"} ${b.amount > 0 ? "+" : ""}${b.amount}`).join(", ")}
+                        </span>
                       )}
                     </div>
-                  );
-                })}
+                    {!!onCaUnsocketRune && (
+                      <button
+                        type="button"
+                        onClick={() => onCaUnsocketRune(socket.id)}
+                        className="text-stone-500 hover:text-red-400 shrink-0"
+                        title="Detach"
+                        data-testid={`button-library-item-rune-${socket.id}-detach`}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
+            )}
+            {onCaSocketRune && (
+              <div
+                className={`mt-2 rounded-lg border border-dashed p-2 text-center transition-colors ${isRuneDragOver ? "border-amber-500 bg-amber-950/20" : "border-stone-700"}`}
+                onDragOver={(e) => { e.preventDefault(); setIsRuneDragOver(true); }}
+                onDragLeave={() => setIsRuneDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsRuneDragOver(false);
+                  try {
+                    const data = JSON.parse(e.dataTransfer.getData("application/json") || "{}");
+                    if (data?.type === "item" && data.item && data.itemId !== item?.id && caNormalizeItemType(data.item.itemType) === "rune") {
+                      setPendingRuneAttach({ id: data.itemId, name: data.item.name || "this rune" });
+                    }
+                  } catch {
+                    // Not a rune drag payload - ignore.
+                  }
+                }}
+                data-testid="dropzone-library-item-rune"
+              >
+                {pendingRuneAttach ? (
+                  <div className="flex items-center justify-center gap-2 text-xs flex-wrap">
+                    <span className="text-stone-300">Attach "{pendingRuneAttach.name}"?</span>
+                    <Button
+                      size="sm"
+                      className="h-6 text-[11px] bg-emerald-700 hover:bg-emerald-600 text-white"
+                      onClick={() => { onCaSocketRune(pendingRuneAttach.id); setPendingRuneAttach(null); }}
+                      data-testid="button-library-item-rune-confirm"
+                    >
+                      Confirm
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] border-stone-700"
+                      onClick={() => setPendingRuneAttach(null)}
+                      data-testid="button-library-item-rune-cancel"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-stone-500 mb-1.5">Drag a rune in from inventory, or</p>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const found = availableRunesToAttach.find((r: any) => r.id === e.target.value);
+                        if (found) setPendingRuneAttach({ id: found.id, name: found.name });
+                      }}
+                      className="h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                      data-testid="select-library-item-rune-add"
+                    >
+                      <option value="">+ Add a rune…</option>
+                      {availableRunesToAttach.map((r: any) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </div>
+            )}
+            {!onCaSocketRune && runeSockets.length === 0 && (
+              <p className="text-[11px] text-stone-500 mt-1">Runes are attached in-game, from the character's own inventory.</p>
             )}
           </>
         ))}
@@ -2151,6 +2220,15 @@ export function LibraryItemSheet({
             characterMana={characterMana}
             characterItems={characterItems}
             characterCustomSkills={characterCustomSkills}
+            quickAddPresets={!isCA ? undefined : type === "weapon" ? [{
+              label: "Attack Roll",
+              icon: <Sword className="w-3 h-3 mr-1" />,
+              preset: { name: "Attack", rollType: "damage", mod: scaledStat(val("caBaseDamage") ?? 0, "caBaseDamageScaling"), isAttack: true },
+            }] : type === "consumable" ? [{
+              label: "Use Roll",
+              icon: <FlaskConical className="w-3 h-3 mr-1" />,
+              preset: { name: "Use", rollType: "effect", noRoll: true },
+            }] : undefined}
           />
         ))}
 

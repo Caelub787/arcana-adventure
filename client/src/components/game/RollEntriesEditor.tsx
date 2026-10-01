@@ -94,6 +94,16 @@ interface RollEntriesEditorProps {
   characterEnergy?: number;
   characterMana?: number;
   characterItems?: any[];
+  /**
+   * Shortcut buttons next to "Add Roll" that open the add-roll form
+   * pre-filled from `preset` instead of blank - for an owner (like a C.A.
+   * weapon or consumable) whose own fields already imply what its first
+   * roll should look like. Opens the ordinary form for review/editing
+   * rather than creating silently, and the result is a completely normal
+   * roll entry living in this same list - there is no separate "built-in
+   * roll" concept, just a faster starting point for a common one.
+   */
+  quickAddPresets?: Array<{ label: string; icon?: React.ReactNode; preset: Partial<RollEntry> }>;
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -1291,7 +1301,7 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost, characterEnergy, characterMana, characterItems }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost, characterEnergy, characterMana, characterItems, quickAddPresets }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
@@ -1509,26 +1519,45 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
   return (
     <div className="space-y-2" data-testid="roll-entries-editor">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-1.5">
         <div className="flex items-center gap-1.5 text-stone-200">
           <Dices className="w-4 h-4" />
           <span className="text-sm font-semibold">Rolls</span>
         </div>
         {canEdit && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-6 text-xs border-stone-600 text-stone-300"
-            onClick={() => {
-              setAddingNew(true);
-              setEditingId(null);
-              setNewForm(emptyFormData(ownerType, ownerId || ''));
-            }}
-            data-testid="button-add-roll"
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            Add Roll
-          </Button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {quickAddPresets?.map((p, i) => (
+              <Button
+                key={i}
+                size="sm"
+                variant="outline"
+                className="h-6 text-xs border-stone-600 text-stone-300"
+                onClick={() => {
+                  setAddingNew(true);
+                  setEditingId(null);
+                  setNewForm({ ...emptyFormData(ownerType, ownerId || ''), ...p.preset });
+                }}
+                data-testid={`button-quick-add-roll-${i}`}
+              >
+                {p.icon}
+                {p.label}
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs border-stone-600 text-stone-300"
+              onClick={() => {
+                setAddingNew(true);
+                setEditingId(null);
+                setNewForm(emptyFormData(ownerType, ownerId || ''));
+              }}
+              data-testid="button-add-roll"
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Add Roll
+            </Button>
+          </div>
         )}
       </div>
 

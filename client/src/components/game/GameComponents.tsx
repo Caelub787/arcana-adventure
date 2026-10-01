@@ -32486,24 +32486,24 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setSyncingTechniques(false);
     }
   };
-  const handleCaSocketRune = async (runeItemId: string, slotIndex: number) => {
+  const handleCaSocketRune = async (runeItemId: string) => {
     if (!character?.id || !item?.id) return;
     try {
-      await api.caSocketRune(character.id, item.id, runeItemId, slotIndex);
+      await api.caSocketRune(character.id, item.id, runeItemId);
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
     } catch (err: any) {
-      toast({ title: 'Could not socket rune', description: err?.message || 'Please try again.', variant: 'destructive' });
+      toast({ title: 'Could not attach rune', description: err?.message || 'Please try again.', variant: 'destructive' });
     }
   };
-  const handleCaUnsocketRune = async (slotIndex: number) => {
+  const handleCaUnsocketRune = async (socketId: string) => {
     if (!character?.id || !item?.id) return;
     try {
-      await api.caUnsocketRune(character.id, item.id, slotIndex);
+      await api.caUnsocketRune(character.id, item.id, socketId);
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
     } catch (err: any) {
-      toast({ title: 'Could not unsocket rune', description: err?.message || 'Please try again.', variant: 'destructive' });
+      toast({ title: 'Could not detach rune', description: err?.message || 'Please try again.', variant: 'destructive' });
     }
   };
   const [absorbing, setAbsorbing] = useState(false);
