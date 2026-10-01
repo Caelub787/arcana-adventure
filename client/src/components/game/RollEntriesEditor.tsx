@@ -104,6 +104,9 @@ interface RollEntriesEditorProps {
    * roll" concept, just a faster starting point for a common one.
    */
   quickAddPresets?: Array<{ label: string; icon?: React.ReactNode; preset: Partial<RollEntry> }>;
+  /** Skips the editor's own "Rolls" icon+label row - for a host that already
+   * puts its own section header around this editor (nothing else changes). */
+  hideHeader?: boolean;
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -1301,7 +1304,7 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost, characterEnergy, characterMana, characterItems, quickAddPresets }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem, ownerEnergyCost, ownerManaCost, characterEnergy, characterMana, characterItems, quickAddPresets, hideHeader }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [addingNew, setAddingNew] = useState(false);
@@ -1519,11 +1522,13 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
   return (
     <div className="space-y-2" data-testid="roll-entries-editor">
-      <div className="flex items-center justify-between flex-wrap gap-1.5">
-        <div className="flex items-center gap-1.5 text-stone-200">
-          <Dices className="w-4 h-4" />
-          <span className="text-sm font-semibold">Rolls</span>
-        </div>
+      <div className={`flex items-center flex-wrap gap-1.5 ${hideHeader ? "justify-end" : "justify-between"}`}>
+        {!hideHeader && (
+          <div className="flex items-center gap-1.5 text-stone-200">
+            <Dices className="w-4 h-4" />
+            <span className="text-sm font-semibold">Rolls</span>
+          </div>
+        )}
         {canEdit && (
           <div className="flex items-center gap-1.5 flex-wrap">
             {quickAddPresets?.map((p, i) => (
