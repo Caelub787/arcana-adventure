@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_RANK, caMaxHp, caMaxFocus, CA_WOUND_LOCATIONS, CA_WOUND_LOCATION_LABELS, CA_WOUND_LOCATION_FOCUS_COST, CA_WOUND_SEVERITY_MARGIN, type CAWoundLocation, type CAWoundSeverity } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_RANK, caMaxHp, caMaxFocus, CA_WOUND_LOCATIONS, CA_WOUND_LOCATION_LABELS, CA_WOUND_LOCATION_FOCUS_COST, CA_WOUND_SEVERITY_MARGIN, type CAWoundLocation, type CAWoundSeverity, CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS, caNormalizeItemType } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -40,7 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap } from "lucide-react";
+import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap, Crosshair, Gem, Wand2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
@@ -22144,7 +22144,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
   if (itemTypeFilter === "equipped") {
     filteredItems = filteredItems.filter((item: any) => item.isEquipped);
   } else if (itemTypeFilter !== "all") {
-    filteredItems = filteredItems.filter((item: any) => item.itemType === itemTypeFilter);
+    filteredItems = filteredItems.filter((item: any) =>
+      (campaignSystem === 'ca' ? caNormalizeItemType(item.itemType) : item.itemType) === itemTypeFilter,
+    );
   }
 
   // Sort items
@@ -25927,24 +25929,27 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
-                      {isAAV3 && <SelectItem value="equipped">Equipped</SelectItem>}
-                      <SelectItem value="ammunition">Ammunition</SelectItem>
-                      <SelectItem value="armor">Armor</SelectItem>
-                      {campaignSystem === 'ca' && (
-                        <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                      {campaignSystem === 'ca' ? (
+                        CA_ITEM_TYPES.map((t) => <SelectItem key={t} value={t}>{CA_ITEM_TYPE_LABELS[t]}</SelectItem>)
+                      ) : (
+                        <>
+                          {isAAV3 && <SelectItem value="equipped">Equipped</SelectItem>}
+                          <SelectItem value="ammunition">Ammunition</SelectItem>
+                          <SelectItem value="armor">Armor</SelectItem>
+                          <SelectItem value="consumable">Consumables</SelectItem>
+                          <SelectItem value="container">Containers</SelectItem>
+                          {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (
+                            <SelectItem value="crafter">Crafter</SelectItem>
+                          )}
+                          <SelectItem value="currency">Currency</SelectItem>
+                          <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
+                          <SelectItem value="rune">Runes</SelectItem>
+                          <SelectItem value="scroll">Scrolls</SelectItem>
+                          <SelectItem value="spellbook">Spellbooks</SelectItem>
+                          <SelectItem value="utility">Utilities</SelectItem>
+                          <SelectItem value="weapon">Weapons</SelectItem>
+                        </>
                       )}
-                      <SelectItem value="consumable">Consumables</SelectItem>
-                      <SelectItem value="container">Containers</SelectItem>
-                      {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3' || campaignSystem === 'ca') && (
-                        <SelectItem value="crafter">Crafter</SelectItem>
-                      )}
-                      <SelectItem value="currency">Currency</SelectItem>
-                      <SelectItem value="miscellaneous">Miscellaneous</SelectItem>
-                      <SelectItem value="rune">Runes</SelectItem>
-                      <SelectItem value="scroll">Scrolls</SelectItem>
-                      <SelectItem value="spellbook">Spellbooks</SelectItem>
-                      <SelectItem value="utility">Utilities</SelectItem>
-                      <SelectItem value="weapon">Weapons</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -29316,16 +29321,26 @@ export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: 
   }, []);
 
   // Show type icon while loading or if no image
-  const TypeIcon = itemType === 'weapon' ? Sword 
-    : itemType === 'armor' ? Shield 
-    : itemType === 'consumable' ? Beaker 
-    : itemType === 'currency' ? Coins 
+  const TypeIcon = itemType === 'weapon' ? Sword
+    : itemType === 'armor' ? Shield
+    : itemType === 'consumable' ? Beaker
+    : itemType === 'currency' ? Coins
+    : itemType === 'ammunition' ? Crosshair
+    : itemType === 'container' ? Backpack
+    : itemType === 'crafter' ? Hammer
+    : itemType === 'rune' ? Gem
+    : itemType === 'beast_orb' ? Wand2
     : Package;
-  
+
   const iconColor = itemType === 'weapon' ? 'text-red-400'
     : itemType === 'armor' ? 'text-blue-400'
     : itemType === 'consumable' ? 'text-green-400'
     : itemType === 'currency' ? 'text-yellow-400'
+    : itemType === 'ammunition' ? 'text-orange-400'
+    : itemType === 'container' ? 'text-amber-400'
+    : itemType === 'crafter' ? 'text-stone-300'
+    : itemType === 'rune' ? 'text-purple-400'
+    : itemType === 'beast_orb' ? 'text-cyan-400'
     : 'text-stone-500';
 
   return (
@@ -30013,8 +30028,8 @@ function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaign
     setTemplateSourceFilter('all');
   };
 
-  const itemTypeOptions = [
-    'ammunition', 'armor', ...(campaignSystem === 'ca' ? ['beast_orb'] : []), 'consumable',
+  const itemTypeOptions = campaignSystem === 'ca' ? [...CA_ITEM_TYPES] : [
+    'ammunition', 'armor', 'consumable',
     'container', 'currency', 'miscellaneous', 'rune', 'scroll', 'spellbook', 'utility', 'weapon',
   ];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -30210,7 +30225,9 @@ function AddItemDialog({ open, onOpenChange, onSave, onCreateNew, isGM, campaign
                       <SelectItem value="all">All Types</SelectItem>
                       {itemTypeOptions.map(type => (
                         <SelectItem key={type} value={type}>
-                          {type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                          {campaignSystem === 'ca'
+                            ? CA_ITEM_TYPE_LABELS[type as keyof typeof CA_ITEM_TYPE_LABELS]
+                            : type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -30500,15 +30517,18 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId, campaignSystem 
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ammunition">Ammunition</SelectItem>
-                        <SelectItem value="armor">Armor</SelectItem>
-                        {campaignSystem === 'ca' && (
-                          <SelectItem value="beast_orb">Beast Orb</SelectItem>
+                        {campaignSystem === 'ca' ? (
+                          CA_ITEM_TYPES.map((t) => <SelectItem key={t} value={t}>{CA_ITEM_TYPE_LABELS[t]}</SelectItem>)
+                        ) : (
+                          <>
+                            <SelectItem value="ammunition">Ammunition</SelectItem>
+                            <SelectItem value="armor">Armor</SelectItem>
+                            <SelectItem value="consumable">Consumable</SelectItem>
+                            <SelectItem value="container">Container</SelectItem>
+                            <SelectItem value="utility">Utility</SelectItem>
+                            <SelectItem value="weapon">Weapon</SelectItem>
+                          </>
                         )}
-                        <SelectItem value="consumable">Consumable</SelectItem>
-                        <SelectItem value="container">Container</SelectItem>
-                        <SelectItem value="utility">Utility</SelectItem>
-                        <SelectItem value="weapon">Weapon</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

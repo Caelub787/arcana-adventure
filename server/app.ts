@@ -504,6 +504,26 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS hidden_sections text[] NOT NULL DEFAULT ARRAY[]::text[]`,
     // C.A. consumable wound heal/deal options (see shared/ca.ts).
     `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS consumable_wound_options jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    // C.A. item rework: rank tag + rank-scaling configs, weapon/armor/ammo/
+    // container fields, and C.A.'s own (AA-V3-independent) rune socketing.
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS item_rank integer`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS price_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS armor_bonus_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS carry_capacity_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_base_damage integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_base_damage_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_weapon_handedness text`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_wound_reduction_steps integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_wound_reduction_steps_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ammo_damage_boost integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ammo_damage_boost_scaling jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_container_kind text NOT NULL DEFAULT 'backpack'`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS rune_slot_count integer NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_rune_boosts jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS ca_rune_sockets jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    // C.A. wound/HP/Focus rework: Focus is a new resource alongside HP/Energy/Mana.
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS focus integer NOT NULL DEFAULT 10`,
+    `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS max_focus integer NOT NULL DEFAULT 10`,
   ];
   return runSchemaGuard("knowledge", statements);
 }

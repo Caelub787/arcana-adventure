@@ -66,6 +66,7 @@ import {
 import { SpellbookLibraryManager } from '@/components/library/SpellbookLibraryManager';
 import { LibraryItemSheet } from '@/components/admin/LibraryItemSheet';
 import { isWoundSystem } from "@shared/systemRules";
+import { CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS } from "@shared/ca";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
 import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS } from "@shared/systems";
 
@@ -12606,21 +12607,23 @@ function CrafterRecipeTemplateCreateDialog({ open, onOpenChange, onCreate, isPen
 function ItemTypeFilterPicker({ value, onChange, systemSlug }: { value: string; onChange: (v: string) => void; systemSlug?: string }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const options = [
-    { value: 'all', label: 'All Types' },
-    { value: 'weapon', label: 'Weapons' },
-    { value: 'ammunition', label: 'Ammunition' },
-    { value: 'armor', label: 'Armor' },
-    { value: 'consumable', label: 'Consumables' },
-    { value: 'utility', label: 'Utilities' },
-    { value: 'container', label: 'Containers' },
-    { value: 'currency', label: 'Currency' },
-    { value: 'spellbook', label: 'Spellbooks' },
-    { value: 'scroll', label: 'Scrolls' },
-    { value: 'rune', label: 'Runes' },
-    ...((systemSlug === 'aa-v2' || systemSlug === 'aa-v3' || systemSlug === 'ca') ? [{ value: 'crafter', label: 'Crafter' }] : []),
-    { value: 'miscellaneous', label: 'Miscellaneous' },
-  ];
+  const options = systemSlug === 'ca'
+    ? [{ value: 'all', label: 'All Types' }, ...CA_ITEM_TYPES.map((t) => ({ value: t, label: CA_ITEM_TYPE_LABELS[t] }))]
+    : [
+      { value: 'all', label: 'All Types' },
+      { value: 'weapon', label: 'Weapons' },
+      { value: 'ammunition', label: 'Ammunition' },
+      { value: 'armor', label: 'Armor' },
+      { value: 'consumable', label: 'Consumables' },
+      { value: 'utility', label: 'Utilities' },
+      { value: 'container', label: 'Containers' },
+      { value: 'currency', label: 'Currency' },
+      { value: 'spellbook', label: 'Spellbooks' },
+      { value: 'scroll', label: 'Scrolls' },
+      { value: 'rune', label: 'Runes' },
+      ...((systemSlug === 'aa-v2' || systemSlug === 'aa-v3') ? [{ value: 'crafter', label: 'Crafter' }] : []),
+      { value: 'miscellaneous', label: 'Miscellaneous' },
+    ];
   const current = options.find((o) => o.value === value) || options[0];
   const q = search.trim().toLowerCase();
   const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options;

@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { RollEntriesEditor } from "./RollEntriesEditor";
 import { toast } from "@/hooks/use-toast";
 import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
+import { CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS } from "@shared/ca";
 
 interface TemplateManagerProps {
   campaignId: string;
@@ -339,8 +340,9 @@ function CreateItemTemplateDialog({ open, onOpenChange, onSave, isPending, campa
               <Select value={itemType} onValueChange={setItemType}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
-                  {(campaignSystem === 'ca' ? ["armor", "beast_orb", "consumable", "container", "currency", "utility", "weapon"] : ITEM_TYPES)
-                    .map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
+                  {campaignSystem === 'ca'
+                    ? CA_ITEM_TYPES.map((t) => <SelectItem key={t} value={t} className="text-xs">{CA_ITEM_TYPE_LABELS[t]}</SelectItem>)
+                    : ITEM_TYPES.map((t) => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

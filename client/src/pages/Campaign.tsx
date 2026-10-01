@@ -5,7 +5,7 @@ import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, TradePanel, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { AuraCurrentField, AuraEdgeField } from "@/components/game/CAPanels";
-import { caAuraOf } from "@shared/ca";
+import { caAuraOf, CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS, caNormalizeItemType } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
 import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, isSwampySystem, type SystemSlug } from "@shared/systems";
@@ -12564,17 +12564,22 @@ export default function Campaign() {
                       data-testid="select-shop-import-type-filter"
                     >
                       <option value="all">All Types</option>
-                      <option value="ammunition">Ammunition</option>
-                      <option value="armor">Armor</option>
-                      {isCA && <option value="beast_orb">Beast Orb</option>}
-                      <option value="consumable">Consumable</option>
-                      <option value="container">Container</option>
-                      <option value="currency">Currency</option>
-                      {isAAV3 && <option value="miscellaneous">Miscellaneous</option>}
-                      {isAAV3 && <option value="rune">Rune</option>}
-                      {isAAV3 && <option value="scroll">Scroll</option>}
-                      <option value="utility">Utility</option>
-                      <option value="weapon">Weapon</option>
+                      {isCA ? (
+                        CA_ITEM_TYPES.map((t) => <option key={t} value={t}>{CA_ITEM_TYPE_LABELS[t]}</option>)
+                      ) : (
+                        <>
+                          <option value="ammunition">Ammunition</option>
+                          <option value="armor">Armor</option>
+                          <option value="consumable">Consumable</option>
+                          <option value="container">Container</option>
+                          <option value="currency">Currency</option>
+                          {isAAV3 && <option value="miscellaneous">Miscellaneous</option>}
+                          {isAAV3 && <option value="rune">Rune</option>}
+                          {isAAV3 && <option value="scroll">Scroll</option>}
+                          <option value="utility">Utility</option>
+                          <option value="weapon">Weapon</option>
+                        </>
+                      )}
                     </select>
                     <select
                       value={shopImportRarityFilter}
@@ -12605,7 +12610,7 @@ export default function Campaign() {
                     {allTemplateItems
                       .filter((t: any) => {
                         const matchesSearch = t.name.toLowerCase().includes(templateSearch.toLowerCase());
-                        const matchesType = shopImportTypeFilter === 'all' || t.itemType === shopImportTypeFilter;
+                        const matchesType = shopImportTypeFilter === 'all' || (isCA ? caNormalizeItemType(t.itemType) : t.itemType) === shopImportTypeFilter;
                         const matchesRarity = shopImportRarityFilter === 'all' || t.rarity === shopImportRarityFilter;
                         return matchesSearch && matchesType && matchesRarity;
                       })
@@ -12645,7 +12650,7 @@ export default function Campaign() {
                       })}
                     {allTemplateItems.filter((t: any) => {
                       const matchesSearch = t.name.toLowerCase().includes(templateSearch.toLowerCase());
-                      const matchesType = shopImportTypeFilter === 'all' || t.itemType === shopImportTypeFilter;
+                      const matchesType = shopImportTypeFilter === 'all' || (isCA ? caNormalizeItemType(t.itemType) : t.itemType) === shopImportTypeFilter;
                       const matchesRarity = shopImportRarityFilter === 'all' || t.rarity === shopImportRarityFilter;
                       return matchesSearch && matchesType && matchesRarity;
                     }).length === 0 && (
