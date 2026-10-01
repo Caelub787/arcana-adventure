@@ -3,7 +3,7 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
-import type { CAWound, CAPhysiqueEffect } from "./ca";
+import type { CAWound, CAPhysiqueEffect, CARankScaling, CASocketedRune, CARuneBoost } from "./ca";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -271,6 +271,12 @@ export const characters = pgTable("characters", {
   maxEnergy: integer("max_energy").notNull(),
   mana: integer("mana").notNull().default(0),
   maxMana: integer("max_mana").notNull().default(0),
+  // C.A. only: Focus — spent to choose where a wound lands (see shared/ca.ts
+  // CA_WOUND_LOCATION_FOCUS_COST). Max is formula-derived from Rank
+  // (caMaxFocus) and kept in sync the same way maxHp is; current depletes
+  // manually like Energy and resets to max on a long rest.
+  focus: integer("focus").notNull().default(10),
+  maxFocus: integer("max_focus").notNull().default(10),
   tempHp: integer("temp_hp").notNull().default(0),
   tempEnergy: integer("temp_energy").notNull().default(0),
   tempMana: integer("temp_mana").notNull().default(0),
@@ -790,6 +796,50 @@ export const items = pgTable("items", {
     removable: boolean;
     removeDurabilityCost: number;
   }[]>().default(sql`'[]'::jsonb`),
+  // ---- C.A. item rework ------------------------------------------------
+  // Every item's Rank tag — an index into the same 25-rung ladder a
+  // character's Rank reads (shared/ca.ts CA_RANK_LADDER). Null = unranked.
+  // Only C.A. surfaces this; harmless/unused on any other system's items.
+  itemRank: integer("item_rank"),
+  // How a rank-scalable stat grows as itemRank climbs — one optional config
+  // per scalable stat, authored by the GM (see shared/ca.ts CARankScaling).
+  priceScaling: jsonb("price_scaling").$type<CARankScaling | null>().default(sql`null`),
+  armorBonusScaling: jsonb("armor_bonus_scaling").$type<CARankScaling | null>().default(sql`null`),
+  carryCapacityScaling: jsonb("carry_capacity_scaling").$type<CARankScaling | null>().default(sql`null`),
+  // C.A. only: a weapon's own numeric base damage (distinct from the generic
+  // dice-string `damage` column other systems use), rank-scalable.
+  caBaseDamage: integer("ca_base_damage").default(0).notNull(),
+  caBaseDamageScaling: jsonb("ca_base_damage_scaling").$type<CARankScaling | null>().default(sql`null`),
+  // C.A. only: a weapon's handedness — melee one/two-handed, or ranged
+  // (ranged weapons declare their required ammo type via ammunitionType).
+  caWeaponHandedness: text("ca_weapon_handedness"), // 'one_handed' | 'two_handed' | 'ranged'
+  // C.A. only: an armor's wound-reduction — how many severity steps (Severe
+  // -> Moderate -> Minor -> none) it lowers a wound by. 0 (the default)
+  // means the armor doesn't touch wound severity at all.
+  caWoundReductionSteps: integer("ca_wound_reduction_steps").default(0).notNull(),
+  caWoundReductionStepsScaling: jsonb("ca_wound_reduction_steps_scaling").$type<CARankScaling | null>().default(sql`null`),
+  // C.A. only: an ammunition item's damage boost — only applies while both it
+  // and a matching weapon are equipped (see shared/ca.ts; enforcement is a
+  // player/GM call, not automated).
+  ammoDamageBoost: integer("ammo_damage_boost").default(0).notNull(),
+  ammoDamageBoostScaling: jsonb("ammo_damage_boost_scaling").$type<CARankScaling | null>().default(sql`null`),
+  // C.A. only: which of the two container behaviors this item is — a
+  // Backpack (raises the wearer's own carry limit while equipped, via the
+  // generic `effects` column) or a Storage Ring (its own separate weight
+  // limit via the existing isContainer/carryCapacity/containerId mechanic).
+  caContainerKind: text("ca_container_kind").default("backpack").notNull(), // 'backpack' | 'storage_ring'
+  // C.A. only: fixed number of rune sockets this item has, set by the GM
+  // ahead of time (not derived from rarity the way AA-V3's is).
+  runeSlotCount: integer("rune_slot_count").default(0).notNull(),
+  // C.A. only, rune items only: what THIS rune grants once socketed — the
+  // GM-authored list (see shared/ca.ts CARuneBoost). Snapshotted into the
+  // host's caRuneSockets entry at socket time, so editing a rune afterward
+  // doesn't retroactively change what's already socketed elsewhere.
+  caRuneBoosts: jsonb("ca_rune_boosts").$type<CARuneBoost[]>().default(sql`'[]'::jsonb`).notNull(),
+  // C.A. only: runes currently socketed into this item — C.A.'s own
+  // independent socketing model (see shared/ca.ts CASocketedRune), distinct
+  // from AA-V3's `socketedRunes` column above.
+  caRuneSockets: jsonb("ca_rune_sockets").$type<CASocketedRune[]>().default(sql`'[]'::jsonb`).notNull(),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

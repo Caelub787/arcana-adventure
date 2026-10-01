@@ -50,7 +50,7 @@ import { useLibraryDialogsHost } from '@/lib/libraryDialogsHost';
 import type { SpeciesDraft } from '@arcana/library-dialogs';
 import { apiRequest } from '@/lib/queryClient';
 import { sortItemsByNameThenRarity } from '@/lib/itemSort';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair, Globe, Dices } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Check, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw, Hammer, Lock, Crosshair, Globe, Dices, Gem } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -160,9 +160,14 @@ const itemTypeIcons: Record<string, any> = {
   armor: Shield,
   consumable: Package,
   utility: Sparkles,
+  miscellaneous: Sparkles,
   container: Box,
   currency: Coins,
   spellbook: BookOpen,
+  ammunition: Crosshair,
+  crafter: Hammer,
+  rune: Gem,
+  beast_orb: Wand2,
 };
 
 const rarityColors: Record<string, string> = {

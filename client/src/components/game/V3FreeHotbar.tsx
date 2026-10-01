@@ -77,12 +77,6 @@ function StatBar({ value, max, color, thin, medium }: { value: number; max: numb
   );
 }
 
-// Wound Capacity left on a character, read through the active system's own
-// wounds column so C.A. and Swampy never see each other's data.
-function woundCapacityRemaining(char: FreeHotbarCharView, rules: WoundSystemRules): number {
-  return Math.max(0, rules.woundCapacityMax(char) - rules.woundTotalCost(rules.woundsOf(char)));
-}
-
 function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCharView; thin?: boolean; woundRules?: WoundSystemRules | null; isSwampy?: boolean }) {
   // Swampy keeps HP but has no mana; its second and third tracks are Strain
   // and Hope, which is what a player actually watches between rolls.
@@ -97,13 +91,11 @@ function CharStatBars({ char, thin, woundRules, isSwampy }: { char: FreeHotbarCh
       </div>
     );
   }
-  // C.A. has no HP/mana — show Wound Capacity remaining + Energy instead.
+  // C.A. has no mana — show HP + Energy instead of the three-bar default.
   if (woundRules) {
-    const remaining = woundCapacityRemaining(char, woundRules);
-    const woundMax = woundRules.woundCapacityMax(char);
     return (
       <div className={thin ? 'space-y-0.5' : 'space-y-1.5'}>
-        <StatBar value={remaining} max={woundMax} color={vitalBarColor(remaining, woundMax)} thin={thin} medium={thin} />
+        <StatBar value={char.hp ?? 0} max={char.maxHp ?? 0} color={vitalBarColor(char.hp ?? 0, char.maxHp ?? 0)} thin={thin} medium={thin} />
         <StatBar value={char.energy ?? 0} max={char.maxEnergy ?? 0} color="bg-cyan-500" thin={thin} medium={thin} />
       </div>
     );
@@ -729,10 +721,10 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                       <>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">
-                            <span>Wounds</span>
-                            <span data-testid="text-peek-wounds">{woundCapacityRemaining(c, woundRules)} / {woundRules.woundCapacityMax(c)}</span>
+                            <span>HP</span>
+                            <span data-testid="text-peek-wounds">{c.hp ?? 0} / {c.maxHp ?? 0}</span>
                           </div>
-                          <StatBar value={woundCapacityRemaining(c, woundRules)} max={woundRules.woundCapacityMax(c)} color={vitalBarColor(woundCapacityRemaining(c, woundRules), woundRules.woundCapacityMax(c))} />
+                          <StatBar value={c.hp ?? 0} max={c.maxHp ?? 0} color={vitalBarColor(c.hp ?? 0, c.maxHp ?? 0)} />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-stone-400 mb-0.5">

@@ -17,25 +17,68 @@ export type CAWoundSeverity = "minor" | "moderate" | "serious";
 
 export const CA_WOUND_SEVERITIES: CAWoundSeverity[] = ["minor", "moderate", "serious"];
 
+// The internal key stays "serious" (matches already-stored character data);
+// only the label changed to match the current wound rules' wording.
 export const CA_WOUND_SEVERITY_LABELS: Record<CAWoundSeverity, string> = {
   minor: "Minor",
   moderate: "Moderate",
-  serious: "Serious",
+  serious: "Severe",
 };
 
-// How many points of Wound Capacity an active (untreated) wound of this
-// severity costs.
-export const CA_WOUND_SEVERITY_COST: Record<CAWoundSeverity, number> = {
-  minor: 1,
-  moderate: 2,
-  serious: 3,
+// How far over the target's DC a hit has to land to cause a wound of this
+// severity (see caWoundSeverityForMargin below) — HP damage still applies
+// below 5 over, it just doesn't also cause a wound.
+export const CA_WOUND_SEVERITY_MARGIN: Record<CAWoundSeverity, number> = {
+  minor: 5,
+  moderate: 10,
+  serious: 15,
 };
+
+/**
+ * Which severity a hit causes, given how far the attack roll beat the
+ * target's DC. Below 5 over, a hit still happens (HP loss) but doesn't also
+ * wound. Nothing calls this automatically — the attacker and GM read the
+ * margin and make the call themselves, same as every other wound judgment.
+ */
+export function caWoundSeverityForMargin(margin: number): CAWoundSeverity | null {
+  if (margin >= CA_WOUND_SEVERITY_MARGIN.serious) return "serious";
+  if (margin >= CA_WOUND_SEVERITY_MARGIN.moderate) return "moderate";
+  if (margin >= CA_WOUND_SEVERITY_MARGIN.minor) return "minor";
+  return null;
+}
 
 // Sort weight for "most severe first" — higher sorts first.
 export const CA_WOUND_SEVERITY_RANK: Record<CAWoundSeverity, number> = {
   serious: 3,
   moderate: 2,
   minor: 1,
+};
+
+// Superseded by Health (see caMaxHp below) — kept only for caWoundTotalCost,
+// which some older callers/tests still read. Nothing in the live UI spends
+// Wound Capacity any more.
+export const CA_WOUND_SEVERITY_COST: Record<CAWoundSeverity, number> = {
+  minor: 1,
+  moderate: 2,
+  serious: 3,
+};
+
+// Where a wound lands on the body. Purely for the Focus cost reference below
+// — nothing here is spent automatically; the attacker (or the GM, for a
+// monster) reads the cost and adjusts their own Focus by hand.
+export type CAWoundLocation = "body" | "arm" | "leg" | "head";
+export const CA_WOUND_LOCATIONS: CAWoundLocation[] = ["body", "arm", "leg", "head"];
+export const CA_WOUND_LOCATION_LABELS: Record<CAWoundLocation, string> = {
+  body: "Body",
+  arm: "Arm",
+  leg: "Leg",
+  head: "Head",
+};
+export const CA_WOUND_LOCATION_FOCUS_COST: Record<CAWoundLocation, number> = {
+  body: 0,
+  arm: 2,
+  leg: 2,
+  head: 4,
 };
 
 // Movement stats a wound's effect can target besides a skill.
@@ -66,6 +109,7 @@ export interface CAWound {
   y: number; // 0-100
   name: string;
   severity: CAWoundSeverity;
+  location: CAWoundLocation;
   description: string;
   effects: CAWoundEffect[];
 }
@@ -90,6 +134,7 @@ export function makeCAWound(x: number, y: number): CAWound {
     y: Math.max(0, Math.min(100, y)),
     name: "",
     severity: "minor",
+    location: "body",
     description: "",
     effects: [],
   };
@@ -121,12 +166,15 @@ export function normalizeCAWounds(raw: unknown): CAWound[] {
     if (typeof anyW.x !== "number" && typeof anyW.y !== "number") continue; // old fixed-slot shape, drop it
     const severity: CAWoundSeverity =
       anyW.severity === "moderate" || anyW.severity === "serious" ? anyW.severity : "minor";
+    const location: CAWoundLocation =
+      (CA_WOUND_LOCATIONS as readonly string[]).includes(anyW.location) ? anyW.location : "body";
     out.push({
       id: typeof anyW.id === "string" && anyW.id ? anyW.id : makeCAWoundId(),
       x: Number.isFinite(Number(anyW.x)) ? Math.max(0, Math.min(100, Number(anyW.x))) : 50,
       y: Number.isFinite(Number(anyW.y)) ? Math.max(0, Math.min(100, Number(anyW.y))) : 50,
       name: typeof anyW.name === "string" ? anyW.name : "",
       severity,
+      location,
       description: typeof anyW.description === "string" ? anyW.description : "",
       effects: Array.isArray(anyW.effects)
         ? anyW.effects.map(normalizeCAWoundEffect).filter((e: CAWoundEffect | null): e is CAWoundEffect => e !== null)
@@ -222,16 +270,56 @@ export function normalizeCAConsumableWoundOptions(raw: unknown): CAConsumableWou
   return out;
 }
 
-// Wound Capacity — the full "HP" bar, drained by the point cost of each
-// active (untreated) wound. Not flat: it scales with Rank, since Rank (not
-// Race) is what determines how much punishment a character can take. A
-// fresh Bronze 1 character has 10; each star climbed past that adds 1 (see
-// caWoundCapacityMax below, which reads the rung straight off the Energy
-// Pool the same way caRankForEnergyPool does).
+// Superseded by caMaxHp below — kept only so old callers/tests that still
+// read it don't break. Nothing in the live UI calls this any more: HP is the
+// real vitality bar now, and a wound is a side effect, not a capacity spend.
 export function caWoundCapacityMax(
   character: { caEnergyPool?: number | null } | null | undefined,
 ): number {
   return 10 + caRankForEnergyPool(character?.caEnergyPool).index;
+}
+
+// ---------------------------------------------------------------------------
+// Health — replaces Wound Capacity as the real vitality bar. Everyone (player
+// or monster) starts at 20 and climbs the same Rank ladder wounds already
+// read rank off of: +5 for a star gained within a rank, +10 (not +5 as well)
+// for the star that crosses into a new rank.
+// ---------------------------------------------------------------------------
+
+export const CA_STARTING_HP = 20;
+export const CA_HP_PER_STAR = 5;
+export const CA_HP_PER_RANK = 10;
+
+/** How much the ladder rung at this index adds to Max HP, climbing from the rung before it. */
+function caHpStepAt(ladderIndex: number): number {
+  const rung = CA_RANK_LADDER[ladderIndex];
+  return rung.star.star === 1 ? CA_HP_PER_RANK : CA_HP_PER_STAR;
+}
+
+export function caMaxHp(
+  character: { caEnergyPool?: number | null } | null | undefined,
+): number {
+  const { index } = caRankForEnergyPool(character?.caEnergyPool);
+  let hp = CA_STARTING_HP;
+  for (let i = 1; i <= index; i++) hp += caHpStepAt(i);
+  return hp;
+}
+
+// ---------------------------------------------------------------------------
+// Focus — spent by the attacker (or the GM, for a monster) to choose where a
+// wound lands (see CA_WOUND_LOCATION_FOCUS_COST above). Starts at 10, +2 per
+// rung climbed — same ladder, same shape as the old Wound Capacity formula,
+// just a different starting value and step. Resets on a long rest. Nothing
+// deducts it automatically; it is a plain spendable number like Energy.
+// ---------------------------------------------------------------------------
+
+export const CA_STARTING_FOCUS = 10;
+export const CA_FOCUS_PER_RANK = 2;
+
+export function caMaxFocus(
+  character: { caEnergyPool?: number | null } | null | undefined,
+): number {
+  return CA_STARTING_FOCUS + CA_FOCUS_PER_RANK * caRankForEnergyPool(character?.caEnergyPool).index;
 }
 
 // Which body diagram renders behind the wound markers. Defaults to male.
@@ -951,4 +1039,236 @@ export function caAbilityRollLabel(
   const ability = String(character?.caAbilityName || "").trim() || "Ability";
   const roll = String(rollEntry?.name || "").trim();
   return roll ? `${ability} - ${roll}` : ability;
+}
+
+// ---------------------------------------------------------------------------
+// Item types — C.A.'s own list. Alphabetical, since nothing about display
+// order should matter more than "can I find it in the dropdown." Scroll,
+// spellbook and miscellaneous-as-"utility" are AA-V3 holdovers C.A. never
+// used; "utility" is folded into Miscellaneous here (see caNormalizeItemType)
+// rather than kept as a second name for the same idea.
+// ---------------------------------------------------------------------------
+
+export const CA_ITEM_TYPES = [
+  "ammunition",
+  "armor",
+  "beast_orb",
+  "consumable",
+  "container",
+  "crafter",
+  "currency",
+  "miscellaneous",
+  "rune",
+  "weapon",
+] as const;
+export type CAItemType = typeof CA_ITEM_TYPES[number];
+
+export const CA_ITEM_TYPE_LABELS: Record<CAItemType, string> = {
+  ammunition: "Ammunition",
+  armor: "Armor",
+  beast_orb: "Beast Orb",
+  consumable: "Consumable",
+  container: "Container",
+  crafter: "Crafter",
+  currency: "Currency",
+  miscellaneous: "Miscellaneous",
+  rune: "Rune",
+  weapon: "Weapon",
+};
+
+/**
+ * An item's stored itemType, corrected for the handful of values a C.A. item
+ * could have picked up before this list existed: "utility" is folded into
+ * Miscellaneous, and anything else C.A. never actually offers (scroll,
+ * spellbook — AA-V3 only) falls back to Miscellaneous too, rather than
+ * rendering as a type the item-type dropdown can't represent.
+ */
+export function caNormalizeItemType(itemType: string | null | undefined): CAItemType {
+  const raw = String(itemType || "");
+  if ((CA_ITEM_TYPES as readonly string[]).includes(raw)) return raw as CAItemType;
+  if (raw === "utility") return "miscellaneous";
+  return "miscellaneous";
+}
+
+export type CAWeaponHandedness = "one_handed" | "two_handed" | "ranged";
+export const CA_WEAPON_HANDEDNESS: CAWeaponHandedness[] = ["one_handed", "two_handed", "ranged"];
+export const CA_WEAPON_HANDEDNESS_LABELS: Record<CAWeaponHandedness, string> = {
+  one_handed: "Melee (one-handed)",
+  two_handed: "Melee (two-handed)",
+  ranged: "Ranged",
+};
+
+export type CAContainerKind = "backpack" | "storage_ring";
+export const CA_CONTAINER_KINDS: CAContainerKind[] = ["backpack", "storage_ring"];
+export const CA_CONTAINER_KIND_LABELS: Record<CAContainerKind, string> = {
+  backpack: "Backpack",
+  storage_ring: "Storage Ring",
+};
+export const CA_CONTAINER_KIND_DESCRIPTIONS: Record<CAContainerKind, string> = {
+  backpack: "Raises the wearer's own carry weight limit by its capacity while equipped.",
+  storage_ring: "Its own separate weight limit — items move in and out of the character's own inventory.",
+};
+
+// ---------------------------------------------------------------------------
+// Rank Scaling — how a stat that changes with an item's Rank tag is computed.
+// "Steady increase" adds a flat amount per rung climbed off the item's base
+// value; "Set value per rank" is a GM-typed table, one entry per rung on the
+// same 25-rung ladder a character's Rank uses, falling back to the base value
+// for any rung the GM hasn't filled in yet.
+// ---------------------------------------------------------------------------
+
+export type CARankScalingMode = "steady" | "table";
+
+export interface CARankScaling {
+  mode: CARankScalingMode;
+  /** "steady" mode: added once per rung, on top of the item's base value. */
+  perRank: number;
+  /** "table" mode: one entry per CA_RANK_LADDER rung; null = use the base value. */
+  table: (number | null)[];
+}
+
+export function makeDefaultCARankScaling(): CARankScaling {
+  return { mode: "steady", perRank: 0, table: new Array(CA_RANK_LADDER.length).fill(null) };
+}
+
+export function normalizeCARankScaling(raw: unknown): CARankScaling | null {
+  if (!raw || typeof raw !== "object") return null;
+  const anyR = raw as any;
+  const mode: CARankScalingMode = anyR.mode === "table" ? "table" : "steady";
+  const table: (number | null)[] = new Array(CA_RANK_LADDER.length).fill(null);
+  if (Array.isArray(anyR.table)) {
+    for (let i = 0; i < table.length; i++) {
+      const v = anyR.table[i];
+      table[i] = Number.isFinite(Number(v)) ? Number(v) : null;
+    }
+  }
+  return {
+    mode,
+    perRank: Number.isFinite(Number(anyR.perRank)) ? Number(anyR.perRank) : 0,
+    table,
+  };
+}
+
+/**
+ * The effective value of a rank-scalable stat at a given rung. `rankIndex`
+ * null/undefined (item has no Rank tag) always returns the base value
+ * unscaled.
+ */
+export function caRankScaledValue(
+  base: number,
+  scaling: CARankScaling | null | undefined,
+  rankIndex: number | null | undefined,
+): number {
+  if (!scaling || rankIndex == null) return base;
+  const index = Math.max(0, Math.min(CA_RANK_LADDER.length - 1, Math.trunc(rankIndex)));
+  if (scaling.mode === "table") {
+    const tableValue = scaling.table?.[index];
+    return tableValue != null ? tableValue : base;
+  }
+  return base + scaling.perRank * index;
+}
+
+/** "Gold 3" for an item's own Rank tag, same ladder a character's Rank reads. */
+export function caItemRankLabel(rankIndex: number | null | undefined): string {
+  if (rankIndex == null) return "Unranked";
+  const index = Math.max(0, Math.min(CA_RANK_LADDER.length - 1, Math.trunc(rankIndex)));
+  const rung = CA_RANK_LADDER[index];
+  return `${rung.rank.name} ${rung.star.star}`;
+}
+
+// ---------------------------------------------------------------------------
+// Runes — C.A.'s own socketing mechanic, independent of AA-V3's (which bakes
+// stat deltas onto the host item's real columns automatically). A C.A. rune
+// instead carries a free-form list of labeled boosts: the GM types whatever
+// the rune does ("Damage", "Carry Capacity", "Speed", anything) and a number,
+// and a player reads that off the item when they use it — nothing here is
+// applied to the host's stats automatically, matching the rest of C.A.'s
+// "players and the GM make the calls" wounds philosophy.
+// ---------------------------------------------------------------------------
+
+export interface CARuneBoost {
+  id: string;
+  /** Free text — "Damage", "Carry Capacity", "Fire Resistance", anything. */
+  label: string;
+  amount: number;
+}
+
+export function makeCARuneBoost(): CARuneBoost {
+  return { id: makeCAWoundId(), label: "", amount: 0 };
+}
+
+export function normalizeCARuneBoosts(raw: unknown): CARuneBoost[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CARuneBoost[] = [];
+  for (const b of raw) {
+    if (!b || typeof b !== "object") continue;
+    const anyB = b as any;
+    out.push({
+      id: typeof anyB.id === "string" && anyB.id ? anyB.id : makeCAWoundId(),
+      label: typeof anyB.label === "string" ? anyB.label : "",
+      amount: Number.isFinite(Number(anyB.amount)) ? Number(anyB.amount) : 0,
+    });
+  }
+  return out;
+}
+
+/** A rune socketed into a host item — a snapshot taken when it was socketed,
+ * so the host still shows what the rune does even if the rune item is later
+ * edited or deleted from the library. */
+export interface CASocketedRune {
+  slotIndex: number;
+  /** The rune item it came from, if it still exists — for unsocketing it back. */
+  runeItemId: string | null;
+  name: string;
+  image: string | null;
+  description: string;
+  boosts: CARuneBoost[];
+}
+
+export function normalizeCASocketedRunes(raw: unknown): CASocketedRune[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CASocketedRune[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const anyR = r as any;
+    out.push({
+      slotIndex: Number.isFinite(Number(anyR.slotIndex)) ? Math.trunc(Number(anyR.slotIndex)) : 0,
+      runeItemId: typeof anyR.runeItemId === "string" ? anyR.runeItemId : null,
+      name: typeof anyR.name === "string" ? anyR.name : "Unnamed Rune",
+      image: typeof anyR.image === "string" ? anyR.image : null,
+      description: typeof anyR.description === "string" ? anyR.description : "",
+      boosts: normalizeCARuneBoosts(anyR.boosts),
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Description GM notes — "## text ##" anywhere in an item's (or anything
+// else's) description is visible to GMs/admins only. Works like a note
+// embedded in the description rather than a separate field, so a GM can drop
+// a private aside right next to the public sentence it's about.
+// ---------------------------------------------------------------------------
+
+export interface CADescriptionParts {
+  /** The description with every ##...## span removed — what a player sees. */
+  player: string;
+  /** Every ##...## span's inner text, joined by a blank line. Empty if none. */
+  gm: string;
+  hasGmNotes: boolean;
+}
+
+export function caSplitDescriptionGmNotes(description: string | null | undefined): CADescriptionParts {
+  const text = String(description ?? "");
+  const gmParts: string[] = [];
+  const player = text
+    .replace(/##([\s\S]*?)##/g, (_match, inner) => {
+      const trimmed = String(inner).trim();
+      if (trimmed) gmParts.push(trimmed);
+      return "";
+    })
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { player, gm: gmParts.join("\n\n"), hasGmNotes: gmParts.length > 0 };
 }

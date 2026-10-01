@@ -33,6 +33,9 @@ export interface WoundShape {
   // Deliberately `string`, not a union: the two systems own their own severity
   // lists and are free to drift apart without breaking this shared type.
   severity: string;
+  // Where it landed — spent from the attacker's Focus. Also deliberately a
+  // plain string for the same reason as severity above.
+  location: string;
   description: string;
   effects: WoundEffectShape[];
 }

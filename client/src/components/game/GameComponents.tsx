@@ -10,7 +10,7 @@ import { V3_ATTRIBUTES, V3_SKILLS, attrValueToDieSides, makeEmptyV3Skills, v3Att
 import { v3WeaponBaseAttackEnergy, v3LevelDiceNotation } from "@shared/v3weapons";
 import { evaluateV3ElementEligibility } from "@shared/v3spells";
 import { isWoundSystem, woundSystemRules, type WoundShape, type WoundEffectShape } from "@shared/systemRules";
-import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_RANK } from "@shared/ca";
+import { caUsableEnergy, caAbilityRollLabel, caAuraOf, caPhysiqueState, caPhysiqueStatEffectTotal, caItemStatEffectTotal, makeCAPhysiqueEffect, normalizeCAPhysiqueEffects, CA_STARTING_ENERGY, CA_STARTING_PHYSIQUE, caAttributeBounds, caSkillBounds, caEffectiveSwimSpeed, caEffectiveEnergyType, caRankForEnergyPool, normalizeCAWounds, normalizeCAConsumableWoundOptions, caConsumableWoundOptionLabel, CA_WOUND_SEVERITY_LABELS, CA_WOUND_SEVERITY_RANK, caMaxHp, caMaxFocus, CA_WOUND_LOCATIONS, CA_WOUND_LOCATION_LABELS, CA_WOUND_LOCATION_FOCUS_COST, CA_WOUND_SEVERITY_MARGIN, type CAWoundLocation, type CAWoundSeverity } from "@shared/ca";
 import { systemLabel, isSwampySystem } from "@shared/systems";
 import { SwampyOverviewTab, SwampyTraitsTab, SwampyDrawingTab } from "./SwampyPanels";
 import { castV3WeaponBaseAttack, castV3Technique, type V3WeaponCastCharacter } from "@/lib/v3weaponcast";
@@ -3552,15 +3552,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
-          // The wound systems (C.A. / Swampy) track remaining Wound Capacity
-          // minus the point cost of active (untreated) wounds. Each reads its
-          // own wounds column via its rules pack.
-          const woundPercent = (character && isWoundSystem(campaignSystem))
-            ? (() => {
-                const wr = woundSystemRules(campaignSystem);
-                return Math.max(0, 100 - (wr.woundTotalCost(wr.woundsOf(character)) / wr.woundCapacityMax(character)) * 100);
-              })()
-            : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const tempEnergyPercent = character && character.maxEnergy > 0 ? ((character.tempEnergy ?? 0) / character.maxEnergy) * 100 : 0;
           const manaPercent = (character && (campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
@@ -3978,15 +3969,14 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               */}
               {(() => {
                 const isV3Bars = campaignSystem === 'aa-v3';
-                const isCABars = isWoundSystem(campaignSystem);
                 const canSeeBars = role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character?.id]);
-                // In V3 and the wound systems, the showBars toggle controls all bars; in V1/V2, per-character flags apply.
-                const barsToggleControlled = isV3Bars || isCABars;
+                // In V3, the showBars toggle controls all bars; everywhere else
+                // (including the wound systems, which now use the same HP bar as
+                // everyone else), per-character show*Bar flags apply.
+                const barsToggleControlled = isV3Bars;
                 const showMana = character && manaPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showManaBar ?? true) : showBars);
                 const showEnergy = character && energyPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showEnergyBar ?? true) : showBars);
-                // The wound systems replace HP with Wounds entirely — never show the HP bar for them.
-                const showHp = character && hpPercent !== null && canSeeBars && !isCABars && (!barsToggleControlled ? (character.showHpBar ?? true) : showBars);
-                const showWound = character && isCABars && woundPercent !== null && canSeeBars && showBars;
+                const showHp = character && hpPercent !== null && canSeeBars && (!barsToggleControlled ? (character.showHpBar ?? true) : showBars);
                 if (isV3Bars) {
                   const clamp = (v: number) => Math.max(0, Math.min(100, v));
                   const showCombined = (showEnergy || showMana) && (energyPercent !== null || manaPercent !== null);
@@ -4061,7 +4051,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 const barPositions = ['bottom-0.5', 'bottom-[10px]', 'bottom-[18px]'];
                 const manaPos = showMana ? barPositions[barIndex++] : '';
                 const energyPos = showEnergy ? barPositions[barIndex++] : '';
-                const hpPos = (showHp || showWound) ? barPositions[barIndex++] : '';
+                const hpPos = showHp ? barPositions[barIndex++] : '';
                 return (
                   <>
                     {showHp && (
@@ -4078,16 +4068,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                             style={{ width: `${Math.max(0, Math.min(100 - Math.max(0, Math.min(100, hpPercent!)), tempHpPercent))}%` }}
                           />
                         )}
-                      </div>
-                    )}
-                    {showWound && (
-                      <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2] flex`} data-testid={`bar-wound-${token.id}`}>
-                        <div
-                          className={`h-full ${
-                            woundPercent! > 60 ? 'bg-green-500' : woundPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`}
-                          style={{ width: `${Math.max(0, Math.min(100, woundPercent!))}%` }}
-                        />
                       </div>
                     )}
                     {showEnergy && (
@@ -11822,16 +11802,7 @@ function PinnedRosterChip({ testId, portraitSrc, displayName, character, campaig
     if (rollAnimTimeoutRef.current) clearTimeout(rollAnimTimeoutRef.current);
   }, []);
 
-  const isCA = isWoundSystem(campaignSystem);
-  const primaryBar = character
-    ? (isCA
-      ? (() => {
-          const wr = woundSystemRules(campaignSystem);
-          const woundMax = wr.woundCapacityMax(character);
-          return { value: Math.max(0, woundMax - wr.woundTotalCost(wr.woundsOf(character))), max: woundMax };
-        })()
-      : { value: character.hp ?? 0, max: character.maxHp ?? 1 })
-    : null;
+  const primaryBar = character ? { value: character.hp ?? 0, max: character.maxHp ?? 1 } : null;
   const energyBar = character ? { value: character.energy ?? 0, max: character.maxEnergy ?? 1 } : null;
   // Never reveal an empty box - there's nothing to show until a roll exists.
   const visible = !!latest && (revealed || historyOpen);
@@ -19857,6 +19828,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     updateCAWound(editingCAWoundId, {
       name: caWoundDraft.name,
       severity: caWoundDraft.severity,
+      location: caWoundDraft.location,
       description: caWoundDraft.description,
       effects: caWoundDraft.effects,
     });
@@ -21937,6 +21909,38 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
     }, 100);
   };
 
+  // C.A. Max HP and Max Focus are formula-derived from Rank (see
+  // shared/ca.ts caMaxHp/caMaxFocus) rather than hand-set, the same way Wound
+  // Capacity used to be. Keeping maxHp/maxFocus as real stored columns (so
+  // every generic HP bar elsewhere in the app reads the right number without
+  // having to special-case C.A.) means they have to be kept in sync by hand
+  // whenever Rank changes - this does that, and doubles as the one-time
+  // migration for a character whose maxHp/maxFocus predate this rework: the
+  // first time their sheet loads, the stale default self-corrects. A
+  // character at full health on the old max is healed to full on the new
+  // max (a rank-up should feel like a gain, not a wash); one that was
+  // already short of the old max just gets a higher ceiling, same as any
+  // other max-HP increase.
+  useEffect(() => {
+    if (!isWoundSystem(campaignSystem)) return;
+    const wantMaxHp = caMaxHp(liveCharacter);
+    const wantMaxFocus = caMaxFocus(liveCharacter);
+    const hpStale = (liveCharacter.maxHp ?? 0) !== wantMaxHp;
+    const focusStale = (liveCharacter.maxFocus ?? 0) !== wantMaxFocus;
+    if (!hpStale && !focusStale) return;
+    const wasFullHp = (liveCharacter.hp ?? 0) >= (liveCharacter.maxHp ?? 0);
+    const wasFullFocus = (liveCharacter.focus ?? 0) >= (liveCharacter.maxFocus ?? 0);
+    queueCharacterUpdate((cur: any) => ({
+      maxHp: wantMaxHp,
+      hp: wasFullHp ? wantMaxHp : Math.min(cur.hp ?? 0, wantMaxHp),
+      maxFocus: wantMaxFocus,
+      focus: wasFullFocus ? wantMaxFocus : Math.min(cur.focus ?? 0, wantMaxFocus),
+    }));
+    // Only `caEnergyPool` (what Rank is read off) should re-trigger this -
+    // not hp/focus themselves, or healing/spending would fight this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignSystem, liveCharacter.caEnergyPool]);
+
   // Rest-without-food confirmation (triggered by long-press on rest buttons)
   const [restWithoutFoodType, setRestWithoutFoodType] = useState<'short' | 'long' | null>(null);
   const restLongPressFiredRef = useRef(false);
@@ -22938,6 +22942,39 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
                   <CaDivider />
 
+                  {/* Health — replaces Wound Capacity as the real vitality
+                      bar. Max is formula-derived from Rank (see caMaxHp) and
+                      kept in sync automatically; current HP depletes/heals
+                      manually like every other system's HP. */}
+                  <CaSection
+                    icon={<Heart className="h-3.5 w-3.5" />}
+                    title="Health"
+                    testId="ca-section-health"
+                    value={
+                      <span
+                        className="text-sm font-bold text-stone-100 tabular-nums"
+                        data-testid="text-ca-hp"
+                        {...quickPressHandlers('hp')}
+                      >
+                        {liveCharacter.hp} / {effectiveMaxHp}
+                        {bonusMaxHp > 0 && (
+                          <span className="ml-1 text-emerald-300" data-testid="text-ca-bonus-hp">(+{bonusMaxHp} bonus)</span>
+                        )}
+                        {(liveCharacter.tempHp ?? 0) > 0 && (
+                          <span className="ml-1 text-amber-300" data-testid="text-ca-temp-hp">(+{liveCharacter.tempHp} temp)</span>
+                        )}
+                      </span>
+                    }
+                  >
+                    {quickEditPanel('hp')}
+                    <Progress value={Math.min(100, Math.round((liveCharacter.hp / Math.max(1, effectiveMaxHp)) * 100))} className="h-2 [&>div]:bg-rose-500" data-testid="progress-ca-hp" />
+                    <p className="text-[10px] text-stone-500" data-testid="text-ca-hp-formula">
+                      20 base, +5 per star, +10 per rank — scales with Rank above.
+                    </p>
+                  </CaSection>
+
+                  <CaDivider />
+
                   {/* Physique — how much energy the body is built to carry.
                       It doesn't cap the pool; going over it is what arms the
                       overload effects below. */}
@@ -23120,23 +23157,64 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
 
                   <CaDivider />
 
+                  {/* Focus — spent by the attacker (or the GM, for a monster)
+                      to choose where a wound lands. Nothing deducts it
+                      automatically; it's a plain spendable number, same as
+                      Energy, with a reference for what each location costs. */}
+                  <CaSection
+                    icon={<Sparkles className="h-3.5 w-3.5" />}
+                    title="Focus"
+                    testId="ca-section-focus"
+                    value={
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0 border-stone-700"
+                          disabled={!canQuickEdit || (liveCharacter.focus ?? 0) <= 0}
+                          onClick={() => queueCharacterUpdate((cur: any) => ({ focus: Math.max(0, (cur.focus ?? 0) - 1) }))}
+                          data-testid="button-ca-focus-decrement"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="text-sm font-bold text-stone-100 tabular-nums w-14 text-center" data-testid="text-ca-focus">
+                          {liveCharacter.focus ?? 0} / {caMaxFocus(liveCharacter)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0 border-stone-700"
+                          disabled={!canQuickEdit || (liveCharacter.focus ?? 0) >= caMaxFocus(liveCharacter)}
+                          onClick={() => queueCharacterUpdate((cur: any) => ({ focus: Math.min(caMaxFocus(cur), (cur.focus ?? 0) + 1) }))}
+                          data-testid="button-ca-focus-increment"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    }
+                  >
+                    <Progress value={Math.min(100, Math.round(((liveCharacter.focus ?? 0) / Math.max(1, caMaxFocus(liveCharacter))) * 100))} className="h-2 [&>div]:bg-violet-500" data-testid="progress-ca-focus" />
+                    <p className="text-[10px] text-stone-500" data-testid="text-ca-focus-costs">
+                      Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest.
+                    </p>
+                  </CaSection>
+
+                  <CaDivider />
+
                   {/* Wounds — replaces HP entirely for C.A. Freeform: "Add
                       Wound" arms placement mode, the next click on the body
-                      diagram drops a marker there. Wounds are purely
+                      diagram drops a marker there. Wounds are a side effect
+                      on top of HP, not a capacity spend — they're purely
                       descriptive (name/location/severity/description/effect
-                      lines) — no auto-derived mechanical stat penalties,
-                      severity only costs points against Wound Capacity. */}
+                      lines) and stay until treated or healed, however many
+                      there are. */}
                   <CaSection
                     icon={<Plus className="h-3.5 w-3.5" />}
                     title="Wounds"
                     testId="ca-section-wounds"
                     value={
                       <span className="text-sm font-bold text-stone-100 tabular-nums" data-testid="text-ca-wound-count">
-                        {(() => {
-                          const woundMax = woundRules.woundCapacityMax(liveCharacter);
-                          const remaining = Math.max(0, woundMax - woundRules.woundTotalCost(woundRules.woundsOf(liveCharacter)));
-                          return `${remaining} / ${woundMax}`;
-                        })()}
+                        {woundRules.normalizeWounds(woundRules.woundsOf(liveCharacter)).length}
                       </span>
                     }
                   >
@@ -23265,7 +23343,20 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                       </SelectTrigger>
                                       <SelectContent>
                                         {woundRules.WOUND_SEVERITIES.map((sev) => (
-                                          <SelectItem key={sev} value={sev}>{woundRules.WOUND_SEVERITY_LABELS[sev]} ({woundRules.WOUND_SEVERITY_COST[sev]})</SelectItem>
+                                          <SelectItem key={sev} value={sev}>{woundRules.WOUND_SEVERITY_LABELS[sev]}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Select
+                                      value={caWoundDraft.location}
+                                      onValueChange={(v) => setCaWoundDraft((prev) => (prev ? { ...prev, location: v } : prev))}
+                                    >
+                                      <SelectTrigger className="h-7 text-xs bg-stone-800 border-stone-700" data-testid={`select-ca-wound-${w.id}-location`}>
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {CA_WOUND_LOCATIONS.map((loc) => (
+                                          <SelectItem key={loc} value={loc}>{CA_WOUND_LOCATION_LABELS[loc]} ({CA_WOUND_LOCATION_FOCUS_COST[loc]} Focus)</SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
@@ -23364,7 +23455,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                                     <span className={`w-2 h-2 rounded-full shrink-0 ${severityDot[w.severity]}`} />
                                     <span className="text-xs font-semibold text-stone-200 truncate flex-1">{w.name || 'Unnamed Wound'}</span>
                                     <span className="text-[10px] text-stone-500 shrink-0">
-                                      {(woundRules.WOUND_SEVERITY_LABELS[w.severity] ?? w.severity).toUpperCase()} {woundRules.WOUND_SEVERITY_COST[w.severity] ?? 0}
+                                      {(woundRules.WOUND_SEVERITY_LABELS[w.severity] ?? w.severity).toUpperCase()} · {CA_WOUND_LOCATION_LABELS[w.location as CAWoundLocation] ?? w.location}
                                     </span>
                                     {canEditWounds && (
                                       <div className="flex items-center gap-1.5 shrink-0">
@@ -23428,7 +23519,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                           {woundRules.WOUND_SEVERITIES.map((sev) => (
                             <span key={sev} className="flex items-center gap-1.5">
                               <span className={`w-2.5 h-2.5 rounded-full ${severityDot[sev]}`} />
-                              <span>{woundRules.WOUND_SEVERITY_LABELS[sev]} = {woundRules.WOUND_SEVERITY_COST[sev]} {woundRules.WOUND_SEVERITY_COST[sev] === 1 ? 'Wound' : 'Wounds'}</span>
+                              <span>{woundRules.WOUND_SEVERITY_LABELS[sev]} = {CA_WOUND_SEVERITY_MARGIN[sev as CAWoundSeverity]}+ over the DC</span>
                             </span>
                           ))}
                         </div>

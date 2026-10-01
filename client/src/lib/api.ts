@@ -1438,6 +1438,21 @@ class ApiClient {
     });
   }
 
+  // C.A.'s own rune socketing — independent of the AA V3 pair above.
+  async caSocketRune(characterId: string, hostItemId: string, runeItemId: string, slotIndex: number): Promise<Item> {
+    return this.request(`/characters/${characterId}/items/${hostItemId}/ca-socket-rune`, {
+      method: 'POST',
+      body: JSON.stringify({ runeItemId, slotIndex }),
+    });
+  }
+
+  async caUnsocketRune(characterId: string, hostItemId: string, slotIndex: number): Promise<{ host: Item; rune: Item }> {
+    return this.request(`/characters/${characterId}/items/${hostItemId}/ca-unsocket-rune`, {
+      method: 'POST',
+      body: JSON.stringify({ slotIndex }),
+    });
+  }
+
   // C.A. only: Beast Orb absorption into the character's Ability page.
   async getAbsorbedItems(characterId: string): Promise<Item[]> {
     return this.request(`/characters/${characterId}/absorbed-items`);

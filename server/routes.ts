@@ -21,7 +21,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK } from "@shared/ca";
+import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -16009,6 +16009,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedHost);
     } catch (err) {
       res.status(400).json({ error: "Failed to remove rune" });
+    }
+  });
+
+  // C.A.'s own rune socketing — independent of the AA-V3 route pair above.
+  // A C.A. rune's boosts are never applied to the host's real columns (C.A.
+  // doesn't automate stat effects); socketing just snapshots what the rune
+  // says it does onto the host for display, and consumes the rune item.
+  app.post("/api/characters/:characterId/items/:itemId/ca-socket-rune", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "This rune system is C.A. only" });
+
+      const { runeItemId, slotIndex } = req.body || {};
+      if (!runeItemId) return res.status(400).json({ error: "runeItemId required" });
+      if (slotIndex === undefined || slotIndex === null) return res.status(400).json({ error: "slotIndex required" });
+
+      const host = await storage.getItem(req.params.itemId);
+      const rune = await storage.getItem(runeItemId);
+      if (!host || host.characterId !== req.params.characterId) return res.status(404).json({ error: "Host item not found" });
+      if (!rune || rune.characterId !== req.params.characterId) return res.status(404).json({ error: "Rune not found" });
+      if (caNormalizeItemType(rune.itemType) !== 'rune') return res.status(400).json({ error: "That item is not a rune" });
+      if (host.id === rune.id) return res.status(400).json({ error: "Cannot socket a rune into itself" });
+
+      const slotCount = (host as any).runeSlotCount ?? 0;
+      if (slotIndex < 0 || slotIndex >= slotCount) return res.status(400).json({ error: "Invalid rune slot" });
+
+      const sockets = normalizeCASocketedRunes((host as any).caRuneSockets);
+      if (sockets.some((s) => s.slotIndex === slotIndex)) return res.status(400).json({ error: "That slot is already filled" });
+
+      const snapshot = {
+        slotIndex,
+        runeItemId: rune.id,
+        name: rune.name,
+        image: rune.image ?? null,
+        description: rune.description ?? "",
+        boosts: normalizeCARuneBoosts((rune as any).caRuneBoosts),
+      };
+
+      if ((rune.quantity ?? 1) > 1) {
+        await storage.updateItem(rune.id, { quantity: (rune.quantity ?? 1) - 1 } as any);
+      } else {
+        await storage.deleteItem(rune.id);
+      }
+      const updatedHost = await storage.updateItem(host.id, { caRuneSockets: [...sockets, snapshot] } as any);
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedHost });
+      }
+      res.json(updatedHost);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to socket rune" });
+    }
+  });
+
+  // Unsocketing hands back a fresh, standalone rune item carrying a snapshot
+  // of what was socketed — not the original item, which may since have been
+  // edited or deleted — so the player always gets something real back.
+  app.post("/api/characters/:characterId/items/:itemId/ca-unsocket-rune", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      if (!access.allowed) return res.status(403).json({ error: "You don't have permission to edit this character's items" });
+      if (access.campaign?.system !== 'ca') return res.status(400).json({ error: "This rune system is C.A. only" });
+
+      const { slotIndex } = req.body || {};
+      if (slotIndex === undefined || slotIndex === null) return res.status(400).json({ error: "slotIndex required" });
+
+      const host = await storage.getItem(req.params.itemId);
+      if (!host || host.characterId !== req.params.characterId) return res.status(404).json({ error: "Host item not found" });
+
+      const sockets = normalizeCASocketedRunes((host as any).caRuneSockets);
+      const idx = sockets.findIndex((s) => s.slotIndex === slotIndex);
+      if (idx < 0) return res.status(404).json({ error: "No rune in that slot" });
+      const socket = sockets[idx];
+
+      const updatedHost = await storage.updateItem(host.id, { caRuneSockets: sockets.filter((_, i) => i !== idx) } as any);
+      const restoredRune = await storage.createItem({
+        characterId: req.params.characterId,
+        name: socket.name,
+        image: socket.image,
+        description: socket.description,
+        itemType: "rune",
+        rarity: host.rarity || "common",
+        quantity: 1,
+        system: "ca",
+        caRuneBoosts: socket.boosts,
+      } as any);
+
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, { type: "item_updated", characterId: req.params.characterId, item: updatedHost });
+        broadcastToCampaign(access.character.campaignId, { type: "item_created", characterId: req.params.characterId, item: restoredRune });
+      }
+      res.json({ host: updatedHost, rune: restoredRune });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to unsocket rune" });
     }
   });
 
