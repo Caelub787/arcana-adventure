@@ -591,11 +591,17 @@ export function LibraryItemSheet({
   const chg = (field: string) => (v: any) => setDraft({ [field]: v });
 
   const handleSave = () => {
-    if (isDirty) {
+    // Saving any edit to a legacy C.A. item ("utility", or anything else
+    // its new type list can't represent) also migrates its stored itemType
+    // to the normalized value - a quiet, incidental cleanup riding along
+    // on a GM's own edit, rather than a separate migration pass.
+    const needsTypeMigration = isCA && !("itemType" in draft) && rawType && rawType !== type;
+    if (isDirty || needsTypeMigration) {
       const normalized: Record<string, any> = {};
       for (const [k, v] of Object.entries(draft)) {
         normalized[k] = typeof v === "string" ? v.trim() : v;
       }
+      if (needsTypeMigration) normalized.itemType = type;
       onUpdate(normalized);
     }
     clearDraft();
