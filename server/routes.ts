@@ -21,7 +21,7 @@ import { isAdminUser } from "./lib/library-acl";
 import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
-import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts } from "@shared/ca";
+import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -5153,17 +5153,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newExhaustion = Math.max(0, currentExhaustion - 1);
       const exhaustionRecovered = currentExhaustion - newExhaustion;
       
-      // AA V3: refill spell creation tokens to the character's Anemos value on long rest
+      // AA V3: refill spell creation tokens to the character's Anemos value on long rest.
+      // C.A.: reset Focus to its Rank-derived max on long rest.
       let spellTokenUpdate: { spellCreationTokens?: number } = {};
+      let focusUpdate: { focus?: number } = {};
       if (character.campaignId) {
         const restCampaign = await storage.getCampaign(character.campaignId);
         if (restCampaign?.system === 'aa-v3') {
           spellTokenUpdate.spellCreationTokens = character.anemos || 0;
         }
+        if (restCampaign?.system === 'ca') {
+          focusUpdate.focus = caMaxFocus(character);
+        }
       }
 
       // Update character HP, Energy, exhaustion, restore mana to max, and clear bonus-max pools
-      const updatedCharacter = await storage.updateCharacter(character.id, { 
+      const updatedCharacter = await storage.updateCharacter(character.id, {
         hp: newHp,
         energy: newEnergy,
         mana: character.maxMana || 0,
@@ -5172,6 +5177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bonusMaxEnergy: 0,
         bonusMaxMana: 0,
         ...spellTokenUpdate,
+        ...focusUpdate,
       });
       
       // Reset trait uses on long rest (restores both long rest and short rest uses)
