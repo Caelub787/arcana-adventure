@@ -1,17 +1,23 @@
 /**
- * A library item, laid out as a sheet with a View and an Edit face.
+ * A library item, laid out as a sheet with a View face and an Edit face.
  *
  * View is how an item spends nearly all its life: read, glanced at, rolled
- * from. It shows only the fields that are actually set, laid out like an
- * entry in a bestiary rather than a form nobody finished filling in. Edit is
- * a deliberate mode a GM or trusted player steps into with the pencil in the
- * header - every field on the item becomes a plain, always-active input,
- * and nothing reaches the server until Save. Cancel throws the whole draft
- * away. This replaced an earlier version where every field edited itself in
- * place on double-click with no separate mode at all - fine for a handful of
+ * from. It's a stat block shaped like the kind of item it is - a weapon
+ * shows a damage chip, not a "Damage: 1d8" label; a potion reads like a
+ * label, listing what it heals or deals; a crafter shows its actual
+ * recipes, not a form for writing them. Edit is a deliberate mode a GM or
+ * trusted player steps into with the pencil in the header: every field
+ * becomes a plain, always-active input in an ordinary form, and nothing
+ * reaches the server until Save. Cancel throws the whole draft away.
+ *
+ * This replaced an earlier version where every field edited itself in place
+ * on double-click with no separate mode at all - fine for a handful of
  * values, but a crafter (Handling, Crafting Recipes, Repair, Build Recipe,
  * Effects, Rolls all at once) read as a pile of independently-editable
- * scraps rather than one thing.
+ * scraps rather than one thing. A second pass then made View real but left
+ * it as the same field-grid layout with the inputs simply turned off - a
+ * disabled form is not a stat block, so this pass gives each section its
+ * own shape in View while Edit keeps the ordinary form underneath it.
  *
  * The sections after Handling appear only for the kind of item they belong
  * to, so a utility item is a handful of fields and a rune is those plus the
@@ -27,7 +33,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Package, Sword, Shield, Coins, Trash2, X, Sparkles, ImageIcon,
   FlaskConical, Crosshair, Gem, ScrollText, BookOpen, Hammer, Dices, Layers,
-  Pencil, Check, Feather,
+  Pencil, Check, Feather, HeartPulse, Skull, Weight, Boxes, Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -40,6 +46,8 @@ import {
   CaValue,
   CaDivider,
   CaMedallion,
+  CaChipGroup,
+  CaChipCell,
 } from "@/components/game/CASheetUI";
 import { RollEntriesEditor } from "@/components/game/RollEntriesEditor";
 import { CraftRecipesEditor } from "@/components/game/CraftRecipesEditor";
@@ -58,6 +66,7 @@ import {
   normalizeCAConsumableWoundOptions,
   caConsumableWoundOptionLabel,
   type CAConsumableWoundOption,
+  CA_ATTRIBUTES,
 } from "@shared/ca";
 import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
 import { V3_SKILLS, V3_RUNE_TARGET_ITEM_TYPES, V3_RUNE_STAT_TARGETS } from "@shared/v3";
@@ -69,6 +78,7 @@ const opts = (values: readonly string[], blank?: string) => [
     label: v.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
   })),
 ];
+const titleCase = (v: string) => v.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
 /**
  * What a new item may be set to, matching what the old form offered: crafters
@@ -110,6 +120,20 @@ const RARITY_COLORS: Record<string, string> = {
   legendary: "text-amber-400",
 };
 
+/** The item-type icon shown in the View masthead and on type-specific chips. */
+const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  weapon: Sword,
+  armor: Shield,
+  consumable: FlaskConical,
+  ammunition: Crosshair,
+  rune: Gem,
+  scroll: ScrollText,
+  spellbook: BookOpen,
+  crafter: Hammer,
+  container: Boxes,
+  beast_orb: Wand2,
+};
+
 /**
  * Local, unsent edits made while the sheet is in Edit mode. Nothing here
  * reaches the server until Save; Cancel just throws it away. Only fields the
@@ -123,38 +147,32 @@ function useItemDraft(editing: boolean) {
   return { draft, patch, isDirty: Object.keys(draft).length > 0, clear: () => setDraftState({}) };
 }
 
-/**
- * One boolean, shown two different ways: a plain checked/unchecked mark when
- * the sheet is being read, an actual checkbox when it's being edited. There
- * is no third, disabled-but-visible state - a control you cannot use is not
- * information, it's clutter.
- */
+/** A small gilt-bordered pill - a true flag made visible in View, never shown
+ * at all when false (a badge that isn't there says nothing, which is right). */
+function ItemBadge({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "danger" }) {
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] uppercase tracking-wide font-semibold ${tone === "danger" ? "border-red-800 text-red-400" : ""}`}
+      style={tone === "neutral" ? { borderColor: "var(--ca-gilt-line)", color: "var(--ca-gilt)" } : undefined}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** A real checkbox - Edit mode only. View mode renders a true flag as an
+ * ItemBadge instead (see above) and nothing at all when false. */
 function ToggleRow({
   label,
   value,
   onChange,
-  editing,
   testId,
 }: {
   label: string;
   value: boolean;
   onChange: (next: boolean) => void;
-  editing: boolean;
   testId: string;
 }) {
-  if (!editing) {
-    return (
-      <div className="flex items-center gap-2 text-xs" data-testid={testId}>
-        <span
-          className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm border shrink-0 ${value ? "border-transparent" : "border-stone-600"}`}
-          style={value ? { background: "var(--ca-gilt)" } : undefined}
-        >
-          {value && <Check className="h-2.5 w-2.5 text-stone-950" />}
-        </span>
-        <span className={value ? "text-stone-300" : "text-stone-600"}>{label}</span>
-      </div>
-    );
-  }
   return (
     <label className="flex items-center gap-2 text-xs w-fit cursor-pointer">
       <input
@@ -288,14 +306,13 @@ function TargetAmountList<T extends { target: string; amount: number }>({
 }
 
 /**
- * The sheet's one field primitive. Read mode is label-above-value, plain
- * text, no affordance suggesting it can be touched. Edit mode is the same
- * label over a plain, always-active input - no double-click, no per-field
- * Save/Cancel, because the whole sheet is already in one editing session
- * with its own Save/Cancel at top and bottom.
+ * The sheet's Edit-mode field primitive: a label over a plain, always-active
+ * input. No double-click, no per-field Save/Cancel - the whole sheet is
+ * already in one editing session with its own Save/Cancel at top and
+ * bottom. (View mode doesn't use this at all - each section builds its own
+ * read layout, shaped like the stat it's showing rather than a form row.)
  */
 function ItemField({
-  editing,
   field,
   label,
   value,
@@ -307,11 +324,9 @@ function ItemField({
   min,
   max,
   wide = false,
-  empty = "—",
   testId,
   decimal = false,
 }: {
-  editing: boolean;
   field: string;
   label: React.ReactNode;
   value: any;
@@ -325,44 +340,26 @@ function ItemField({
   min?: number;
   max?: number;
   wide?: boolean;
-  /** What to show when the value is unset. */
-  empty?: string;
   testId?: string;
   /** Set true for `kind="number"` fields like weight that take fractional values. */
   decimal?: boolean;
 }) {
   const id = testId ?? `item-field-${field}`;
-
-  if (!editing) {
-    const shown =
-      kind === "select"
-        ? options?.find((o) => o.value === String(value ?? ""))?.label ?? (value ? String(value) : "")
-        : value === null || value === undefined || value === "" ? "" : String(value);
-    return (
-      <CaField label={label} wide={wide}>
-        <CaValue
-          className={`${shown ? "" : "text-stone-600 italic"} ${kind === "textarea" ? "whitespace-pre-wrap" : "truncate"}`}
-          data-testid={`${id}-value`}
-        >
-          {shown || empty}
-          {shown && suffix ? <span className="text-stone-500 text-xs ml-1">{suffix}</span> : null}
-        </CaValue>
-      </CaField>
-    );
-  }
-
   return (
     <CaField label={label} wide={wide}>
       {kind === "number" ? (
-        <NumberInput
-          min={min}
-          max={max}
-          integer={!decimal}
-          value={value ?? min ?? 0}
-          onChange={(v) => onChange(v ?? min ?? 0)}
-          className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm w-full"
-          data-testid={id}
-        />
+        <div className="flex items-center gap-1">
+          <NumberInput
+            min={min}
+            max={max}
+            integer={!decimal}
+            value={value ?? min ?? 0}
+            onChange={(v) => onChange(v ?? min ?? 0)}
+            className="bg-stone-900 border-stone-700 text-stone-200 h-8 text-sm w-full"
+            data-testid={id}
+          />
+          {suffix && <span className="text-stone-500 text-xs shrink-0">{suffix}</span>}
+        </div>
       ) : kind === "select" ? (
         <select
           value={String(value ?? "")}
@@ -523,6 +520,11 @@ export function LibraryItemSheet({
   const isCA = isWoundSystem(systemSlug);
   const damageTypes = getEffectTypes(systemSlug);
   const rules = woundSystemRules(systemSlug) as any;
+  const attrLabel = (a?: string | null) => {
+    if (!a || a === "none") return null;
+    if (isCA) return CA_ATTRIBUTES.find((x) => x.key === a)?.name ?? titleCase(a);
+    return titleCase(a);
+  };
 
   // The sheet carries its own image browser rather than asking each host to
   // wire one in: the admin page and a character sheet would otherwise need to
@@ -569,6 +571,17 @@ export function LibraryItemSheet({
   });
   const linkedTemplateIds: string[] = templateLinks?.templateIds ?? [];
   const liveTemplates = (rollTemplates as any[]).filter((t) => t.isLiveTemplate);
+  const itemNameFor = (id?: string | null) => (id ? (rollTemplates as any[]).find((it) => it.id === id)?.name : undefined);
+
+  // The crafter's own recipes, read straight for View (a real recipe list,
+  // not a stand-in telling the GM to go to Edit) and shared by key with
+  // CraftRecipesEditor's own query so Edit and View never show stale data
+  // relative to each other.
+  const { data: craftRecipes = [] } = useQuery<any[]>({
+    queryKey: ["craft-recipes", craftRecipeItemId],
+    queryFn: () => api.getCraftRecipes(craftRecipeItemId!),
+    enabled: type === "crafter" && !!craftRecipeItemId,
+  });
 
   // Build recipe: "what this item is built from", authored on the item's own
   // library row so a crafter can later pick it up via "Add from items". Only
@@ -637,7 +650,6 @@ export function LibraryItemSheet({
             <ToggleRow
               label="Show"
               value={!hidden}
-              editing
               onChange={(v) => setSectionHidden(key, !v)}
               testId={`toggle-library-item-section-${key}`}
             />
@@ -649,13 +661,14 @@ export function LibraryItemSheet({
     );
   };
 
+  const TypeIcon = TYPE_ICON[type] ?? Package;
+
   return (
     <CaSheetFrame className="w-full max-w-3xl">
       <div className="flex items-center justify-between gap-2 px-4 py-2 border-b" style={{ borderColor: "var(--ca-gilt-line-soft)" }}>
         <span className="flex items-center gap-1.5 min-w-0">
-          {/* A rarity gem rather than a text label - the sheet already says
-              the rarity in Identity; this is just a glance-able tell, the
-              way a loot table's own entries are colour-coded. */}
+          {/* A rarity gem rather than a text label - this is a glance-able
+              tell, the way a loot table's own entries are colour-coded. */}
           <span
             className={`shrink-0 w-2 h-2 rounded-full ${RARITY_COLORS[String(val("rarity") || "common")] ?? "text-stone-300"}`}
             style={{ background: "currentColor" }}
@@ -722,225 +735,380 @@ export function LibraryItemSheet({
           in here just fought that one for the wheel/touch input instead of
           actually letting the page scroll. */}
       <div className="p-4 space-y-3">
-        <CaSection icon={<Package className="h-3.5 w-3.5" />} title="Identity">
-          <div className="flex gap-3 items-start">
-            {/* The picture, in the same ringed square a character's portrait
-                gets, so an item and a character read as the same kind of
-                thing. */}
-            <div className="shrink-0">
-              <button
-                type="button"
-                onClick={pickImage}
-                disabled={!isEditing}
-                className="relative w-20 h-20 rounded-xl p-[2px] block disabled:cursor-default"
-                style={{ background: "linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)" }}
-                aria-label={val("image") ? "Change item image" : "Add an item image"}
-                title={isEditing ? "Click to choose an image" : undefined}
-                data-testid="button-library-item-image"
-              >
-                <span className="w-full h-full rounded-[10px] overflow-hidden bg-stone-800 flex items-center justify-center relative">
-                  {val("image") ? (
-                    <img src={val("image")} alt="" className="w-full h-full object-cover" data-testid="img-library-item" />
-                  ) : (
-                    <ImageIcon className="h-7 w-7 text-stone-600" />
-                  )}
-                  {isEditing && (
+        {/* ============================= IDENTITY ============================= */}
+        {!isEditing ? (
+          // The masthead: a bigger portrait, the name in display type, a
+          // type/rarity badge row, and the description read as flavour text
+          // under it - the way a bestiary entry or a card front reads,
+          // rather than a stack of "Name:" / "Type:" labels.
+          <div className="flex gap-3 items-start" data-testid="card-library-item-masthead">
+            <div
+              className="shrink-0 w-24 h-24 rounded-xl p-[2px]"
+              style={{ background: "linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)" }}
+            >
+              <span className="w-full h-full rounded-[10px] overflow-hidden bg-stone-800 flex items-center justify-center block">
+                {val("image") ? (
+                  <img src={val("image")} alt="" className="w-full h-full object-cover" data-testid="img-library-item" />
+                ) : (
+                  <TypeIcon className="h-9 w-9 text-stone-600" />
+                )}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <h2 className="font-display text-xl font-bold text-stone-100 truncate" data-testid="text-library-item-view-name">
+                {val("name") || "Untitled Item"}
+              </h2>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <ItemBadge>{titleCase(type || "item")}</ItemBadge>
+                <span className={`text-[10px] uppercase tracking-wide font-semibold ${RARITY_COLORS[String(val("rarity") || "common")]}`}>
+                  {titleCase(String(val("rarity") || "common"))}
+                </span>
+                {val("size") && <span className="text-[10px] uppercase tracking-wide text-stone-500">{val("size")}</span>}
+              </div>
+              {val("description") ? (
+                <p className="text-xs text-stone-400 italic leading-relaxed" data-testid="text-library-item-view-description">
+                  {val("description")}
+                </p>
+              ) : (
+                <p className="text-xs text-stone-600 italic">No description.</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <CaSection icon={<Package className="h-3.5 w-3.5" />} title="Identity">
+            <div className="flex gap-3 items-start">
+              {/* The picture, in the same ringed square a character's
+                  portrait gets, so an item and a character read as the
+                  same kind of thing. */}
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={pickImage}
+                  className="relative w-20 h-20 rounded-xl p-[2px] block"
+                  style={{ background: "linear-gradient(135deg, var(--ca-gilt) 0%, var(--ca-gilt-dim) 45%, var(--ca-gilt-bright) 100%)" }}
+                  aria-label={val("image") ? "Change item image" : "Add an item image"}
+                  title="Click to choose an image"
+                  data-testid="button-library-item-image"
+                >
+                  <span className="w-full h-full rounded-[10px] overflow-hidden bg-stone-800 flex items-center justify-center relative">
+                    {val("image") ? (
+                      <img src={val("image")} alt="" className="w-full h-full object-cover" data-testid="img-library-item" />
+                    ) : (
+                      <ImageIcon className="h-7 w-7 text-stone-600" />
+                    )}
                     <span className="absolute bottom-0 right-0 w-5 h-5 rounded-tl-lg bg-stone-950/80 flex items-center justify-center" style={{ color: "var(--ca-gilt)" }}>
                       <Pencil className="h-2.5 w-2.5" />
                     </span>
-                  )}
-                </span>
-              </button>
-              {isEditing && val("image") && (
-                <button
-                  type="button"
-                  onClick={() => setDraft({ image: null })}
-                  className="mt-1 w-full text-[10px] text-stone-500 hover:text-red-400"
-                  data-testid="button-library-item-image-clear"
-                >
-                  Remove
+                  </span>
                 </button>
-              )}
+                {val("image") && (
+                  <button
+                    type="button"
+                    onClick={() => setDraft({ image: null })}
+                    className="mt-1 w-full text-[10px] text-stone-500 hover:text-red-400"
+                    data-testid="button-library-item-image-clear"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <CaFieldGrid className="flex-1 min-w-0">
+                <ItemField field="name" label="Name" value={val("name")} onChange={chg("name")} placeholder="Untitled Item" testId="library-item-name" />
+                <ItemField field="itemType" label="Type" value={type} onChange={chg("itemType")} kind="select" options={itemTypeOptions(systemSlug, type)} testId="library-item-type" />
+                <ItemField field="rarity" label="Rarity" value={val("rarity")} onChange={chg("rarity")} kind="select" options={opts(RARITIES)} testId="library-item-rarity" />
+                <ItemField field="size" label="Size" value={val("size")} onChange={chg("size")} testId="library-item-size" />
+                <ItemField field="description" label="Description" value={val("description")} onChange={chg("description")} kind="textarea" wide placeholder="What it is." testId="library-item-description" />
+              </CaFieldGrid>
             </div>
-            <CaFieldGrid className="flex-1 min-w-0">
-              <ItemField editing={isEditing} field="name" label="Name" value={val("name")} onChange={chg("name")} placeholder="Untitled Item" testId="library-item-name" />
-              <ItemField editing={isEditing} field="itemType" label="Type" value={type} onChange={chg("itemType")} kind="select" options={itemTypeOptions(systemSlug, type)} testId="library-item-type" />
-              <ItemField editing={isEditing} field="rarity" label="Rarity" value={val("rarity")} onChange={chg("rarity")} kind="select" options={opts(RARITIES)} testId="library-item-rarity" />
-              <ItemField editing={isEditing} field="size" label="Size" value={val("size")} onChange={chg("size")} testId="library-item-size" />
-              <ItemField editing={isEditing} field="description" label="Description" value={val("description")} onChange={chg("description")} kind="textarea" wide placeholder="What it is." testId="library-item-description" />
-            </CaFieldGrid>
-          </div>
-        </CaSection>
+          </CaSection>
+        )}
 
+        {/* ============================= HANDLING ============================= */}
         {section(<Coins className="h-3.5 w-3.5" />, "Handling", (
-          <>
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="quantity" label="Quantity" value={val("quantity") ?? 1} onChange={chg("quantity")} kind="number" min={0} testId="library-item-quantity" />
-              <ItemField editing={isEditing} field="itemWeight" label="Weight" value={val("itemWeight") ?? 0} onChange={chg("itemWeight")} kind="number" min={0} decimal suffix="lb" testId="library-item-weight" />
-              <ItemField editing={isEditing} field="price" label="Value" value={val("price") ?? 0} onChange={chg("price")} kind="number" min={0} testId="library-item-price" />
-              <ItemField editing={isEditing} field="durability" label="Durability" value={val("durability") ?? 10} onChange={chg("durability")} kind="number" min={0} testId="library-item-durability" />
-              <ItemField editing={isEditing} field="maxDurability" label="Max durability" value={val("maxDurability") ?? 10} onChange={chg("maxDurability")} kind="number" min={0} testId="library-item-max-durability" />
-              <ItemField editing={isEditing} field="carryCapacity" label="Carry capacity" value={val("carryCapacity") ?? 0} onChange={chg("carryCapacity")} kind="number" min={0} testId="library-item-carry-capacity" />
-              {isV3 && (
-                <ItemField
-                  editing={isEditing}
-                  field="advancedItemTypeId"
-                  label="Advanced item type"
-                  value={val("advancedItemTypeId")}
-                  onChange={chg("advancedItemTypeId")}
-                  kind="select"
-                  options={[{ value: "", label: "None" }, ...(advancedTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
-                  testId="library-item-advanced-type"
-                />
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={4}>
+                <CaChipCell icon={<Boxes className="h-3 w-3" />} label="Qty">{val("quantity") ?? 1}</CaChipCell>
+                <CaChipCell icon={<Weight className="h-3 w-3" />} label="Weight">{val("itemWeight") ?? 0} lb</CaChipCell>
+                <CaChipCell icon={<Coins className="h-3 w-3" />} label="Value">{val("price") ?? 0}</CaChipCell>
+                <CaChipCell icon={<Hammer className="h-3 w-3" />} label="Durability">{val("durability") ?? 10}/{val("maxDurability") ?? 10}</CaChipCell>
+              </CaChipGroup>
+              {isV3 && val("advancedItemTypeId") && (
+                <p className="text-[11px] text-stone-500 mt-1.5">
+                  Advanced type: <span className="text-stone-300">{(advancedTypes as any[]).find((t) => t.id === val("advancedItemTypeId"))?.name ?? "—"}</span>
+                </p>
               )}
-            </CaFieldGrid>
-            <div className="mt-2 space-y-1">
-              <ToggleRow label="Container" value={!!val("isContainer")} editing={isEditing} onChange={chg("isContainer")} testId="toggle-library-item-container" />
-              {/* Two-handedness is how the item is held, not how it hits, so
-                  it stays behind when C.A. drops the Attack block. */}
-              {isCA && type === "weapon" && (
-                <ToggleRow label="Heavy (two-handed)" value={!!val("isHeavy")} editing={isEditing} onChange={chg("isHeavy")} testId="toggle-library-item-heavy" />
+              {(val("isContainer") || (isCA && type === "weapon" && val("isHeavy"))) && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {val("isContainer") && <ItemBadge>Container ({val("carryCapacity") ?? 0} lb capacity)</ItemBadge>}
+                  {isCA && type === "weapon" && val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
+                </div>
               )}
-            </div>
-          </>
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="quantity" label="Quantity" value={val("quantity") ?? 1} onChange={chg("quantity")} kind="number" min={0} testId="library-item-quantity" />
+                <ItemField field="itemWeight" label="Weight" value={val("itemWeight") ?? 0} onChange={chg("itemWeight")} kind="number" min={0} decimal suffix="lb" testId="library-item-weight" />
+                <ItemField field="price" label="Value" value={val("price") ?? 0} onChange={chg("price")} kind="number" min={0} testId="library-item-price" />
+                <ItemField field="durability" label="Durability" value={val("durability") ?? 10} onChange={chg("durability")} kind="number" min={0} testId="library-item-durability" />
+                <ItemField field="maxDurability" label="Max durability" value={val("maxDurability") ?? 10} onChange={chg("maxDurability")} kind="number" min={0} testId="library-item-max-durability" />
+                <ItemField field="carryCapacity" label="Carry capacity" value={val("carryCapacity") ?? 0} onChange={chg("carryCapacity")} kind="number" min={0} testId="library-item-carry-capacity" />
+                {isV3 && (
+                  <ItemField
+                    field="advancedItemTypeId"
+                    label="Advanced item type"
+                    value={val("advancedItemTypeId")}
+                    onChange={chg("advancedItemTypeId")}
+                    kind="select"
+                    options={[{ value: "", label: "None" }, ...(advancedTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
+                    testId="library-item-advanced-type"
+                  />
+                )}
+              </CaFieldGrid>
+              <div className="mt-2 space-y-1">
+                <ToggleRow label="Container" value={!!val("isContainer")} onChange={chg("isContainer")} testId="toggle-library-item-container" />
+                {/* Two-handedness is how the item is held, not how it hits, so
+                    it stays behind when C.A. drops the Attack block. */}
+                {isCA && type === "weapon" && (
+                  <ToggleRow label="Heavy (two-handed)" value={!!val("isHeavy")} onChange={chg("isHeavy")} testId="toggle-library-item-heavy" />
+                )}
+              </div>
+            </>
+          )
         ))}
 
         {renderAfterHandling}
 
+        {/* ============================== ATTACK =============================== */}
         {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
-          <>
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="damage" label="Damage" value={val("damage")} onChange={chg("damage")} placeholder="1d8" testId="library-item-damage" />
-              <ItemField editing={isEditing} field="damageType" label="Damage type" value={val("damageType")} onChange={chg("damageType")} kind="select" options={opts(damageTypes, "None")} testId="library-item-damage-type" />
-              <ItemField editing={isEditing} field="mod" label="Modifier" value={val("mod") ?? 0} onChange={chg("mod")} kind="number" min={-99} testId="library-item-mod" />
-              <ItemField editing={isEditing} field="range" label="Range" value={val("range") ?? 0} onChange={chg("range")} kind="number" min={0} suffix="ft" testId="library-item-range" />
-              <ItemField editing={isEditing} field="attribute" label="Attribute" value={val("attribute")} onChange={chg("attribute")} kind="select" options={opts(ATTRIBUTES, "None")} testId="library-item-attribute" />
-              <ItemField editing={isEditing} field="aoe" label="Area" value={val("aoe")} onChange={chg("aoe")} kind="select" options={opts(AOE_SHAPES, "None")} testId="library-item-aoe" />
-              {type === "weapon" && (
-                <ItemField editing={isEditing} field="weaponCategory" label="Weapon category" value={val("weaponCategory")} onChange={chg("weaponCategory")} placeholder="bow, sling…" testId="library-item-weapon-category" />
-              )}
-              {isV3 && type === "weapon" && (
-                <ItemField
-                  editing={isEditing}
-                  field="ammunitionTypeId"
-                  label="Uses ammunition"
-                  value={val("ammunitionTypeId")}
-                  onChange={chg("ammunitionTypeId")}
-                  kind="select"
-                  options={[{ value: "", label: "None (melee)" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
-                  testId="library-item-uses-ammo"
-                />
-              )}
-            </CaFieldGrid>
-            <div className="mt-2 space-y-1">
-              <ToggleRow label="Heavy (two-handed)" value={!!val("isHeavy")} editing={isEditing} onChange={chg("isHeavy")} testId="toggle-library-item-heavy" />
-              <ToggleRow label="Can apply token effects" value={!!val("canApplyEffects")} editing={isEditing} onChange={chg("canApplyEffects")} testId="toggle-library-item-effects" />
-            </div>
-            {isV3 && type === "weapon" && (techniqueGroups as any[]).length > 0 && (
-              <div className="mt-2">
-                <span className="text-xs text-stone-400 block mb-1">Technique groups</span>
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {(techniqueGroups as any[]).map((g) => {
-                    const on = ((val("v3TechniqueGroupIds") as string[]) || []).includes(g.id);
-                    return (
-                      <ToggleRow
-                        key={g.id}
-                        label={g.name}
-                        value={on}
-                        editing={isEditing}
-                        onChange={(next) => {
-                          const current = (val("v3TechniqueGroupIds") as string[]) || [];
-                          setDraft({ v3TechniqueGroupIds: next ? [...current, g.id] : current.filter((x) => x !== g.id) });
-                        }}
-                        testId={`toggle-library-item-technique-${g.id}`}
-                      />
-                    );
-                  })}
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={4}>
+                <CaChipCell icon={<Sword className="h-3 w-3" />} label="Damage">{val("damage") || "—"}</CaChipCell>
+                <CaChipCell label="Type">{val("damageType") ? titleCase(val("damageType")) : "—"}</CaChipCell>
+                <CaChipCell label="Modifier">{val("mod") >= 0 ? `+${val("mod") ?? 0}` : val("mod")}</CaChipCell>
+                <CaChipCell label="Range">{val("range") ? `${val("range")} ft` : "Melee"}</CaChipCell>
+                {attrLabel(val("attribute")) && <CaChipCell label="Attribute">{attrLabel(val("attribute"))}</CaChipCell>}
+                {val("aoe") && <CaChipCell label="Area">{titleCase(val("aoe"))}</CaChipCell>}
+                {type === "weapon" && val("weaponCategory") && <CaChipCell label="Category">{titleCase(val("weaponCategory"))}</CaChipCell>}
+                {isV3 && type === "weapon" && val("ammunitionTypeId") && (
+                  <CaChipCell label="Ammunition">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>
+                )}
+              </CaChipGroup>
+              {(val("isHeavy") || val("canApplyEffects")) && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
+                  {val("canApplyEffects") && <ItemBadge>Applies token effects</ItemBadge>}
                 </div>
-              </div>
-            )}
-          </>
-        ))}
-
-        {type === "armor" && toggleableSection("protection", <Shield className="h-3.5 w-3.5" />, "Protection", (
-          <>
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="armorSlot" label="Slot" value={val("armorSlot")} onChange={chg("armorSlot")} kind="select" options={opts(ARMOR_SLOTS, "None")} testId="library-item-armor-slot" />
-              <ItemField editing={isEditing} field="armorBonus" label="DC bonus" value={val("armorBonus") ?? 0} onChange={chg("armorBonus")} kind="number" min={0} testId="library-item-armor-bonus" />
-              <ItemField editing={isEditing} field="damageReduction" label="Damage reduction" value={val("damageReduction") ?? 0} onChange={chg("damageReduction")} kind="number" min={0} testId="library-item-damage-reduction" />
-              <ItemField editing={isEditing} field="damageReductionType" label="Reduces" value={val("damageReductionType")} onChange={chg("damageReductionType")} kind="select" options={opts(damageTypes, "All")} testId="library-item-damage-reduction-type" />
-              {val("grantsDcBonus") && (
-                <ItemField editing={isEditing} field="dcBonusValue" label="Granted DC bonus" value={val("dcBonusValue") ?? 0} onChange={chg("dcBonusValue")} kind="number" min={0} testId="library-item-dc-bonus-value" />
               )}
-            </CaFieldGrid>
-            <div className="mt-2 space-y-1">
-              <ToggleRow label="Grants a DC bonus" value={!!val("grantsDcBonus")} editing={isEditing} onChange={chg("grantsDcBonus")} testId="toggle-library-item-grants-dc" />
-            </div>
-            {isV3 && (
-              <div className="mt-2">
-                <span className="text-xs text-stone-400 block mb-1">Attribute and skill boosts while worn</span>
-                <TargetAmountList
-                  rows={((val("v3ArmorBoosts") as any[]) || []) as Array<{ target: string; amount: number }>}
-                  targets={effectTargets}
-                  editing={isEditing}
-                  onChange={(next) => setDraft({ v3ArmorBoosts: next })}
-                  makeRow={() => ({ target: effectTargets[0]?.value ?? "", amount: 0 })}
-                  emptyText="No boosts."
-                  idOf={(_r, i) => String(i)}
-                  testId="library-item-armor-boosts"
-                />
-              </div>
-            )}
-          </>
-        ))}
-
-        {type === "consumable" && toggleableSection("when-used", <FlaskConical className="h-3.5 w-3.5" />, "When used", (
-          <>
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="rationServings" label="Ration servings" value={val("rationServings") ?? 0} onChange={chg("rationServings")} kind="number" min={0} testId="library-item-ration-servings" />
-              {/* The stat changes and the detonation are a roll wearing a
-                  different hat - C.A. writes them as rolls instead. */}
-              {!isCA && (
-                <>
-                  <ItemField editing={isEditing} field="consumableHpChange" label="HP change" value={val("consumableHpChange") ?? 0} onChange={chg("consumableHpChange")} kind="number" min={-999} testId="library-item-hp-change" />
-                  <ItemField editing={isEditing} field="consumableEnergyChange" label="Energy change" value={val("consumableEnergyChange") ?? 0} onChange={chg("consumableEnergyChange")} kind="number" min={-999} testId="library-item-energy-change" />
-                  <ItemField editing={isEditing} field="consumableManaChange" label="Mana change" value={val("consumableManaChange") ?? 0} onChange={chg("consumableManaChange")} kind="number" min={-999} testId="library-item-mana-change" />
-                </>
-              )}
-              <ItemField editing={isEditing} field="consumableEffectDescription" label="Effect" value={val("consumableEffectDescription")} onChange={chg("consumableEffectDescription")} kind="textarea" wide placeholder="What happens when it is used." testId="library-item-consumable-effect" />
-              {!isCA && val("isDetonatable") && (
-                <>
-                  <ItemField editing={isEditing} field="detonateAoeShape" label="Detonation area" value={val("detonateAoeShape")} onChange={chg("detonateAoeShape")} kind="select" options={opts(AOE_SHAPES, "None")} testId="library-item-detonate-shape" />
-                  <ItemField editing={isEditing} field="detonateAoeRange" label="Detonation range" value={val("detonateAoeRange") ?? 15} onChange={chg("detonateAoeRange")} kind="number" min={0} suffix="ft" testId="library-item-detonate-range" />
-                </>
-              )}
-            </CaFieldGrid>
-            {!isCA && (
+              {isV3 && type === "weapon" && (techniqueGroups as any[]).length > 0 && (() => {
+                const on = ((val("v3TechniqueGroupIds") as string[]) || []);
+                const named = (techniqueGroups as any[]).filter((g) => on.includes(g.id));
+                return named.length > 0 ? (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                    {named.map((g) => <ItemBadge key={g.id}>{g.name}</ItemBadge>)}
+                  </div>
+                ) : null;
+              })()}
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="damage" label="Damage" value={val("damage")} onChange={chg("damage")} placeholder="1d8" testId="library-item-damage" />
+                <ItemField field="damageType" label="Damage type" value={val("damageType")} onChange={chg("damageType")} kind="select" options={opts(damageTypes, "None")} testId="library-item-damage-type" />
+                <ItemField field="mod" label="Modifier" value={val("mod") ?? 0} onChange={chg("mod")} kind="number" min={-99} testId="library-item-mod" />
+                <ItemField field="range" label="Range" value={val("range") ?? 0} onChange={chg("range")} kind="number" min={0} suffix="ft" testId="library-item-range" />
+                <ItemField field="attribute" label="Attribute" value={val("attribute")} onChange={chg("attribute")} kind="select" options={opts(ATTRIBUTES, "None")} testId="library-item-attribute" />
+                <ItemField field="aoe" label="Area" value={val("aoe")} onChange={chg("aoe")} kind="select" options={opts(AOE_SHAPES, "None")} testId="library-item-aoe" />
+                {type === "weapon" && (
+                  <ItemField field="weaponCategory" label="Weapon category" value={val("weaponCategory")} onChange={chg("weaponCategory")} placeholder="bow, sling…" testId="library-item-weapon-category" />
+                )}
+                {isV3 && type === "weapon" && (
+                  <ItemField
+                    field="ammunitionTypeId"
+                    label="Uses ammunition"
+                    value={val("ammunitionTypeId")}
+                    onChange={chg("ammunitionTypeId")}
+                    kind="select"
+                    options={[{ value: "", label: "None (melee)" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
+                    testId="library-item-uses-ammo"
+                  />
+                )}
+              </CaFieldGrid>
               <div className="mt-2 space-y-1">
-                <ToggleRow label="Rolls like a weapon" value={!!val("isDamaging")} editing={isEditing} onChange={chg("isDamaging")} testId="toggle-library-item-damaging" />
-                <ToggleRow label="Can be detonated" value={!!val("isDetonatable")} editing={isEditing} onChange={chg("isDetonatable")} testId="toggle-library-item-detonatable" />
+                <ToggleRow label="Heavy (two-handed)" value={!!val("isHeavy")} onChange={chg("isHeavy")} testId="toggle-library-item-heavy" />
+                <ToggleRow label="Can apply token effects" value={!!val("canApplyEffects")} onChange={chg("canApplyEffects")} testId="toggle-library-item-effects" />
               </div>
-            )}
-            {isCA && (
-              <div className="mt-3">
-                <span className="text-xs text-stone-400 block mb-1">Wound effect options</span>
-                {isEditing && (
+              {isV3 && type === "weapon" && (techniqueGroups as any[]).length > 0 && (
+                <div className="mt-2">
+                  <span className="text-xs text-stone-400 block mb-1">Technique groups</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {(techniqueGroups as any[]).map((g) => {
+                      const on = ((val("v3TechniqueGroupIds") as string[]) || []).includes(g.id);
+                      return (
+                        <ToggleRow
+                          key={g.id}
+                          label={g.name}
+                          value={on}
+                          onChange={(next) => {
+                            const current = (val("v3TechniqueGroupIds") as string[]) || [];
+                            setDraft({ v3TechniqueGroupIds: next ? [...current, g.id] : current.filter((x) => x !== g.id) });
+                          }}
+                          testId={`toggle-library-item-technique-${g.id}`}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        ))}
+
+        {/* ============================= PROTECTION ============================= */}
+        {type === "armor" && toggleableSection("protection", <Shield className="h-3.5 w-3.5" />, "Protection", (
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={3}>
+                <CaChipCell icon={<Shield className="h-3 w-3" />} label="Slot">{val("armorSlot") ? titleCase(val("armorSlot")) : "—"}</CaChipCell>
+                <CaChipCell label="DC Bonus">+{val("armorBonus") ?? 0}</CaChipCell>
+                <CaChipCell label="Reduction">{val("damageReduction") ?? 0}{val("damageReductionType") ? ` ${titleCase(val("damageReductionType"))}` : ""}</CaChipCell>
+              </CaChipGroup>
+              {val("grantsDcBonus") && (
+                <p className="text-[11px] text-stone-500 mt-1.5">Grants a DC bonus of <span className="text-stone-300">+{val("dcBonusValue") ?? 0}</span>.</p>
+              )}
+              {isV3 && (((val("v3ArmorBoosts") as any[]) || []).length > 0) && (
+                <div className="mt-2">
+                  <span className="text-[11px] text-stone-500 block mb-1">While worn</span>
+                  <TargetAmountList
+                    rows={((val("v3ArmorBoosts") as any[]) || []) as Array<{ target: string; amount: number }>}
+                    targets={effectTargets}
+                    editing={false}
+                    onChange={() => {}}
+                    makeRow={() => ({ target: effectTargets[0]?.value ?? "", amount: 0 })}
+                    emptyText="No boosts."
+                    idOf={(_r, i) => String(i)}
+                    testId="library-item-armor-boosts"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="armorSlot" label="Slot" value={val("armorSlot")} onChange={chg("armorSlot")} kind="select" options={opts(ARMOR_SLOTS, "None")} testId="library-item-armor-slot" />
+                <ItemField field="armorBonus" label="DC bonus" value={val("armorBonus") ?? 0} onChange={chg("armorBonus")} kind="number" min={0} testId="library-item-armor-bonus" />
+                <ItemField field="damageReduction" label="Damage reduction" value={val("damageReduction") ?? 0} onChange={chg("damageReduction")} kind="number" min={0} testId="library-item-damage-reduction" />
+                <ItemField field="damageReductionType" label="Reduces" value={val("damageReductionType")} onChange={chg("damageReductionType")} kind="select" options={opts(damageTypes, "All")} testId="library-item-damage-reduction-type" />
+                {val("grantsDcBonus") && (
+                  <ItemField field="dcBonusValue" label="Granted DC bonus" value={val("dcBonusValue") ?? 0} onChange={chg("dcBonusValue")} kind="number" min={0} testId="library-item-dc-bonus-value" />
+                )}
+              </CaFieldGrid>
+              <div className="mt-2 space-y-1">
+                <ToggleRow label="Grants a DC bonus" value={!!val("grantsDcBonus")} onChange={chg("grantsDcBonus")} testId="toggle-library-item-grants-dc" />
+              </div>
+              {isV3 && (
+                <div className="mt-2">
+                  <span className="text-xs text-stone-400 block mb-1">Attribute and skill boosts while worn</span>
+                  <TargetAmountList
+                    rows={((val("v3ArmorBoosts") as any[]) || []) as Array<{ target: string; amount: number }>}
+                    targets={effectTargets}
+                    editing
+                    onChange={(next) => setDraft({ v3ArmorBoosts: next })}
+                    makeRow={() => ({ target: effectTargets[0]?.value ?? "", amount: 0 })}
+                    emptyText="No boosts."
+                    idOf={(_r, i) => String(i)}
+                    testId="library-item-armor-boosts"
+                  />
+                </div>
+              )}
+            </>
+          )
+        ))}
+
+        {/* ============================= WHEN USED ============================== */}
+        {type === "consumable" && toggleableSection("when-used", <FlaskConical className="h-3.5 w-3.5" />, "When used", (
+          !isEditing ? (
+            <>
+              {!isCA && (
+                <CaChipGroup cols={4}>
+                  <CaChipCell icon={<HeartPulse className="h-3 w-3" />} label="HP">{(val("consumableHpChange") ?? 0) >= 0 ? `+${val("consumableHpChange") ?? 0}` : val("consumableHpChange")}</CaChipCell>
+                  <CaChipCell label="Energy">{(val("consumableEnergyChange") ?? 0) >= 0 ? `+${val("consumableEnergyChange") ?? 0}` : val("consumableEnergyChange")}</CaChipCell>
+                  <CaChipCell label="Mana">{(val("consumableManaChange") ?? 0) >= 0 ? `+${val("consumableManaChange") ?? 0}` : val("consumableManaChange")}</CaChipCell>
+                  <CaChipCell label="Rations">{val("rationServings") ?? 0}</CaChipCell>
+                </CaChipGroup>
+              )}
+              {val("consumableEffectDescription") && (
+                <p className="text-xs text-stone-300 italic mt-2">{val("consumableEffectDescription")}</p>
+              )}
+              {!isCA && (val("isDamaging") || val("isDetonatable")) && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {val("isDamaging") && <ItemBadge>Rolls like a weapon</ItemBadge>}
+                  {val("isDetonatable") && (
+                    <ItemBadge tone="danger">
+                      Detonates{val("detonateAoeShape") ? ` · ${titleCase(val("detonateAoeShape"))}` : ""}{val("detonateAoeRange") ? ` · ${val("detonateAoeRange")}ft` : ""}
+                    </ItemBadge>
+                  )}
+                </div>
+              )}
+              {isCA && (
+                <div className="space-y-1.5 mt-1" data-testid="library-item-wound-options">
+                  {woundOptions.length === 0 ? (
+                    <p className="text-xs text-stone-500 italic">No effect configured - this potion does nothing yet.</p>
+                  ) : (
+                    woundOptions.map((opt) => (
+                      <div
+                        key={opt.id}
+                        className="flex items-center gap-2 rounded-lg border bg-stone-900/50 px-2.5 py-1.5"
+                        style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+                      >
+                        {opt.mode === "heal" ? (
+                          <HeartPulse className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                        ) : (
+                          <Skull className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                        )}
+                        <span className="text-xs text-stone-200">{caConsumableWoundOptionLabel(opt)}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="rationServings" label="Ration servings" value={val("rationServings") ?? 0} onChange={chg("rationServings")} kind="number" min={0} testId="library-item-ration-servings" />
+                {/* The stat changes and the detonation are a roll wearing a
+                    different hat - C.A. writes them as rolls instead. */}
+                {!isCA && (
+                  <>
+                    <ItemField field="consumableHpChange" label="HP change" value={val("consumableHpChange") ?? 0} onChange={chg("consumableHpChange")} kind="number" min={-999} testId="library-item-hp-change" />
+                    <ItemField field="consumableEnergyChange" label="Energy change" value={val("consumableEnergyChange") ?? 0} onChange={chg("consumableEnergyChange")} kind="number" min={-999} testId="library-item-energy-change" />
+                    <ItemField field="consumableManaChange" label="Mana change" value={val("consumableManaChange") ?? 0} onChange={chg("consumableManaChange")} kind="number" min={-999} testId="library-item-mana-change" />
+                  </>
+                )}
+                <ItemField field="consumableEffectDescription" label="Effect" value={val("consumableEffectDescription")} onChange={chg("consumableEffectDescription")} kind="textarea" wide placeholder="What happens when it is used." testId="library-item-consumable-effect" />
+                {!isCA && val("isDetonatable") && (
+                  <>
+                    <ItemField field="detonateAoeShape" label="Detonation area" value={val("detonateAoeShape")} onChange={chg("detonateAoeShape")} kind="select" options={opts(AOE_SHAPES, "None")} testId="library-item-detonate-shape" />
+                    <ItemField field="detonateAoeRange" label="Detonation range" value={val("detonateAoeRange") ?? 15} onChange={chg("detonateAoeRange")} kind="number" min={0} suffix="ft" testId="library-item-detonate-range" />
+                  </>
+                )}
+              </CaFieldGrid>
+              {!isCA && (
+                <div className="mt-2 space-y-1">
+                  <ToggleRow label="Rolls like a weapon" value={!!val("isDamaging")} onChange={chg("isDamaging")} testId="toggle-library-item-damaging" />
+                  <ToggleRow label="Can be detonated" value={!!val("isDetonatable")} onChange={chg("isDetonatable")} testId="toggle-library-item-detonatable" />
+                </div>
+              )}
+              {isCA && (
+                <div className="mt-3">
+                  <span className="text-xs text-stone-400 block mb-1">Wound effect options</span>
                   <p className="text-[11px] text-stone-500 mb-2">
                     Each option is one way to use this potion - the player picks one on use. "Heal" removes that
                     many of the player's own wounds at that severity (they choose which); "Deal" adds new ones.
                   </p>
-                )}
-                {!isEditing ? (
-                  <div className="space-y-1" data-testid="library-item-wound-options">
-                    {woundOptions.length === 0 ? (
-                      <p className="text-[11px] text-stone-500">No wound options.</p>
-                    ) : (
-                      woundOptions.map((opt) => (
-                        <p key={opt.id} className="text-xs text-stone-300">{caConsumableWoundOptionLabel(opt)}</p>
-                      ))
-                    )}
-                  </div>
-                ) : (
                   <div className="space-y-1" data-testid="library-item-wound-options">
                     {woundOptions.length === 0 && (
                       <p className="text-[11px] text-stone-500">No wound options yet.</p>
@@ -1000,92 +1168,195 @@ export function LibraryItemSheet({
                       + Add option
                     </button>
                   </div>
-                )}
-              </div>
-            )}
-          </>
+                </div>
+              )}
+            </>
+          )
         ))}
 
+        {/* ============================= AMMUNITION ============================= */}
         {type === "ammunition" && toggleableSection("ammunition", <Crosshair className="h-3.5 w-3.5" />, "Ammunition", (
-          <CaFieldGrid>
-            <ItemField editing={isEditing} field="ammunitionType" label="Ammunition type" value={val("ammunitionType")} onChange={chg("ammunitionType")} placeholder="arrow, bolt…" testId="library-item-ammo-type" />
-            <ItemField editing={isEditing} field="breakChance" label="Break chance" value={val("breakChance") ?? 10} onChange={chg("breakChance")} kind="number" min={0} max={100} suffix="%" testId="library-item-break-chance" />
-            {isV3 && (
-              <ItemField
-                editing={isEditing}
-                field="ammunitionTypeId"
-                label="V3 type"
-                value={val("ammunitionTypeId")}
-                onChange={chg("ammunitionTypeId")}
-                kind="select"
-                options={[{ value: "", label: "None" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
-                testId="library-item-ammo-type-id"
-              />
-            )}
-          </CaFieldGrid>
+          !isEditing ? (
+            <CaChipGroup cols={3}>
+              <CaChipCell icon={<Crosshair className="h-3 w-3" />} label="Type">{val("ammunitionType") || "—"}</CaChipCell>
+              <CaChipCell label="Break chance">{val("breakChance") ?? 10}%</CaChipCell>
+              {isV3 && <CaChipCell label="V3 type">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>}
+            </CaChipGroup>
+          ) : (
+            <CaFieldGrid>
+              <ItemField field="ammunitionType" label="Ammunition type" value={val("ammunitionType")} onChange={chg("ammunitionType")} placeholder="arrow, bolt…" testId="library-item-ammo-type" />
+              <ItemField field="breakChance" label="Break chance" value={val("breakChance") ?? 10} onChange={chg("breakChance")} kind="number" min={0} max={100} suffix="%" testId="library-item-break-chance" />
+              {isV3 && (
+                <ItemField
+                  field="ammunitionTypeId"
+                  label="V3 type"
+                  value={val("ammunitionTypeId")}
+                  onChange={chg("ammunitionTypeId")}
+                  kind="select"
+                  options={[{ value: "", label: "None" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
+                  testId="library-item-ammo-type-id"
+                />
+              )}
+            </CaFieldGrid>
+          )
         ))}
 
+        {/* ================================ RUNE ================================ */}
         {type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
-          <>
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="runeTargetItemType" label="Sockets into" value={val("runeTargetItemType") ?? "any"} onChange={chg("runeTargetItemType")} kind="select" options={V3_RUNE_TARGET_ITEM_TYPES.map((t) => ({ value: t.value, label: t.label }))} testId="library-item-rune-target" />
-              <ItemField editing={isEditing} field="runeRemoveDurabilityCost" label="Removal cost" value={val("runeRemoveDurabilityCost") ?? 1} onChange={chg("runeRemoveDurabilityCost")} kind="number" min={0} suffix="max durability" testId="library-item-rune-remove-cost" />
-              <ItemField editing={isEditing} field="runeUseMode" label="Use" value={val("runeUseMode") ?? "none"} onChange={chg("runeUseMode")} kind="select" options={RUNE_USE_MODES} testId="library-item-rune-use-mode" />
-              <ItemField editing={isEditing} field="runeWeaponDamageLevelBonus" label="Weapon damage levels" value={val("runeWeaponDamageLevelBonus") ?? 0} onChange={chg("runeWeaponDamageLevelBonus")} kind="number" min={0} testId="library-item-rune-damage-levels" />
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={3}>
+                <CaChipCell icon={<Gem className="h-3 w-3" />} label="Sockets into">{titleCase(val("runeTargetItemType") ?? "any")}</CaChipCell>
+                <CaChipCell label="Removal cost">{val("runeRemoveDurabilityCost") ?? 1}</CaChipCell>
+                <CaChipCell label="Use">{val("runeUseMode") === "skill_check" ? "Skill check" : "Flavour only"}</CaChipCell>
+              </CaChipGroup>
               {val("runeUseMode") === "skill_check" && (
+                <p className="text-[11px] text-stone-500 mt-1.5">
+                  {v3SkillOpts.find((s) => s.value === val("runeSkillKey"))?.label ?? "No skill set"}
+                  {val("runeSkillAdjustment") ? ` (${val("runeSkillAdjustment") > 0 ? "+" : ""}${val("runeSkillAdjustment")})` : ""}
+                </p>
+              )}
+              {(val("runeWeaponDamageLevelBonus") > 0 || val("runeUnremovable")) && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {val("runeWeaponDamageLevelBonus") > 0 && <ItemBadge>+{val("runeWeaponDamageLevelBonus")} weapon damage levels</ItemBadge>}
+                  {val("runeUnremovable") && <ItemBadge tone="danger">Unremovable</ItemBadge>}
+                </div>
+              )}
+              {(((val("runeStatEffects") as any[]) || []).length > 0) && (
+                <div className="mt-2">
+                  <span className="text-[11px] text-stone-500 block mb-1">What it does to the host item</span>
+                  <TargetAmountList
+                    rows={((val("runeStatEffects") as any[]) || []) as Array<{ target: string; amount: number }>}
+                    targets={V3_RUNE_STAT_TARGETS.map((t) => ({ value: t.value, label: t.label }))}
+                    editing={false}
+                    onChange={() => {}}
+                    makeRow={() => ({ target: V3_RUNE_STAT_TARGETS[0].value, amount: 0 })}
+                    emptyText="No stat changes."
+                    idOf={(_r, i) => String(i)}
+                    testId="library-item-rune-stats"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="runeTargetItemType" label="Sockets into" value={val("runeTargetItemType") ?? "any"} onChange={chg("runeTargetItemType")} kind="select" options={V3_RUNE_TARGET_ITEM_TYPES.map((t) => ({ value: t.value, label: t.label }))} testId="library-item-rune-target" />
+                <ItemField field="runeRemoveDurabilityCost" label="Removal cost" value={val("runeRemoveDurabilityCost") ?? 1} onChange={chg("runeRemoveDurabilityCost")} kind="number" min={0} suffix="max durability" testId="library-item-rune-remove-cost" />
+                <ItemField field="runeUseMode" label="Use" value={val("runeUseMode") ?? "none"} onChange={chg("runeUseMode")} kind="select" options={RUNE_USE_MODES} testId="library-item-rune-use-mode" />
+                <ItemField field="runeWeaponDamageLevelBonus" label="Weapon damage levels" value={val("runeWeaponDamageLevelBonus") ?? 0} onChange={chg("runeWeaponDamageLevelBonus")} kind="number" min={0} testId="library-item-rune-damage-levels" />
+                {val("runeUseMode") === "skill_check" && (
+                  <>
+                    <ItemField field="runeSkillKey" label="Skill" value={val("runeSkillKey")} onChange={chg("runeSkillKey")} kind="select" options={v3SkillOpts} testId="library-item-rune-skill" />
+                    <ItemField field="runeSkillAdjustment" label="Skill adjustment" value={val("runeSkillAdjustment") ?? 0} onChange={chg("runeSkillAdjustment")} kind="number" min={-99} testId="library-item-rune-skill-adjustment" />
+                  </>
+                )}
+              </CaFieldGrid>
+              <div className="mt-2 space-y-1">
+                <ToggleRow label="Cannot be removed once socketed" value={!!val("runeUnremovable")} onChange={chg("runeUnremovable")} testId="toggle-library-item-rune-unremovable" />
+              </div>
+              <div className="mt-2">
+                <span className="text-xs text-stone-400 block mb-1">What it does to the host item</span>
+                <TargetAmountList
+                  rows={((val("runeStatEffects") as any[]) || []) as Array<{ target: string; amount: number }>}
+                  targets={V3_RUNE_STAT_TARGETS.map((t) => ({ value: t.value, label: t.label }))}
+                  editing
+                  onChange={(next) => setDraft({ runeStatEffects: next })}
+                  makeRow={() => ({ target: V3_RUNE_STAT_TARGETS[0].value, amount: 0 })}
+                  emptyText="No stat changes."
+                  idOf={(_r, i) => String(i)}
+                  testId="library-item-rune-stats"
+                />
+              </div>
+            </>
+          )
+        ))}
+
+        {/* =============================== SCROLL =============================== */}
+        {type === "scroll" && toggleableSection("scroll", <ScrollText className="h-3.5 w-3.5" />, "Scroll", (
+          !isEditing ? (
+            <p className="text-sm text-stone-200" data-testid="text-library-item-scroll-summary">
+              {val("scrollEffectMode") === "knowledge" ? (
+                <>Grants Knowledge: <span className="font-semibold">{val("scrollKnowledgeName") || "—"}</span> ({attrLabel(val("scrollKnowledgeAttribute")) ?? titleCase(val("scrollKnowledgeAttribute") ?? "intelligence")} {val("scrollKnowledgeValue") ?? 0})</>
+              ) : val("scrollEffectMode") === "skill" ? (
+                <>Adjusts Skill: <span className="font-semibold">{v3SkillOpts.find((s) => s.value === val("scrollSkillKey"))?.label ?? "—"}</span> {(val("scrollSkillAmount") ?? 0) >= 0 ? "+" : ""}{val("scrollSkillAmount") ?? 0}</>
+              ) : (
+                <>Casts a spell on use.</>
+              )}
+            </p>
+          ) : (
+            <CaFieldGrid>
+              <ItemField field="scrollEffectMode" label="Does" value={val("scrollEffectMode") ?? "spell"} onChange={chg("scrollEffectMode")} kind="select" options={SCROLL_MODES} wide testId="library-item-scroll-mode" />
+              {val("scrollEffectMode") === "knowledge" && (
                 <>
-                  <ItemField editing={isEditing} field="runeSkillKey" label="Skill" value={val("runeSkillKey")} onChange={chg("runeSkillKey")} kind="select" options={v3SkillOpts} testId="library-item-rune-skill" />
-                  <ItemField editing={isEditing} field="runeSkillAdjustment" label="Skill adjustment" value={val("runeSkillAdjustment") ?? 0} onChange={chg("runeSkillAdjustment")} kind="number" min={-99} testId="library-item-rune-skill-adjustment" />
+                  <ItemField field="scrollKnowledgeName" label="Knowledge" value={val("scrollKnowledgeName")} onChange={chg("scrollKnowledgeName")} testId="library-item-scroll-knowledge" />
+                  <ItemField field="scrollKnowledgeAttribute" label="Attribute" value={val("scrollKnowledgeAttribute") ?? "intelligence"} onChange={chg("scrollKnowledgeAttribute")} kind="select" options={opts(ATTRIBUTES)} testId="library-item-scroll-attribute" />
+                  <ItemField field="scrollKnowledgeValue" label="Value" value={val("scrollKnowledgeValue") ?? 0} onChange={chg("scrollKnowledgeValue")} kind="number" min={0} testId="library-item-scroll-value" />
+                </>
+              )}
+              {val("scrollEffectMode") === "skill" && (
+                <>
+                  <ItemField field="scrollSkillKey" label="Skill" value={val("scrollSkillKey")} onChange={chg("scrollSkillKey")} kind="select" options={v3SkillOpts} testId="library-item-scroll-skill" />
+                  <ItemField field="scrollSkillAmount" label="Adjustment" value={val("scrollSkillAmount") ?? 0} onChange={chg("scrollSkillAmount")} kind="number" min={-99} testId="library-item-scroll-skill-amount" />
                 </>
               )}
             </CaFieldGrid>
-            <div className="mt-2 space-y-1">
-              <ToggleRow label="Cannot be removed once socketed" value={!!val("runeUnremovable")} editing={isEditing} onChange={chg("runeUnremovable")} testId="toggle-library-item-rune-unremovable" />
-            </div>
-            <div className="mt-2">
-              <span className="text-xs text-stone-400 block mb-1">What it does to the host item</span>
-              <TargetAmountList
-                rows={((val("runeStatEffects") as any[]) || []) as Array<{ target: string; amount: number }>}
-                targets={V3_RUNE_STAT_TARGETS.map((t) => ({ value: t.value, label: t.label }))}
-                editing={isEditing}
-                onChange={(next) => setDraft({ runeStatEffects: next })}
-                makeRow={() => ({ target: V3_RUNE_STAT_TARGETS[0].value, amount: 0 })}
-                emptyText="No stat changes."
-                idOf={(_r, i) => String(i)}
-                testId="library-item-rune-stats"
-              />
-            </div>
-          </>
+          )
         ))}
 
-        {type === "scroll" && toggleableSection("scroll", <ScrollText className="h-3.5 w-3.5" />, "Scroll", (
-          <CaFieldGrid>
-            <ItemField editing={isEditing} field="scrollEffectMode" label="Does" value={val("scrollEffectMode") ?? "spell"} onChange={chg("scrollEffectMode")} kind="select" options={SCROLL_MODES} wide testId="library-item-scroll-mode" />
-            {val("scrollEffectMode") === "knowledge" && (
-              <>
-                <ItemField editing={isEditing} field="scrollKnowledgeName" label="Knowledge" value={val("scrollKnowledgeName")} onChange={chg("scrollKnowledgeName")} testId="library-item-scroll-knowledge" />
-                <ItemField editing={isEditing} field="scrollKnowledgeAttribute" label="Attribute" value={val("scrollKnowledgeAttribute") ?? "intelligence"} onChange={chg("scrollKnowledgeAttribute")} kind="select" options={opts(ATTRIBUTES)} testId="library-item-scroll-attribute" />
-                <ItemField editing={isEditing} field="scrollKnowledgeValue" label="Value" value={val("scrollKnowledgeValue") ?? 0} onChange={chg("scrollKnowledgeValue")} kind="number" min={0} testId="library-item-scroll-value" />
-              </>
-            )}
-            {val("scrollEffectMode") === "skill" && (
-              <>
-                <ItemField editing={isEditing} field="scrollSkillKey" label="Skill" value={val("scrollSkillKey")} onChange={chg("scrollSkillKey")} kind="select" options={v3SkillOpts} testId="library-item-scroll-skill" />
-                <ItemField editing={isEditing} field="scrollSkillAmount" label="Adjustment" value={val("scrollSkillAmount") ?? 0} onChange={chg("scrollSkillAmount")} kind="number" min={-99} testId="library-item-scroll-skill-amount" />
-              </>
-            )}
-          </CaFieldGrid>
-        ))}
-
+        {/* ============================== SPELLBOOK ============================= */}
         {type === "spellbook" && toggleableSection("spellbook", <BookOpen className="h-3.5 w-3.5" />, "Spellbook", (
-          <CaFieldGrid>
-            <ItemField editing={isEditing} field="maxSpells" label="Capacity" value={val("maxSpells") ?? 10} onChange={chg("maxSpells")} kind="number" min={0} suffix="spells (0 = unlimited)" wide testId="library-item-max-spells" />
-          </CaFieldGrid>
+          !isEditing ? (
+            <CaChipGroup cols={2}>
+              <CaChipCell icon={<BookOpen className="h-3 w-3" />} label="Capacity">{(val("maxSpells") ?? 10) === 0 ? "Unlimited" : val("maxSpells") ?? 10}</CaChipCell>
+            </CaChipGroup>
+          ) : (
+            <CaFieldGrid>
+              <ItemField field="maxSpells" label="Capacity" value={val("maxSpells") ?? 10} onChange={chg("maxSpells")} kind="number" min={0} suffix="spells (0 = unlimited)" wide testId="library-item-max-spells" />
+            </CaFieldGrid>
+          )
         ))}
 
+        {/* ========================== CRAFTING RECIPES ========================== */}
         {type === "crafter" && isSheetGM && toggleableSection("crafting-recipes", <Hammer className="h-3.5 w-3.5" />, "Crafting Recipes", (
           !isEditing ? (
-            <p className="text-xs text-stone-500 italic">Press the pencil above and switch to Edit to view and manage this crafter's recipes.</p>
+            <div className="space-y-2" data-testid="library-item-crafting-recipes-view">
+              {craftRecipes.length === 0 ? (
+                <p className="text-xs text-stone-500 italic">No recipes yet.</p>
+              ) : (
+                craftRecipes.map((r: any) => (
+                  <div key={r.id} className="rounded-lg border bg-stone-900/50 px-2.5 py-2" style={{ borderColor: "var(--ca-gilt-line-soft)" }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-stone-100">{r.name || "Unnamed recipe"}</span>
+                      {!r.noRoll && (
+                        <span className="font-mono text-xs shrink-0" style={{ color: "var(--ca-gilt)" }}>
+                          {r.diceFormula}{r.mod ? (r.mod > 0 ? ` +${r.mod}` : ` ${r.mod}`) : ""}{attrLabel(r.attribute) ? ` ${attrLabel(r.attribute)}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    {r.description && <p className="text-[11px] text-stone-400 italic mt-0.5">{r.description}</p>}
+                    {Array.isArray(r.ingredients) && r.ingredients.length > 0 && (
+                      <p className="text-[11px] text-stone-500 mt-1">Uses: {r.ingredients.map((ing: any) => `${ing.itemName} ×${ing.quantity}`).join(", ")}</p>
+                    )}
+                    {Array.isArray(r.toolItems) && r.toolItems.length > 0 && (
+                      <p className="text-[11px] text-stone-500">Tools: {r.toolItems.map((t: any) => t.name).join(", ")}</p>
+                    )}
+                    <p className="text-[11px] text-stone-500">
+                      Makes: {itemNameFor(r.outputItemId) || "—"} {r.outputQuantity > 1 ? `×${r.outputQuantity}` : ""}
+                    </p>
+                    {(r.costEnergyEnabled || r.costManaEnabled || r.costHpEnabled) && (
+                      <p className="text-[11px] text-stone-500">
+                        Costs: {[
+                          r.costEnergyEnabled && `${r.costEnergy} Energy`,
+                          r.costManaEnabled && `${r.costMana} Mana`,
+                          r.costHpEnabled && `${r.costHp} HP`,
+                        ].filter(Boolean).join(", ")}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           ) : (
             <>
               <p className="text-[11px] text-stone-500 mb-2">
@@ -1106,15 +1377,15 @@ export function LibraryItemSheet({
           )
         ))}
 
+        {/* ================================ REPAIR ============================== */}
         {isV3 && type !== "crafter" && toggleableSection("repair", <Hammer className="h-3.5 w-3.5" />, "Repair", (
-          <>
-            {isEditing && <p className="text-[11px] text-stone-500 mb-2">What a crafter's Repair recipe restores and consumes when it targets this item.</p>}
-            <CaFieldGrid>
-              <ItemField editing={isEditing} field="repairAmount" label="Durability restored" value={val("repairAmount") ?? 0} onChange={chg("repairAmount")} kind="number" min={0} wide testId="library-item-repair-amount" />
-            </CaFieldGrid>
-            <div className="mt-2">
-              <span className="text-xs text-stone-400 block mb-1">Consumed per repair</span>
-              {!isEditing ? (
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={2}>
+                <CaChipCell icon={<Hammer className="h-3 w-3" />} label="Restores">{val("repairAmount") ?? 0} durability</CaChipCell>
+              </CaChipGroup>
+              <div className="mt-2">
+                <span className="text-[11px] text-stone-500 block mb-1">Consumed per repair</span>
                 <div className="space-y-1" data-testid="library-item-repair-ingredients">
                   {(((val("repairIngredients") as any[]) || []).length === 0) ? (
                     <p className="text-[11px] text-stone-500">Nothing. Repairs cost no materials.</p>
@@ -1124,7 +1395,16 @@ export function LibraryItemSheet({
                     ))
                   )}
                 </div>
-              ) : (
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[11px] text-stone-500 mb-2">What a crafter's Repair recipe restores and consumes when it targets this item.</p>
+              <CaFieldGrid>
+                <ItemField field="repairAmount" label="Durability restored" value={val("repairAmount") ?? 0} onChange={chg("repairAmount")} kind="number" min={0} wide testId="library-item-repair-amount" />
+              </CaFieldGrid>
+              <div className="mt-2">
+                <span className="text-xs text-stone-400 block mb-1">Consumed per repair</span>
                 <div className="space-y-1" data-testid="library-item-repair-ingredients">
                   {(((val("repairIngredients") as any[]) || []).length === 0) && (
                     <p className="text-[11px] text-stone-500">Nothing. Repairs cost no materials.</p>
@@ -1172,16 +1452,17 @@ export function LibraryItemSheet({
                     + Add ingredient
                   </button>
                 </div>
-              )}
-            </div>
-          </>
+              </div>
+            </>
+          )
         ))}
 
+        {/* ============================= BUILD RECIPE =========================== */}
         {!!item?.isTemplate && isSheetGM && toggleableSection("build-recipe", <Hammer className="h-3.5 w-3.5" />, "Build Recipe", (
           !isEditing ? (
             <div className="space-y-1" data-testid="library-item-build-ingredients">
               {buildIngredients.length === 0 ? (
-                <p className="text-[11px] text-stone-500">No build recipe set.</p>
+                <p className="text-xs text-stone-500 italic">No build recipe set.</p>
               ) : (
                 <>
                   <p className="text-xs text-stone-300">Makes {buildOutputQuantity}</p>
@@ -1283,33 +1564,17 @@ export function LibraryItemSheet({
           )
         ))}
 
+        {/* =============================== EFFECTS ============================== */}
         {toggleableSection("effects", <Sparkles className="h-3.5 w-3.5" />, "Effects", (
-          <>
-            {isEditing && (
-              <p className="text-[11px] text-stone-500 mb-1">
-                What holding this item does to its owner. Each one says for itself whether it needs the item equipped.
-              </p>
-            )}
+          !isEditing ? (
             <TargetAmountList<CAItemEffect>
               rows={effects}
               targets={effectTargets}
-              editing={isEditing}
-              onChange={(next) => setDraft({ effects: next })}
+              editing={false}
+              onChange={() => {}}
               makeRow={() => makeCAItemEffect()}
               emptyText="No effects. This item changes nothing on its own."
               idOf={(row) => row.id}
-              renderLead={(row, p) => (
-                <select
-                  value={row.trigger}
-                  onChange={(e) => p({ trigger: e.target.value as CAItemEffect["trigger"] })}
-                  className="h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1 shrink-0"
-                  data-testid={`select-item-effect-${row.id}-trigger`}
-                >
-                  {CA_ITEM_EFFECT_TRIGGERS.map((t) => (
-                    <option key={t} value={t}>{CA_ITEM_EFFECT_TRIGGER_LABELS[t]}</option>
-                  ))}
-                </select>
-              )}
               renderReadRow={(row, label) => (
                 <>
                   <span className="text-stone-300">{CA_ITEM_EFFECT_TRIGGER_LABELS[row.trigger]} · {label}</span>
@@ -1320,31 +1585,64 @@ export function LibraryItemSheet({
               )}
               testId="library-item-effects"
             />
-          </>
+          ) : (
+            <>
+              <p className="text-[11px] text-stone-500 mb-1">
+                What holding this item does to its owner. Each one says for itself whether it needs the item equipped.
+              </p>
+              <TargetAmountList<CAItemEffect>
+                rows={effects}
+                targets={effectTargets}
+                editing
+                onChange={(next) => setDraft({ effects: next })}
+                makeRow={() => makeCAItemEffect()}
+                emptyText="No effects. This item changes nothing on its own."
+                idOf={(row) => row.id}
+                renderLead={(row, p) => (
+                  <select
+                    value={row.trigger}
+                    onChange={(e) => p({ trigger: e.target.value as CAItemEffect["trigger"] })}
+                    className="h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1 shrink-0"
+                    data-testid={`select-item-effect-${row.id}-trigger`}
+                  >
+                    {CA_ITEM_EFFECT_TRIGGERS.map((t) => (
+                      <option key={t} value={t}>{CA_ITEM_EFFECT_TRIGGER_LABELS[t]}</option>
+                    ))}
+                  </select>
+                )}
+                testId="library-item-effects"
+              />
+            </>
+          )
         ))}
 
         {item?.id && liveTemplates.length > 0 && toggleableSection("roll-templates", <Layers className="h-3.5 w-3.5" />, "Roll templates", (
           <>
             <p className="text-[11px] text-stone-500 mb-1">Rolls this item inherits from a shared template.</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {liveTemplates.map((t: any) => (
-                <ToggleRow
-                  key={t.id}
-                  label={t.name}
-                  value={linkedTemplateIds.includes(t.id)}
-                  editing={isEditing}
-                  onChange={(next) => {
-                    const ids = next
-                      ? [...linkedTemplateIds, t.id]
-                      : linkedTemplateIds.filter((x) => x !== t.id);
-                    // Its own endpoint and its own cache entry, so it writes
-                    // itself the way this section always has, independent of
-                    // the rest of the sheet's Save/Cancel.
-                    api.setItemTemplateLinks(item.id, ids).then(() => onUpdate({}));
-                  }}
-                  testId={`toggle-library-item-template-${t.id}`}
-                />
-              ))}
+              {isEditing ? (
+                liveTemplates.map((t: any) => (
+                  <ToggleRow
+                    key={t.id}
+                    label={t.name}
+                    value={linkedTemplateIds.includes(t.id)}
+                    onChange={(next) => {
+                      const ids = next
+                        ? [...linkedTemplateIds, t.id]
+                        : linkedTemplateIds.filter((x) => x !== t.id);
+                      // Its own endpoint and its own cache entry, so it writes
+                      // itself the way this section always has, independent of
+                      // the rest of the sheet's Save/Cancel.
+                      api.setItemTemplateLinks(item.id, ids).then(() => onUpdate({}));
+                    }}
+                    testId={`toggle-library-item-template-${t.id}`}
+                  />
+                ))
+              ) : (
+                liveTemplates.filter((t: any) => linkedTemplateIds.includes(t.id)).map((t: any) => (
+                  <ItemBadge key={t.id}>{t.name}</ItemBadge>
+                ))
+              )}
             </div>
           </>
         ))}
