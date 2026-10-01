@@ -33,7 +33,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Package, Sword, Shield, Coins, Trash2, X, Sparkles, ImageIcon,
   FlaskConical, Crosshair, Gem, ScrollText, BookOpen, Hammer, Dices, Layers,
-  Pencil, Check, Feather, HeartPulse, Skull, Weight, Boxes, Wand2,
+  Pencil, Check, Feather, HeartPulse, Skull, Boxes, Wand2, Eye, EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
@@ -46,8 +46,6 @@ import {
   CaValue,
   CaDivider,
   CaMedallion,
-  CaChipGroup,
-  CaChipCell,
 } from "@/components/game/CASheetUI";
 import { RollEntriesEditor } from "@/components/game/RollEntriesEditor";
 import { CraftRecipesEditor } from "@/components/game/CraftRecipesEditor";
@@ -191,6 +189,60 @@ function ItemBadge({ children, tone = "neutral" }: { children: React.ReactNode; 
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * View mode's one stat primitive: a flowing line of `label value` pairs,
+ * no box, no grid - a reference strip rather than a form laid out flat.
+ * Falsy entries (an attribute that doesn't apply to this item) are dropped,
+ * and the whole strip disappears if nothing is left.
+ */
+function StatStrip({ stats }: { stats: Array<{ label: string; value: React.ReactNode } | null | false | undefined> }) {
+  const visible = stats.filter((s): s is { label: string; value: React.ReactNode } => !!s);
+  if (visible.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      {visible.map((s, i) => (
+        <span key={i} className="flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="text-[10px] uppercase tracking-wide text-stone-500">{s.label}</span>
+          <span className="text-xs font-semibold text-stone-100">{s.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * View mode's section chrome - a small inline icon and a label, no border,
+ * no medallion. Deliberately lighter than CaSection (Edit mode's box): a
+ * stat block reads top to bottom, it doesn't need every fact boxed off
+ * from its neighbors the way a form's fields do.
+ */
+function ViewBlock({
+  label,
+  icon,
+  value,
+  children,
+  testId,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  value?: React.ReactNode;
+  children: React.ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div className="space-y-1.5" data-testid={testId}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ca-gilt)" }}>
+          {icon}
+          {label}
+        </span>
+        {value}
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -813,38 +865,72 @@ export function LibraryItemSheet({
     : 0;
   const buildRecommendedPrice = recommendBuildPrice(buildPerUnitValue);
 
+  // Edit keeps the boxed CaSection form chrome throughout - that's "the
+  // normal editor look" the sheet is meant to have once the pencil is
+  // pressed. View uses the much lighter ViewBlock instead: no border, no
+  // medallion, just a small label - a stat block reads top to bottom rather
+  // than needing every fact boxed off from its neighbors.
   const section = (icon: React.ReactNode, title: string, body: React.ReactNode) => (
     <>
       <CaDivider />
-      <CaSection icon={icon} title={title}>{body}</CaSection>
+      {isEditing ? (
+        <CaSection icon={icon} title={title}>{body}</CaSection>
+      ) : (
+        <ViewBlock icon={icon} label={title}>{body}</ViewBlock>
+      )}
     </>
   );
 
   // Every section except Identity and Handling: shown by default, with a
-  // "Show" checkbox only the GM/admin sees in its own header to collapse
+  // declutter toggle only the GM/admin sees in its own header to collapse
   // just that section's body for their own view (the header stays for them,
   // so it's never lost). A player - including a trusted player - never sees
   // a hidden section at all: not the body, not even its header.
   const toggleableSection = (key: string, icon: React.ReactNode, title: string, body: React.ReactNode) => {
     const hidden = hiddenSections.includes(key);
     if (hidden && !isSheetGM) return null;
+    if (isEditing) {
+      return (
+        <>
+          <CaDivider />
+          <CaSection
+            icon={icon}
+            title={title}
+            value={isSheetGM ? (
+              <ToggleRow
+                label="Show"
+                value={!hidden}
+                onChange={(v) => setSectionHidden(key, !v)}
+                testId={`toggle-library-item-section-${key}`}
+              />
+            ) : undefined}
+          >
+            {!hidden && body}
+          </CaSection>
+        </>
+      );
+    }
     return (
       <>
         <CaDivider />
-        <CaSection
+        <ViewBlock
           icon={icon}
-          title={title}
+          label={title}
+          testId={`section-library-item-${key}`}
           value={isSheetGM ? (
-            <ToggleRow
-              label="Show"
-              value={!hidden}
-              onChange={(v) => setSectionHidden(key, !v)}
-              testId={`toggle-library-item-section-${key}`}
-            />
+            <button
+              type="button"
+              onClick={() => setSectionHidden(key, !hidden)}
+              className="text-stone-500 hover:text-stone-300"
+              title={hidden ? "Hidden from players - click to show" : "Visible to players - click to hide"}
+              data-testid={`toggle-library-item-section-${key}`}
+            >
+              {hidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </button>
           ) : undefined}
         >
           {!hidden && body}
-        </CaSection>
+        </ViewBlock>
       </>
     );
   };
@@ -970,6 +1056,32 @@ export function LibraryItemSheet({
                   {descriptionParts.gm}
                 </p>
               )}
+              {/* Quantity/Weight/Value/Durability fold straight into the
+                  masthead - the one row every item has, so it doesn't need
+                  its own titled box the way a type-specific stat does. */}
+              <div className="pt-1">
+                <StatStrip
+                  stats={[
+                    { label: "Qty", value: val("quantity") ?? 1 },
+                    { label: "Weight", value: `${val("itemWeight") ?? 0} lb` },
+                    { label: "Value", value: isCA ? scaledStat(val("price") ?? 0, "priceScaling") : val("price") ?? 0 },
+                    { label: "Durability", value: `${val("durability") ?? 10}/${val("maxDurability") ?? 10}` },
+                  ]}
+                />
+                {isV3 && val("advancedItemTypeId") && (
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Advanced type: <span className="text-stone-300">{(advancedTypes as any[]).find((t) => t.id === val("advancedItemTypeId"))?.name ?? "—"}</span>
+                  </p>
+                )}
+                {(val("isContainer") || (isCA && type === "weapon" && val("isHeavy"))) && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                    {val("isContainer") && (
+                      <ItemBadge>Container ({isCA ? scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling") : val("carryCapacity") ?? 0} lb capacity)</ItemBadge>
+                    )}
+                    {isCA && type === "weapon" && val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ) : (
@@ -1042,30 +1154,12 @@ export function LibraryItemSheet({
         )}
 
         {/* ============================= HANDLING ============================= */}
-        {section(<Coins className="h-3.5 w-3.5" />, "Handling", (
-          !isEditing ? (
-            <>
-              <CaChipGroup cols={4}>
-                <CaChipCell icon={<Boxes className="h-3 w-3" />} label="Qty">{val("quantity") ?? 1}</CaChipCell>
-                <CaChipCell icon={<Weight className="h-3 w-3" />} label="Weight">{val("itemWeight") ?? 0} lb</CaChipCell>
-                <CaChipCell icon={<Coins className="h-3 w-3" />} label="Value">{isCA ? scaledStat(val("price") ?? 0, "priceScaling") : val("price") ?? 0}</CaChipCell>
-                <CaChipCell icon={<Hammer className="h-3 w-3" />} label="Durability">{val("durability") ?? 10}/{val("maxDurability") ?? 10}</CaChipCell>
-              </CaChipGroup>
-              {isV3 && val("advancedItemTypeId") && (
-                <p className="text-[11px] text-stone-500 mt-1.5">
-                  Advanced type: <span className="text-stone-300">{(advancedTypes as any[]).find((t) => t.id === val("advancedItemTypeId"))?.name ?? "—"}</span>
-                </p>
-              )}
-              {(val("isContainer") || (isCA && type === "weapon" && val("isHeavy"))) && (
-                <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                  {val("isContainer") && (
-                    <ItemBadge>Container ({isCA ? scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling") : val("carryCapacity") ?? 0} lb capacity)</ItemBadge>
-                  )}
-                  {isCA && type === "weapon" && val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
-                </div>
-              )}
-            </>
-          ) : (
+        {/* View has nothing of its own to show here - Qty/Weight/Value/
+            Durability and the Container/Heavy badges already read straight
+            off the masthead above. Handling only exists as an Edit-mode
+            form, for the fields too fiddly to put in the masthead itself
+            (max durability, carry capacity, advanced type, the toggles). */}
+        {isEditing && section(<Coins className="h-3.5 w-3.5" />, "Handling", (
             <>
               <CaFieldGrid>
                 <ItemField field="quantity" label="Quantity" value={val("quantity") ?? 1} onChange={chg("quantity")} kind="number" min={0} testId="library-item-quantity" />
@@ -1120,7 +1214,6 @@ export function LibraryItemSheet({
                 )}
               </div>
             </>
-          )
         ))}
 
         {renderAfterHandling}
@@ -1129,20 +1222,23 @@ export function LibraryItemSheet({
         {!isCA && (type === "weapon" || type === "consumable" || type === "ammunition") && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={4}>
-                <CaChipCell icon={<Sword className="h-3 w-3" />} label="Damage">{val("damage") || "—"}</CaChipCell>
-                <CaChipCell label="Type">{val("damageType") ? titleCase(val("damageType")) : "—"}</CaChipCell>
-                <CaChipCell label="Modifier">{val("mod") >= 0 ? `+${val("mod") ?? 0}` : val("mod")}</CaChipCell>
-                <CaChipCell label="Range">{val("range") ? `${val("range")} ft` : "Melee"}</CaChipCell>
-                {attrLabel(val("attribute")) && <CaChipCell label="Attribute">{attrLabel(val("attribute"))}</CaChipCell>}
-                {val("aoe") && <CaChipCell label="Area">{titleCase(val("aoe"))}</CaChipCell>}
-                {type === "weapon" && val("weaponCategory") && <CaChipCell label="Category">{titleCase(val("weaponCategory"))}</CaChipCell>}
-                {isV3 && type === "weapon" && val("ammunitionTypeId") && (
-                  <CaChipCell label="Ammunition">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>
-                )}
-              </CaChipGroup>
+              <StatStrip
+                stats={[
+                  { label: "Damage", value: val("damage") || "—" },
+                  val("damageType") && { label: "Type", value: titleCase(val("damageType")) },
+                  { label: "Mod", value: val("mod") >= 0 ? `+${val("mod") ?? 0}` : val("mod") },
+                  { label: "Range", value: val("range") ? `${val("range")} ft` : "Melee" },
+                  attrLabel(val("attribute")) && { label: "Attribute", value: attrLabel(val("attribute")) },
+                  val("aoe") && { label: "Area", value: titleCase(val("aoe")) },
+                  type === "weapon" && val("weaponCategory") && { label: "Category", value: titleCase(val("weaponCategory")) },
+                  isV3 && type === "weapon" && val("ammunitionTypeId") && {
+                    label: "Ammunition",
+                    value: (ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—",
+                  },
+                ]}
+              />
               {(val("isHeavy") || val("canApplyEffects")) && (
-                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                   {val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
                   {val("canApplyEffects") && <ItemBadge>Applies token effects</ItemBadge>}
                 </div>
@@ -1151,7 +1247,7 @@ export function LibraryItemSheet({
                 const on = ((val("v3TechniqueGroupIds") as string[]) || []);
                 const named = (techniqueGroups as any[]).filter((g) => on.includes(g.id));
                 return named.length > 0 ? (
-                  <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                     {named.map((g) => <ItemBadge key={g.id}>{g.name}</ItemBadge>)}
                   </div>
                 ) : null;
@@ -1215,13 +1311,15 @@ export function LibraryItemSheet({
         {isCA && type === "weapon" && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={3}>
-                <CaChipCell icon={<Sword className="h-3 w-3" />} label="Damage">{scaledStat(val("caBaseDamage") ?? 0, "caBaseDamageScaling")}</CaChipCell>
-                <CaChipCell label="Handedness">{CA_WEAPON_HANDEDNESS_LABELS[(val("caWeaponHandedness") as CAWeaponHandedness) ?? "one_handed"]}</CaChipCell>
-                {val("caWeaponHandedness") === "ranged" && <CaChipCell label="Range">{val("range") ? `${val("range")} ft` : "—"}</CaChipCell>}
-              </CaChipGroup>
+              <StatStrip
+                stats={[
+                  { label: "Damage", value: scaledStat(val("caBaseDamage") ?? 0, "caBaseDamageScaling") },
+                  { label: "Handedness", value: CA_WEAPON_HANDEDNESS_LABELS[(val("caWeaponHandedness") as CAWeaponHandedness) ?? "one_handed"] },
+                  val("caWeaponHandedness") === "ranged" && { label: "Range", value: val("range") ? `${val("range")} ft` : "—" },
+                ]}
+              />
               {val("caWeaponHandedness") === "ranged" && val("ammunitionType") && (
-                <p className="text-[11px] text-stone-500 mt-1.5">Uses <span className="text-stone-300">{val("ammunitionType")}</span> ammunition.</p>
+                <p className="text-[11px] text-stone-500 mt-1">Uses <span className="text-stone-300">{val("ammunitionType")}</span> ammunition.</p>
               )}
             </>
           ) : (
@@ -1260,20 +1358,20 @@ export function LibraryItemSheet({
         {type === "armor" && toggleableSection("protection", <Shield className="h-3.5 w-3.5" />, "Protection", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={3}>
-                <CaChipCell icon={<Shield className="h-3 w-3" />} label="Slot">{val("armorSlot") ? (isCA ? val("armorSlot") : titleCase(val("armorSlot"))) : "—"}</CaChipCell>
-                <CaChipCell label="DC Bonus">+{isCA ? scaledStat(val("armorBonus") ?? 0, "armorBonusScaling") : val("armorBonus") ?? 0}</CaChipCell>
-                {isCA ? (
-                  <CaChipCell label="Wound reduction">{scaledStat(val("caWoundReductionSteps") ?? 0, "caWoundReductionStepsScaling")} step(s)</CaChipCell>
-                ) : (
-                  <CaChipCell label="Reduction">{val("damageReduction") ?? 0}{val("damageReductionType") ? ` ${titleCase(val("damageReductionType"))}` : ""}</CaChipCell>
-                )}
-              </CaChipGroup>
+              <StatStrip
+                stats={[
+                  { label: "Slot", value: val("armorSlot") ? (isCA ? val("armorSlot") : titleCase(val("armorSlot"))) : "—" },
+                  { label: "DC Bonus", value: `+${isCA ? scaledStat(val("armorBonus") ?? 0, "armorBonusScaling") : val("armorBonus") ?? 0}` },
+                  isCA
+                    ? { label: "Wound reduction", value: `${scaledStat(val("caWoundReductionSteps") ?? 0, "caWoundReductionStepsScaling")} step(s)` }
+                    : { label: "Reduction", value: `${val("damageReduction") ?? 0}${val("damageReductionType") ? ` ${titleCase(val("damageReductionType"))}` : ""}` },
+                ]}
+              />
               {!isCA && val("grantsDcBonus") && (
-                <p className="text-[11px] text-stone-500 mt-1.5">Grants a DC bonus of <span className="text-stone-300">+{val("dcBonusValue") ?? 0}</span>.</p>
+                <p className="text-[11px] text-stone-500 mt-1">Grants a DC bonus of <span className="text-stone-300">+{val("dcBonusValue") ?? 0}</span>.</p>
               )}
               {isV3 && (((val("v3ArmorBoosts") as any[]) || []).length > 0) && (
-                <div className="mt-2">
+                <div className="mt-1.5">
                   <span className="text-[11px] text-stone-500 block mb-1">While worn</span>
                   <TargetAmountList
                     rows={((val("v3ArmorBoosts") as any[]) || []) as Array<{ target: string; amount: number }>}
@@ -1353,18 +1451,20 @@ export function LibraryItemSheet({
           !isEditing ? (
             <>
               {!isCA && (
-                <CaChipGroup cols={4}>
-                  <CaChipCell icon={<HeartPulse className="h-3 w-3" />} label="HP">{(val("consumableHpChange") ?? 0) >= 0 ? `+${val("consumableHpChange") ?? 0}` : val("consumableHpChange")}</CaChipCell>
-                  <CaChipCell label="Energy">{(val("consumableEnergyChange") ?? 0) >= 0 ? `+${val("consumableEnergyChange") ?? 0}` : val("consumableEnergyChange")}</CaChipCell>
-                  <CaChipCell label="Mana">{(val("consumableManaChange") ?? 0) >= 0 ? `+${val("consumableManaChange") ?? 0}` : val("consumableManaChange")}</CaChipCell>
-                  <CaChipCell label="Rations">{val("rationServings") ?? 0}</CaChipCell>
-                </CaChipGroup>
+                <StatStrip
+                  stats={[
+                    { label: "HP", value: (val("consumableHpChange") ?? 0) >= 0 ? `+${val("consumableHpChange") ?? 0}` : val("consumableHpChange") },
+                    { label: "Energy", value: (val("consumableEnergyChange") ?? 0) >= 0 ? `+${val("consumableEnergyChange") ?? 0}` : val("consumableEnergyChange") },
+                    { label: "Mana", value: (val("consumableManaChange") ?? 0) >= 0 ? `+${val("consumableManaChange") ?? 0}` : val("consumableManaChange") },
+                    (val("rationServings") ?? 0) > 0 && { label: "Rations", value: val("rationServings") },
+                  ]}
+                />
               )}
               {val("consumableEffectDescription") && (
-                <p className="text-xs text-stone-300 italic mt-2">{val("consumableEffectDescription")}</p>
+                <p className="text-xs text-stone-300 italic mt-1.5">{val("consumableEffectDescription")}</p>
               )}
               {!isCA && (val("isDamaging") || val("isDetonatable")) && (
-                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                   {val("isDamaging") && <ItemBadge>Rolls like a weapon</ItemBadge>}
                   {val("isDetonatable") && (
                     <ItemBadge tone="danger">
@@ -1499,17 +1599,19 @@ export function LibraryItemSheet({
         {type === "ammunition" && toggleableSection("ammunition", <Crosshair className="h-3.5 w-3.5" />, "Ammunition", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={3}>
-                <CaChipCell icon={<Crosshair className="h-3 w-3" />} label="Type">{val("ammunitionType") || "—"}</CaChipCell>
-                <CaChipCell label="Break chance">{val("breakChance") ?? 10}%</CaChipCell>
-                {isCA ? (
-                  <CaChipCell label="Damage boost">+{scaledStat(val("ammoDamageBoost") ?? 0, "ammoDamageBoostScaling")}</CaChipCell>
-                ) : isV3 ? (
-                  <CaChipCell label="V3 type">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>
-                ) : null}
-              </CaChipGroup>
+              <StatStrip
+                stats={[
+                  { label: "Type", value: val("ammunitionType") || "—" },
+                  { label: "Break chance", value: `${val("breakChance") ?? 10}%` },
+                  isCA
+                    ? { label: "Damage boost", value: `+${scaledStat(val("ammoDamageBoost") ?? 0, "ammoDamageBoostScaling")}` }
+                    : isV3
+                      ? { label: "V3 type", value: (ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—" }
+                      : null,
+                ]}
+              />
               {isCA && (
-                <p className="text-[11px] text-stone-500 mt-1.5">
+                <p className="text-[11px] text-stone-500 mt-1">
                   Only boosts damage while this and a matching weapon are both equipped. Equipping more than one
                   ammunition type at once blocks rolling until one is unequipped.
                 </p>
@@ -1553,11 +1655,13 @@ export function LibraryItemSheet({
         {isCA && type === "container" && toggleableSection("container", <Boxes className="h-3.5 w-3.5" />, "Container", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={2}>
-                <CaChipCell icon={<Boxes className="h-3 w-3" />} label="Kind">{CA_CONTAINER_KIND_LABELS[(val("caContainerKind") as CAContainerKind) ?? "backpack"]}</CaChipCell>
-                <CaChipCell label="Capacity">{scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling")} lb</CaChipCell>
-              </CaChipGroup>
-              <p className="text-[11px] text-stone-500 mt-1.5">
+              <StatStrip
+                stats={[
+                  { label: "Kind", value: CA_CONTAINER_KIND_LABELS[(val("caContainerKind") as CAContainerKind) ?? "backpack"] },
+                  { label: "Capacity", value: `${scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling")} lb` },
+                ]}
+              />
+              <p className="text-[11px] text-stone-500 mt-1">
                 {CA_CONTAINER_KIND_DESCRIPTIONS[(val("caContainerKind") as CAContainerKind) ?? "backpack"]}
               </p>
             </>
@@ -1660,11 +1764,13 @@ export function LibraryItemSheet({
         {!isCA && type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={3}>
-                <CaChipCell icon={<Gem className="h-3 w-3" />} label="Sockets into">{titleCase(val("runeTargetItemType") ?? "any")}</CaChipCell>
-                <CaChipCell label="Removal cost">{val("runeRemoveDurabilityCost") ?? 1}</CaChipCell>
-                <CaChipCell label="Use">{val("runeUseMode") === "skill_check" ? "Skill check" : "Flavour only"}</CaChipCell>
-              </CaChipGroup>
+              <StatStrip
+                stats={[
+                  { label: "Sockets into", value: titleCase(val("runeTargetItemType") ?? "any") },
+                  { label: "Removal cost", value: val("runeRemoveDurabilityCost") ?? 1 },
+                  { label: "Use", value: val("runeUseMode") === "skill_check" ? "Skill check" : "Flavour only" },
+                ]}
+              />
               {val("runeUseMode") === "skill_check" && (
                 <p className="text-[11px] text-stone-500 mt-1.5">
                   {v3SkillOpts.find((s) => s.value === val("runeSkillKey"))?.label ?? "No skill set"}
@@ -1869,9 +1975,7 @@ export function LibraryItemSheet({
         {/* ============================== SPELLBOOK ============================= */}
         {type === "spellbook" && toggleableSection("spellbook", <BookOpen className="h-3.5 w-3.5" />, "Spellbook", (
           !isEditing ? (
-            <CaChipGroup cols={2}>
-              <CaChipCell icon={<BookOpen className="h-3 w-3" />} label="Capacity">{(val("maxSpells") ?? 10) === 0 ? "Unlimited" : val("maxSpells") ?? 10}</CaChipCell>
-            </CaChipGroup>
+            <StatStrip stats={[{ label: "Capacity", value: (val("maxSpells") ?? 10) === 0 ? "Unlimited" : val("maxSpells") ?? 10 }]} />
           ) : (
             <CaFieldGrid>
               <ItemField field="maxSpells" label="Capacity" value={val("maxSpells") ?? 10} onChange={chg("maxSpells")} kind="number" min={0} suffix="spells (0 = unlimited)" wide testId="library-item-max-spells" />
@@ -1943,10 +2047,8 @@ export function LibraryItemSheet({
         {isV3 && type !== "crafter" && toggleableSection("repair", <Hammer className="h-3.5 w-3.5" />, "Repair", (
           !isEditing ? (
             <>
-              <CaChipGroup cols={2}>
-                <CaChipCell icon={<Hammer className="h-3 w-3" />} label="Restores">{val("repairAmount") ?? 0} durability</CaChipCell>
-              </CaChipGroup>
-              <div className="mt-2">
+              <StatStrip stats={[{ label: "Restores", value: `${val("repairAmount") ?? 0} durability` }]} />
+              <div className="mt-1.5">
                 <span className="text-[11px] text-stone-500 block mb-1">Consumed per repair</span>
                 <div className="space-y-1" data-testid="library-item-repair-ingredients">
                   {(((val("repairIngredients") as any[]) || []).length === 0) ? (
