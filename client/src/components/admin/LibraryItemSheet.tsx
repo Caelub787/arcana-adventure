@@ -1484,7 +1484,9 @@ export function LibraryItemSheet({
                         className="flex items-center gap-2 rounded-lg border bg-stone-900/50 px-2.5 py-1.5"
                         style={{ borderColor: "var(--ca-gilt-line-soft)" }}
                       >
-                        {opt.mode === "heal" ? (
+                        {opt.kind === "hp" ? (
+                          <HeartPulse className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                        ) : opt.mode === "heal" ? (
                           <HeartPulse className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                         ) : (
                           <Skull className="h-3.5 w-3.5 shrink-0 text-red-500" />
@@ -1525,61 +1527,105 @@ export function LibraryItemSheet({
               )}
               {isCA && (
                 <div className="mt-3">
-                  <span className="text-xs text-stone-400 block mb-1">Wound effect options</span>
+                  <span className="text-xs text-stone-400 block mb-1">Use effect options</span>
                   <p className="text-[11px] text-stone-500 mb-2">
-                    Each option is one way to use this potion - the player picks one on use. "Heal" removes that
-                    many of the player's own wounds at that severity (they choose which); "Deal" adds new ones.
+                    Each option is one way to use this item - the player picks one on use. "Heal Wounds" removes
+                    that many of the player's own wounds at that severity (they choose which); "Deal Wounds" adds
+                    new ones; "Heal HP" restores HP by a flat amount or a rolled dice amount.
                   </p>
                   <div className="space-y-1" data-testid="library-item-wound-options">
                     {woundOptions.length === 0 && (
-                      <p className="text-[11px] text-stone-500">No wound options yet.</p>
+                      <p className="text-[11px] text-stone-500">No options yet.</p>
                     )}
-                    {woundOptions.map((opt, i) => (
-                      <div key={opt.id} className="flex items-center gap-1 flex-wrap">
-                        <select
-                          value={opt.mode}
-                          onChange={(e) => updateWoundOption(opt.id, { mode: e.target.value === "deal" ? "deal" : "heal" })}
-                          className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
-                          data-testid={`library-item-wound-option-${i}-mode`}
-                        >
-                          <option value="heal">Heal</option>
-                          <option value="deal">Deal</option>
-                        </select>
-                        <input
-                          type="number"
-                          min={1}
-                          value={opt.count}
-                          onChange={(e) => updateWoundOption(opt.id, { count: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
-                          className="w-14 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
-                          data-testid={`library-item-wound-option-${i}-count`}
-                        />
-                        <select
-                          value={opt.severity}
-                          onChange={(e) => updateWoundOption(opt.id, { severity: e.target.value as any })}
-                          className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
-                          data-testid={`library-item-wound-option-${i}-severity`}
-                        >
-                          {CA_WOUND_SEVERITIES.map((s) => (
-                            <option key={s} value={s}>{CA_WOUND_SEVERITY_LABELS[s]}</option>
-                          ))}
-                        </select>
-                        <input
-                          value={opt.label ?? ""}
-                          onChange={(e) => updateWoundOption(opt.id, { label: e.target.value })}
-                          placeholder="Custom label (optional)"
-                          className="flex-1 min-w-[140px] h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
-                          data-testid={`library-item-wound-option-${i}-label`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeWoundOption(opt.id)}
-                          className="text-stone-500 hover:text-red-400 shrink-0"
-                          data-testid={`library-item-wound-option-${i}-remove`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
+                    {woundOptions.map((opt, i) => {
+                      const effectKind = opt.kind === "hp" ? "heal_hp" : opt.mode === "deal" ? "deal_wound" : "heal_wound";
+                      return (
+                        <div key={opt.id} className="flex items-center gap-1 flex-wrap">
+                          <select
+                            value={effectKind}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === "heal_hp") updateWoundOption(opt.id, { kind: "hp" });
+                              else if (v === "deal_wound") updateWoundOption(opt.id, { kind: "wound", mode: "deal" });
+                              else updateWoundOption(opt.id, { kind: "wound", mode: "heal" });
+                            }}
+                            className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                            data-testid={`library-item-wound-option-${i}-mode`}
+                          >
+                            <option value="heal_wound">Heal Wounds</option>
+                            <option value="deal_wound">Deal Wounds</option>
+                            <option value="heal_hp">Heal HP</option>
+                          </select>
+                          {opt.kind === "hp" ? (
+                            <>
+                              <select
+                                value={opt.healAmountMode}
+                                onChange={(e) => updateWoundOption(opt.id, { healAmountMode: e.target.value === "dice" ? "dice" : "flat" })}
+                                className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                                data-testid={`library-item-wound-option-${i}-heal-amount-mode`}
+                              >
+                                <option value="flat">Flat</option>
+                                <option value="dice">Dice</option>
+                              </select>
+                              {opt.healAmountMode === "dice" ? (
+                                <input
+                                  value={opt.healDiceFormula}
+                                  onChange={(e) => updateWoundOption(opt.id, { healDiceFormula: e.target.value })}
+                                  placeholder="2d6"
+                                  className="w-20 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                                  data-testid={`library-item-wound-option-${i}-heal-dice`}
+                                />
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={opt.healFlatAmount}
+                                  onChange={(e) => updateWoundOption(opt.id, { healFlatAmount: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                                  className="w-16 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                                  data-testid={`library-item-wound-option-${i}-heal-flat`}
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <input
+                                type="number"
+                                min={1}
+                                value={opt.count}
+                                onChange={(e) => updateWoundOption(opt.id, { count: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+                                className="w-14 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                                data-testid={`library-item-wound-option-${i}-count`}
+                              />
+                              <select
+                                value={opt.severity}
+                                onChange={(e) => updateWoundOption(opt.id, { severity: e.target.value as any })}
+                                className="h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                                data-testid={`library-item-wound-option-${i}-severity`}
+                              >
+                                {CA_WOUND_SEVERITIES.map((s) => (
+                                  <option key={s} value={s}>{CA_WOUND_SEVERITY_LABELS[s]}</option>
+                                ))}
+                              </select>
+                            </>
+                          )}
+                          <input
+                            value={opt.label ?? ""}
+                            onChange={(e) => updateWoundOption(opt.id, { label: e.target.value })}
+                            placeholder="Custom label (optional)"
+                            className="flex-1 min-w-[140px] h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                            data-testid={`library-item-wound-option-${i}-label`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeWoundOption(opt.id)}
+                            className="text-stone-500 hover:text-red-400 shrink-0"
+                            data-testid={`library-item-wound-option-${i}-remove`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
                     <button
                       type="button"
                       className="text-[11px] text-amber-500 hover:text-amber-400"

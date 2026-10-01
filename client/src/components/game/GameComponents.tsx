@@ -31041,6 +31041,12 @@ function CAWoundConsumablePanel({ item, character, canUse, campaignSystem, onCon
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
+      if (typeof res?.healedHp === 'number') {
+        toast({
+          title: 'Healed',
+          description: res.rolledDice ? `Rolled ${res.rolledDice}: healed ${res.healedHp} HP.` : `Healed ${res.healedHp} HP.`,
+        });
+      }
       resetPicker();
       if (res?.itemConsumed) onConsumed?.();
     },
@@ -31074,7 +31080,7 @@ function CAWoundConsumablePanel({ item, character, canUse, campaignSystem, onCon
   };
 
   const readyToConfirm = selectedOption
-    ? (selectedOption.mode === 'heal' ? selectedWoundIds.length === selectedOption.count : placements.length === selectedOption.count)
+    ? (selectedOption.kind === 'hp' ? true : selectedOption.mode === 'heal' ? selectedWoundIds.length === selectedOption.count : placements.length === selectedOption.count)
     : false;
 
   return (
@@ -31098,6 +31104,26 @@ function CAWoundConsumablePanel({ item, character, canUse, campaignSystem, onCon
               {caConsumableWoundOptionLabel(opt)}
             </Button>
           ))}
+        </div>
+      ) : selectedOption.kind === 'hp' ? (
+        <div className="space-y-2">
+          <p className="text-xs text-stone-400">
+            {selectedOption.healAmountMode === 'dice'
+              ? <>Rolls {selectedOption.healDiceFormula || '1d6'} and heals that much HP.</>
+              : <>Heals {selectedOption.healFlatAmount} HP.</>}
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={resetPicker}>Back</Button>
+            <Button
+              size="sm"
+              className="bg-sky-700 hover:bg-sky-600 text-white"
+              disabled={useMut.isPending}
+              onClick={() => useMut.mutate()}
+              data-testid="button-ca-wound-option-confirm"
+            >
+              Confirm
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">

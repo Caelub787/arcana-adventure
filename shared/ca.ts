@@ -214,30 +214,59 @@ export function caWoundTotalCost(wounds: unknown): number {
 }
 
 // ---------------------------------------------------------------------------
-// Consumable wound effects — a GM-authored menu of ways a CA consumable can
-// touch a character's wounds when used: heal (remove) a number of existing
-// wounds at a severity, or deal (add) a new one. An item can offer several
-// of these at once ("Heal 1 Moderate", "Heal 2 Minor") - the player picks
-// one when they use it, and for a heal picks which of their own wounds of
-// that severity it applies to.
+// Consumable effects — a GM-authored menu of ways a CA consumable can touch
+// a character when used. Two kinds share one list, since both are "the
+// player picks one of these on use": "wound" heals (removes) or deals
+// (adds) a number of wounds at a severity; "hp" heals a flat number or a
+// rolled dice amount of HP, now that C.A. has HP again alongside wounds. An
+// item can offer several of either kind at once ("Heal 1 Moderate Wound",
+// "Heal 2d6 HP") - for a wound heal, the player also picks which of their
+// own wounds of that severity it applies to.
 // ---------------------------------------------------------------------------
 
 export type CAWoundEffectMode = "heal" | "deal";
+export type CAConsumableEffectKind = "wound" | "hp";
+export type CAHealAmountMode = "flat" | "dice";
 
 export interface CAConsumableWoundOption {
   id: string;
+  /** Default "wound" so data from before this field existed still reads right. */
+  kind: CAConsumableEffectKind;
+  // kind "wound":
   mode: CAWoundEffectMode;
   severity: CAWoundSeverity;
   count: number; // how many wounds of that severity to heal or deal
-  label?: string; // optional override; auto-generated from mode/severity/count if blank
+  // kind "hp" — heal only; a consumable dealing HP damage is a weapon
+  // wearing a different hat, and goes through Rolls instead.
+  healAmountMode: CAHealAmountMode;
+  healFlatAmount: number;
+  healDiceFormula: string; // e.g. "2d6"
+  label?: string; // optional override; auto-generated if blank
 }
 
 export function makeCAConsumableWoundOption(): CAConsumableWoundOption {
-  return { id: makeCAWoundId(), mode: "heal", severity: "minor", count: 1 };
+  return {
+    id: makeCAWoundId(),
+    kind: "wound",
+    mode: "heal",
+    severity: "minor",
+    count: 1,
+    healAmountMode: "flat",
+    healFlatAmount: 5,
+    healDiceFormula: "1d6",
+  };
+}
+
+export function makeCAConsumableHpHealOption(): CAConsumableWoundOption {
+  return { ...makeCAConsumableWoundOption(), kind: "hp" };
 }
 
 export function caConsumableWoundOptionLabel(opt: CAConsumableWoundOption): string {
   if (opt.label?.trim()) return opt.label.trim();
+  if (opt.kind === "hp") {
+    const amount = opt.healAmountMode === "dice" ? (opt.healDiceFormula?.trim() || "1d6") : Math.max(0, opt.healFlatAmount);
+    return `Heal ${amount} HP`;
+  }
   const verb = opt.mode === "heal" ? "Heal" : "Deal";
   const severityLabel = CA_WOUND_SEVERITY_LABELS[opt.severity];
   const count = Math.max(1, opt.count);
@@ -255,15 +284,23 @@ export function normalizeCAConsumableWoundOptions(raw: unknown): CAConsumableWou
   for (const o of raw) {
     if (!o || typeof o !== "object") continue;
     const anyO = o as any;
+    const kind: CAConsumableEffectKind = anyO.kind === "hp" ? "hp" : "wound";
     const mode: CAWoundEffectMode = anyO.mode === "deal" ? "deal" : "heal";
     const severity: CAWoundSeverity =
       anyO.severity === "moderate" || anyO.severity === "serious" ? anyO.severity : "minor";
     const count = Number.isFinite(Number(anyO.count)) ? Math.max(1, Math.trunc(Number(anyO.count))) : 1;
+    const healAmountMode: CAHealAmountMode = anyO.healAmountMode === "dice" ? "dice" : "flat";
+    const healFlatAmount = Number.isFinite(Number(anyO.healFlatAmount)) ? Math.max(0, Math.trunc(Number(anyO.healFlatAmount))) : 5;
+    const healDiceFormula = typeof anyO.healDiceFormula === "string" && anyO.healDiceFormula.trim() ? anyO.healDiceFormula.trim() : "1d6";
     out.push({
       id: typeof anyO.id === "string" && anyO.id ? anyO.id : makeCAWoundId(),
+      kind,
       mode,
       severity,
       count,
+      healAmountMode,
+      healFlatAmount,
+      healDiceFormula,
       label: typeof anyO.label === "string" && anyO.label.trim() ? anyO.label : undefined,
     });
   }

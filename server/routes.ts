@@ -16246,43 +16246,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!character) return res.status(404).json({ error: "Character not found" });
       const wounds = normalizeCAWounds((character as any).caWounds);
 
-      let nextWounds;
-      if (option.mode === 'heal') {
-        const woundIds: string[] = Array.isArray(req.body?.woundIds) ? req.body.woundIds : [];
-        if (woundIds.length !== option.count) {
-          return res.status(400).json({ error: `Pick exactly ${option.count} ${option.severity} wound${option.count > 1 ? 's' : ''} to heal` });
+      let updatedCharacter = character;
+      let healedHp: number | undefined;
+      let rolledDice: string | undefined;
+      if (option.kind === 'hp') {
+        // Dice are rolled server-side (not trusting a client-reported total,
+        // the way flat amounts safely can be) - a simple NdM roll, the same
+        // notation/parsing the rest of the app's dice rolling uses.
+        let healAmount: number;
+        if (option.healAmountMode === 'dice') {
+          const match = String(option.healDiceFormula || '1d6').match(/(\d+)d(\d+)/i);
+          const count = match ? parseInt(match[1], 10) : 1;
+          const sides = match ? parseInt(match[2], 10) : 6;
+          let total = 0;
+          for (let i = 0; i < count; i++) total += Math.floor(Math.random() * sides) + 1;
+          healAmount = total;
+          rolledDice = `${count}d${sides}`;
+        } else {
+          healAmount = Math.max(0, Math.trunc(Number(option.healFlatAmount) || 0));
         }
-        const uniqueIds = new Set(woundIds);
-        if (uniqueIds.size !== woundIds.length) return res.status(400).json({ error: "Duplicate wound in selection" });
-        const matched = wounds.filter(w => uniqueIds.has(w.id));
-        // A potion that can heal a given severity can also heal anything
-        // milder - it just can't reach past what it's rated for.
-        const maxRank = CA_WOUND_SEVERITY_RANK[option.severity];
-        if (matched.length !== woundIds.length || matched.some(w => CA_WOUND_SEVERITY_RANK[w.severity] > maxRank)) {
-          return res.status(400).json({ error: `Selection must be exactly ${option.count} of the character's own wounds at ${option.severity} severity or milder` });
-        }
-        nextWounds = wounds.filter(w => !uniqueIds.has(w.id));
+        const maxHp = (character as any).maxHp ?? 0;
+        const currentHp = (character as any).hp ?? 0;
+        const newHp = Math.min(maxHp, currentHp + healAmount);
+        healedHp = newHp - currentHp;
+        updatedCharacter = (await storage.updateCharacter(req.params.characterId, { hp: newHp } as any)) ?? character;
       } else {
-        // The player places each new wound on their own body diagram rather
-        // than always landing dead-center - placements must match count 1:1
-        // when supplied; fall back to center for any that are missing or
-        // malformed so an old/mismatched client can't crash the request.
-        const rawPlacements: unknown = req.body?.placements;
-        const placements: { x: number; y: number }[] = Array.isArray(rawPlacements) ? rawPlacements as any[] : [];
-        const added = Array.from({ length: option.count }, (_, i) => {
-          const p = placements[i];
-          const x = p && Number.isFinite(Number(p.x)) ? Number(p.x) : 50;
-          const y = p && Number.isFinite(Number(p.y)) ? Number(p.y) : 50;
-          return {
-            ...makeCAWound(x, y),
-            severity: option.severity,
-            name: item.name || "Unnamed",
-          };
-        });
-        nextWounds = [...wounds, ...added];
+        let nextWounds;
+        if (option.mode === 'heal') {
+          const woundIds: string[] = Array.isArray(req.body?.woundIds) ? req.body.woundIds : [];
+          if (woundIds.length !== option.count) {
+            return res.status(400).json({ error: `Pick exactly ${option.count} ${option.severity} wound${option.count > 1 ? 's' : ''} to heal` });
+          }
+          const uniqueIds = new Set(woundIds);
+          if (uniqueIds.size !== woundIds.length) return res.status(400).json({ error: "Duplicate wound in selection" });
+          const matched = wounds.filter(w => uniqueIds.has(w.id));
+          // A potion that can heal a given severity can also heal anything
+          // milder - it just can't reach past what it's rated for.
+          const maxRank = CA_WOUND_SEVERITY_RANK[option.severity];
+          if (matched.length !== woundIds.length || matched.some(w => CA_WOUND_SEVERITY_RANK[w.severity] > maxRank)) {
+            return res.status(400).json({ error: `Selection must be exactly ${option.count} of the character's own wounds at ${option.severity} severity or milder` });
+          }
+          nextWounds = wounds.filter(w => !uniqueIds.has(w.id));
+        } else {
+          // The player places each new wound on their own body diagram rather
+          // than always landing dead-center - placements must match count 1:1
+          // when supplied; fall back to center for any that are missing or
+          // malformed so an old/mismatched client can't crash the request.
+          const rawPlacements: unknown = req.body?.placements;
+          const placements: { x: number; y: number }[] = Array.isArray(rawPlacements) ? rawPlacements as any[] : [];
+          const added = Array.from({ length: option.count }, (_, i) => {
+            const p = placements[i];
+            const x = p && Number.isFinite(Number(p.x)) ? Number(p.x) : 50;
+            const y = p && Number.isFinite(Number(p.y)) ? Number(p.y) : 50;
+            return {
+              ...makeCAWound(x, y),
+              severity: option.severity,
+              name: item.name || "Unnamed",
+            };
+          });
+          nextWounds = [...wounds, ...added];
+        }
+
+        updatedCharacter = (await storage.updateCharacter(req.params.characterId, { caWounds: nextWounds } as any)) ?? character;
       }
 
-      const updatedCharacter = await storage.updateCharacter(req.params.characterId, { caWounds: nextWounds } as any);
       if (updatedCharacter?.campaignId) {
         broadcastToCampaign(updatedCharacter.campaignId, { type: "character_updated", characterId: updatedCharacter.id, character: updatedCharacter });
       }
@@ -16302,7 +16329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json({ success: true, character: updatedCharacter, itemConsumed });
+      res.json({ success: true, character: updatedCharacter, itemConsumed, healedHp, rolledDice });
     } catch (err) {
       res.status(400).json({ error: "Failed to use item" });
     }

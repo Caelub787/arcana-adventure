@@ -3,7 +3,7 @@ import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, json,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { V3SpellComposition } from "./v3spells";
-import type { CAWound, CAPhysiqueEffect, CARankScaling, CASocketedRune, CARuneBoost } from "./ca";
+import type { CAWound, CAPhysiqueEffect, CARankScaling, CASocketedRune, CARuneBoost, CAConsumableWoundOption } from "./ca";
 
 // Users table
 // Express session store table (managed by connect-pg-simple). Defined here so
@@ -732,11 +732,12 @@ export const items = pgTable("items", {
   consumableManaChange: integer("consumable_mana_change").default(0),
   consumableEnergyChange: integer("consumable_energy_change").default(0),
   consumableEffectDescription: text("consumable_effect_description"),
-  // C.A. only: a menu of wound heal/deal options this consumable offers when
-  // used - see shared/ca.ts CAConsumableWoundOption. The player picks one on
-  // use, and for a "heal" option picks which of their own wounds it applies
-  // to. Empty for every other system, and for a C.A. item that isn't one.
-  consumableWoundOptions: jsonb("consumable_wound_options").$type<{ id: string; mode: string; severity: string; count: number; label?: string }[]>().default(sql`'[]'::jsonb`).notNull(),
+  // C.A. only: a menu of effect options this consumable offers when used -
+  // see shared/ca.ts CAConsumableWoundOption. Each is either a wound heal/
+  // deal or an HP heal (flat or dice). The player picks one on use, and for
+  // a wound heal picks which of their own wounds it applies to. Empty for
+  // every other system, and for a C.A. item that isn't one.
+  consumableWoundOptions: jsonb("consumable_wound_options").$type<CAConsumableWoundOption[]>().default(sql`'[]'::jsonb`).notNull(),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
   // Modifiers the item grants its holder: {id, target, amount, trigger} where

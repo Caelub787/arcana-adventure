@@ -1479,7 +1479,7 @@ class ApiClient {
   // body diagram) is used for a "deal" option, defaulting to body-center
   // for any left unset. itemConsumed in the response is true when this was
   // the last one and the item no longer exists.
-  async useWoundConsumable(characterId: string, itemId: string, optionId: string, woundIds?: string[], placements?: { x: number; y: number }[]): Promise<{ success: boolean; character: any; itemConsumed: boolean }> {
+  async useWoundConsumable(characterId: string, itemId: string, optionId: string, woundIds?: string[], placements?: { x: number; y: number }[]): Promise<{ success: boolean; character: any; itemConsumed: boolean; healedHp?: number; rolledDice?: string }> {
     return this.request(`/characters/${characterId}/items/${itemId}/use-wound-item`, {
       method: 'POST',
       body: JSON.stringify({ optionId, woundIds, placements }),
