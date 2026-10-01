@@ -67,6 +67,29 @@ import {
   caConsumableWoundOptionLabel,
   type CAConsumableWoundOption,
   CA_ATTRIBUTES,
+  CA_ITEM_TYPES,
+  CA_ITEM_TYPE_LABELS,
+  type CAItemType,
+  caNormalizeItemType,
+  CA_WEAPON_HANDEDNESS,
+  CA_WEAPON_HANDEDNESS_LABELS,
+  type CAWeaponHandedness,
+  CA_CONTAINER_KINDS,
+  CA_CONTAINER_KIND_LABELS,
+  CA_CONTAINER_KIND_DESCRIPTIONS,
+  type CAContainerKind,
+  type CARankScaling,
+  type CARankScalingMode,
+  normalizeCARankScaling,
+  makeDefaultCARankScaling,
+  caRankScaledValue,
+  caItemRankLabel,
+  CA_RANK_LADDER,
+  type CARuneBoost,
+  makeCARuneBoost,
+  normalizeCARuneBoosts,
+  normalizeCASocketedRunes,
+  caSplitDescriptionGmNotes,
 } from "@shared/ca";
 import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
 import { V3_SKILLS, V3_RUNE_TARGET_ITEM_TYPES, V3_RUNE_STAT_TARGETS } from "@shared/v3";
@@ -81,19 +104,25 @@ const opts = (values: readonly string[], blank?: string) => [
 const titleCase = (v: string) => v.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
 /**
- * What a new item may be set to, matching what the old form offered: crafters
- * are V2 and V3, spellbooks and miscellaneous are V3 only. Runes, scrolls and
- * currency are made by their own flows rather than picked here, so they are
- * not on the list - but an item that already is one keeps showing as one,
- * because a select that cannot represent its own value is worse than a long
- * list.
+ * What a new item may be set to. C.A. has its own complete, alphabetical
+ * list (shared/ca.ts CA_ITEM_TYPES) with every type pickable - unlike V2/V3,
+ * nothing here is made by a separate flow. V2/V3 keep the older rule:
+ * crafters are V2 and V3, spellbooks/miscellaneous are V3 only, and runes/
+ * scrolls/currency are made by their own flows rather than picked here - but
+ * an item that already is one keeps showing as one, because a select that
+ * cannot represent its own value is worse than a long list.
  */
 const ITEM_TYPES_BASE = ["ammunition", "armor", "consumable", "container", "utility", "weapon"];
 function itemTypeOptions(systemSlug: string, current: string) {
+  if (systemSlug === "ca") {
+    const list: string[] = [...CA_ITEM_TYPES];
+    const normalizedCurrent = caNormalizeItemType(current);
+    if (current && current !== normalizedCurrent && !list.includes(current)) list.push(current);
+    return list.map((v) => ({ value: v, label: CA_ITEM_TYPE_LABELS[v as CAItemType] ?? titleCase(v) }));
+  }
   const list = [...ITEM_TYPES_BASE];
-  if (systemSlug === "aa-v2" || systemSlug === "aa-v3" || systemSlug === "ca") list.push("crafter");
+  if (systemSlug === "aa-v2" || systemSlug === "aa-v3") list.push("crafter");
   if (systemSlug === "aa-v3") list.push("miscellaneous", "spellbook");
-  if (systemSlug === "ca") list.push("beast_orb");
   if (current && !list.includes(current)) list.push(current);
   return opts(list.sort());
 }
@@ -132,6 +161,8 @@ const TYPE_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   crafter: Hammer,
   container: Boxes,
   beast_orb: Wand2,
+  currency: Coins,
+  miscellaneous: Package,
 };
 
 /**
@@ -306,6 +337,91 @@ function TargetAmountList<T extends { target: string; amount: number }>({
 }
 
 /**
+ * Edit-mode authoring for a rank-scalable C.A. stat: off by default (the
+ * stat is just its own flat value), or Steady increase (one number added
+ * per rung climbed) or Set value per rank (a GM-typed table, one cell per
+ * rung on the same ladder a character's Rank uses - any rung left blank
+ * just reads as the item's own base value).
+ */
+function RankScalingEditor({
+  scaling,
+  onChange,
+  suffix,
+  testId,
+}: {
+  scaling: CARankScaling | null;
+  onChange: (next: CARankScaling | null) => void;
+  suffix?: string;
+  testId: string;
+}) {
+  const active = !!scaling;
+  const s = scaling ?? makeDefaultCARankScaling();
+  return (
+    <div className="rounded border border-stone-700 bg-stone-900/40 p-1.5 space-y-1.5" data-testid={testId}>
+      <label className="flex items-center gap-1.5 text-[10px] text-stone-400 cursor-pointer w-fit">
+        <input
+          type="checkbox"
+          checked={active}
+          onChange={(e) => onChange(e.target.checked ? makeDefaultCARankScaling() : null)}
+          className="accent-amber-600 h-3 w-3"
+          data-testid={`${testId}-toggle`}
+        />
+        Scales with Rank
+      </label>
+      {active && (
+        <>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select
+              value={s.mode}
+              onChange={(e) => onChange({ ...s, mode: e.target.value as CARankScalingMode })}
+              className="h-7 text-xs rounded border border-stone-700 bg-stone-800 text-stone-200 px-1.5"
+              data-testid={`${testId}-mode`}
+            >
+              <option value="steady">Steady increase</option>
+              <option value="table">Set value per rank</option>
+            </select>
+            {s.mode === "steady" && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  value={s.perRank}
+                  onChange={(e) => onChange({ ...s, perRank: Number(e.target.value) || 0 })}
+                  className="w-16 h-7 text-xs rounded border border-stone-700 bg-stone-800 text-stone-200 px-1.5"
+                  data-testid={`${testId}-per-rank`}
+                />
+                <span className="text-[10px] text-stone-500">per rank{suffix ? ` (${suffix})` : ""}</span>
+              </div>
+            )}
+          </div>
+          {s.mode === "table" && (
+            <div className="grid grid-cols-5 gap-1 max-h-32 overflow-y-auto pr-1">
+              {CA_RANK_LADDER.map((rung, i) => (
+                <div key={i} className="flex flex-col items-center">
+                  <span className="text-[8px] text-stone-500">{rung.rank.name[0]}{rung.star.star}</span>
+                  <input
+                    type="number"
+                    value={s.table[i] ?? ""}
+                    placeholder="—"
+                    onChange={(e) => {
+                      const v = e.target.value === "" ? null : Number(e.target.value);
+                      const table = [...s.table];
+                      table[i] = v;
+                      onChange({ ...s, table });
+                    }}
+                    className="w-full h-6 text-[10px] text-center rounded border border-stone-700 bg-stone-800 text-stone-200"
+                    data-testid={`${testId}-table-${i}`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * The sheet's Edit-mode field primitive: a label over a plain, always-active
  * input. No double-click, no per-field Save/Cancel - the whole sheet is
  * already in one editing session with its own Save/Cancel at top and
@@ -409,6 +525,8 @@ export function LibraryItemSheet({
   characterCustomSkills,
   renderAfterHandling,
   initialEditing = false,
+  onCaSocketRune,
+  onCaUnsocketRune,
 }: {
   item: any;
   systemSlug: string;
@@ -454,6 +572,14 @@ export function LibraryItemSheet({
   /** Opens the sheet straight into Edit mode - for a just-created blank item,
    * which has nothing worth looking at in View yet. */
   initialEditing?: boolean;
+  /**
+   * C.A. rune-slot socketing. Both unset (as the admin library's templates
+   * do - there's no real inventory to pull a rune from) collapses Rune Slots
+   * to a read-only "Empty"/name-only display; the in-game item view passes
+   * real handlers so a player can actually fill/empty a slot.
+   */
+  onCaSocketRune?: (runeItemId: string, slotIndex: number) => void;
+  onCaUnsocketRune?: (slotIndex: number) => void;
 }) {
   const [isEditing, setIsEditing] = useState(!!initialEditing);
   const { draft, patch: setDraft, isDirty, clear: clearDraft } = useItemDraft(isEditing);
@@ -511,13 +637,13 @@ export function LibraryItemSheet({
   // and their "add a recipe" writes live against the library item it was
   // added from (`templateItemId`), not this row's own id.
   const craftRecipeItemId: string | undefined = item?.isTemplate ? item?.id : (item?.templateItemId || item?.id);
-  const type = String(val("itemType") || "");
   const isV3 = systemSlug === "aa-v3";
-  // C.A. has one roll system and it is the Rolls panel at the bottom of this
-  // sheet. The old per-item damage/attack columns were a second, weaker one
-  // saying the same thing in fewer words, so C.A. doesn't show them at all -
-  // an item that hits for 1d8 says so as a roll, the way an Ability does.
   const isCA = isWoundSystem(systemSlug);
+  // C.A. folds its one retired type ("utility") into Miscellaneous and
+  // never lets Scroll/Spellbook (AA-V3 only) through its own type list, so a
+  // C.A. item's type is always normalized before anything branches on it.
+  const rawType = String(val("itemType") || "");
+  const type = isCA ? caNormalizeItemType(rawType) : rawType;
   const damageTypes = getEffectTypes(systemSlug);
   const rules = woundSystemRules(systemSlug) as any;
   const attrLabel = (a?: string | null) => {
@@ -525,6 +651,31 @@ export function LibraryItemSheet({
     if (isCA) return CA_ATTRIBUTES.find((x) => x.key === a)?.name ?? titleCase(a);
     return titleCase(a);
   };
+  const typeLabel = (t: string) => (isCA ? CA_ITEM_TYPE_LABELS[t as CAItemType] ?? titleCase(t) : titleCase(t));
+  // An item's own Rank tag - an index into the same ladder a character's
+  // Rank reads (shared/ca.ts CA_RANK_LADDER). Null/unset = unranked, and
+  // every rank-scalable stat just reads as its own flat base value.
+  const itemRankIndex: number | null = (() => {
+    const v = val("itemRank");
+    return v === null || v === undefined || v === "" ? null : Math.max(0, Math.min(CA_RANK_LADDER.length - 1, Math.trunc(Number(v))));
+  })();
+  const rankScalingOptions = [
+    { value: "", label: "Unranked" },
+    ...CA_RANK_LADDER.map((rung, i) => ({ value: String(i), label: `${rung.rank.name} ${rung.star.star}` })),
+  ];
+  const scaledStat = (base: number, field: string): number =>
+    caRankScaledValue(base, normalizeCARankScaling(val(field)), itemRankIndex);
+  // C.A.'s own rune boosts - what THIS item (a rune) grants once socketed, or
+  // what's currently filled into THIS item's own rune slots (any item type).
+  const runeBoosts: CARuneBoost[] = normalizeCARuneBoosts(val("caRuneBoosts"));
+  const writeRuneBoosts = (next: CARuneBoost[]) => setDraft({ caRuneBoosts: next });
+  const runeSockets = normalizeCASocketedRunes(val("caRuneSockets"));
+  const runeSlotCount: number = Math.max(0, Math.trunc(Number(val("runeSlotCount")) || 0));
+  // GM-only text embedded in the description between ## marks - a GM's aside
+  // written right next to the public line it's about, rather than a second
+  // field. Only C.A. parses this; every other system's description is shown
+  // raw, unchanged.
+  const descriptionParts = isCA ? caSplitDescriptionGmNotes(val("description")) : null;
 
   // The sheet carries its own image browser rather than asking each host to
   // wire one in: the admin page and a character sheet would otherwise need to
@@ -759,18 +910,28 @@ export function LibraryItemSheet({
                 {val("name") || "Untitled Item"}
               </h2>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <ItemBadge>{titleCase(type || "item")}</ItemBadge>
+                <ItemBadge>{typeLabel(type || "item")}</ItemBadge>
+                {isCA && <ItemBadge>{caItemRankLabel(itemRankIndex)}</ItemBadge>}
                 <span className={`text-[10px] uppercase tracking-wide font-semibold ${RARITY_COLORS[String(val("rarity") || "common")]}`}>
                   {titleCase(String(val("rarity") || "common"))}
                 </span>
                 {val("size") && <span className="text-[10px] uppercase tracking-wide text-stone-500">{val("size")}</span>}
               </div>
-              {val("description") ? (
+              {(descriptionParts ? descriptionParts.player : val("description")) ? (
                 <p className="text-xs text-stone-400 italic leading-relaxed" data-testid="text-library-item-view-description">
-                  {val("description")}
+                  {descriptionParts ? descriptionParts.player : val("description")}
                 </p>
               ) : (
                 <p className="text-xs text-stone-600 italic">No description.</p>
+              )}
+              {isSheetGM && descriptionParts?.hasGmNotes && (
+                <p
+                  className="text-xs text-amber-300/90 italic leading-relaxed rounded border border-dashed border-amber-700/50 bg-amber-950/20 px-2 py-1"
+                  data-testid="text-library-item-gm-note"
+                >
+                  <span className="not-italic font-semibold text-amber-500 mr-1">GM only:</span>
+                  {descriptionParts.gm}
+                </p>
               )}
             </div>
           </div>
@@ -817,7 +978,27 @@ export function LibraryItemSheet({
                 <ItemField field="itemType" label="Type" value={type} onChange={chg("itemType")} kind="select" options={itemTypeOptions(systemSlug, type)} testId="library-item-type" />
                 <ItemField field="rarity" label="Rarity" value={val("rarity")} onChange={chg("rarity")} kind="select" options={opts(RARITIES)} testId="library-item-rarity" />
                 <ItemField field="size" label="Size" value={val("size")} onChange={chg("size")} testId="library-item-size" />
-                <ItemField field="description" label="Description" value={val("description")} onChange={chg("description")} kind="textarea" wide placeholder="What it is." testId="library-item-description" />
+                {isCA && (
+                  <ItemField
+                    field="itemRank"
+                    label="Rank"
+                    value={itemRankIndex === null ? "" : String(itemRankIndex)}
+                    onChange={(v) => setDraft({ itemRank: v === "" ? null : Number(v) })}
+                    kind="select"
+                    options={rankScalingOptions}
+                    testId="library-item-rank"
+                  />
+                )}
+                <ItemField
+                  field="description"
+                  label={isCA ? "Description (wrap GM-only text in ## marks)" : "Description"}
+                  value={val("description")}
+                  onChange={chg("description")}
+                  kind="textarea"
+                  wide
+                  placeholder={isCA ? "What it is. ##A GM-only aside.##" : "What it is."}
+                  testId="library-item-description"
+                />
               </CaFieldGrid>
             </div>
           </CaSection>
@@ -830,7 +1011,7 @@ export function LibraryItemSheet({
               <CaChipGroup cols={4}>
                 <CaChipCell icon={<Boxes className="h-3 w-3" />} label="Qty">{val("quantity") ?? 1}</CaChipCell>
                 <CaChipCell icon={<Weight className="h-3 w-3" />} label="Weight">{val("itemWeight") ?? 0} lb</CaChipCell>
-                <CaChipCell icon={<Coins className="h-3 w-3" />} label="Value">{val("price") ?? 0}</CaChipCell>
+                <CaChipCell icon={<Coins className="h-3 w-3" />} label="Value">{isCA ? scaledStat(val("price") ?? 0, "priceScaling") : val("price") ?? 0}</CaChipCell>
                 <CaChipCell icon={<Hammer className="h-3 w-3" />} label="Durability">{val("durability") ?? 10}/{val("maxDurability") ?? 10}</CaChipCell>
               </CaChipGroup>
               {isV3 && val("advancedItemTypeId") && (
@@ -840,7 +1021,9 @@ export function LibraryItemSheet({
               )}
               {(val("isContainer") || (isCA && type === "weapon" && val("isHeavy"))) && (
                 <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                  {val("isContainer") && <ItemBadge>Container ({val("carryCapacity") ?? 0} lb capacity)</ItemBadge>}
+                  {val("isContainer") && (
+                    <ItemBadge>Container ({isCA ? scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling") : val("carryCapacity") ?? 0} lb capacity)</ItemBadge>
+                  )}
                   {isCA && type === "weapon" && val("isHeavy") && <ItemBadge>Heavy (two-handed)</ItemBadge>}
                 </div>
               )}
@@ -866,6 +1049,29 @@ export function LibraryItemSheet({
                   />
                 )}
               </CaFieldGrid>
+              {isCA && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-stone-500 block mb-1">Value scaling</span>
+                    <RankScalingEditor
+                      scaling={normalizeCARankScaling(val("priceScaling"))}
+                      onChange={(next) => setDraft({ priceScaling: next })}
+                      testId="library-item-price-scaling"
+                    />
+                  </div>
+                  {val("isContainer") && (
+                    <div>
+                      <span className="text-[10px] text-stone-500 block mb-1">Carry capacity scaling</span>
+                      <RankScalingEditor
+                        scaling={normalizeCARankScaling(val("carryCapacityScaling"))}
+                        onChange={(next) => setDraft({ carryCapacityScaling: next })}
+                        suffix="lb"
+                        testId="library-item-carry-capacity-scaling"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-2 space-y-1">
                 <ToggleRow label="Container" value={!!val("isContainer")} onChange={chg("isContainer")} testId="toggle-library-item-container" />
                 {/* Two-handedness is how the item is held, not how it hits, so
@@ -966,16 +1172,65 @@ export function LibraryItemSheet({
           )
         ))}
 
+        {/* ========================== C.A. WEAPON ATTACK ========================= */}
+        {isCA && type === "weapon" && toggleableSection("attack", <Sword className="h-3.5 w-3.5" />, "Attack", (
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={3}>
+                <CaChipCell icon={<Sword className="h-3 w-3" />} label="Damage">{scaledStat(val("caBaseDamage") ?? 0, "caBaseDamageScaling")}</CaChipCell>
+                <CaChipCell label="Handedness">{CA_WEAPON_HANDEDNESS_LABELS[(val("caWeaponHandedness") as CAWeaponHandedness) ?? "one_handed"]}</CaChipCell>
+                {val("caWeaponHandedness") === "ranged" && <CaChipCell label="Range">{val("range") ? `${val("range")} ft` : "—"}</CaChipCell>}
+              </CaChipGroup>
+              {val("caWeaponHandedness") === "ranged" && val("ammunitionType") && (
+                <p className="text-[11px] text-stone-500 mt-1.5">Uses <span className="text-stone-300">{val("ammunitionType")}</span> ammunition.</p>
+              )}
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField
+                  field="caWeaponHandedness"
+                  label="Handedness"
+                  value={val("caWeaponHandedness") ?? "one_handed"}
+                  onChange={chg("caWeaponHandedness")}
+                  kind="select"
+                  options={CA_WEAPON_HANDEDNESS.map((h) => ({ value: h, label: CA_WEAPON_HANDEDNESS_LABELS[h] }))}
+                  testId="library-item-ca-handedness"
+                />
+                <ItemField field="caBaseDamage" label="Base damage" value={val("caBaseDamage") ?? 0} onChange={chg("caBaseDamage")} kind="number" min={0} testId="library-item-ca-base-damage" />
+                {val("caWeaponHandedness") === "ranged" && (
+                  <>
+                    <ItemField field="range" label="Range" value={val("range") ?? 0} onChange={chg("range")} kind="number" min={0} suffix="ft" testId="library-item-range" />
+                    <ItemField field="ammunitionType" label="Uses ammunition" value={val("ammunitionType")} onChange={chg("ammunitionType")} placeholder="arrow, bolt…" testId="library-item-ca-ammo-type" />
+                  </>
+                )}
+              </CaFieldGrid>
+              <div className="mt-2">
+                <span className="text-[10px] text-stone-500 block mb-1">Base damage scaling</span>
+                <RankScalingEditor
+                  scaling={normalizeCARankScaling(val("caBaseDamageScaling"))}
+                  onChange={(next) => setDraft({ caBaseDamageScaling: next })}
+                  testId="library-item-ca-base-damage-scaling"
+                />
+              </div>
+            </>
+          )
+        ))}
+
         {/* ============================= PROTECTION ============================= */}
         {type === "armor" && toggleableSection("protection", <Shield className="h-3.5 w-3.5" />, "Protection", (
           !isEditing ? (
             <>
               <CaChipGroup cols={3}>
-                <CaChipCell icon={<Shield className="h-3 w-3" />} label="Slot">{val("armorSlot") ? titleCase(val("armorSlot")) : "—"}</CaChipCell>
-                <CaChipCell label="DC Bonus">+{val("armorBonus") ?? 0}</CaChipCell>
-                <CaChipCell label="Reduction">{val("damageReduction") ?? 0}{val("damageReductionType") ? ` ${titleCase(val("damageReductionType"))}` : ""}</CaChipCell>
+                <CaChipCell icon={<Shield className="h-3 w-3" />} label="Slot">{val("armorSlot") ? (isCA ? val("armorSlot") : titleCase(val("armorSlot"))) : "—"}</CaChipCell>
+                <CaChipCell label="DC Bonus">+{isCA ? scaledStat(val("armorBonus") ?? 0, "armorBonusScaling") : val("armorBonus") ?? 0}</CaChipCell>
+                {isCA ? (
+                  <CaChipCell label="Wound reduction">{scaledStat(val("caWoundReductionSteps") ?? 0, "caWoundReductionStepsScaling")} step(s)</CaChipCell>
+                ) : (
+                  <CaChipCell label="Reduction">{val("damageReduction") ?? 0}{val("damageReductionType") ? ` ${titleCase(val("damageReductionType"))}` : ""}</CaChipCell>
+                )}
               </CaChipGroup>
-              {val("grantsDcBonus") && (
+              {!isCA && val("grantsDcBonus") && (
                 <p className="text-[11px] text-stone-500 mt-1.5">Grants a DC bonus of <span className="text-stone-300">+{val("dcBonusValue") ?? 0}</span>.</p>
               )}
               {isV3 && (((val("v3ArmorBoosts") as any[]) || []).length > 0) && (
@@ -993,6 +1248,33 @@ export function LibraryItemSheet({
                   />
                 </div>
               )}
+            </>
+          ) : isCA ? (
+            <>
+              <CaFieldGrid>
+                <ItemField field="armorSlot" label="Slot" value={val("armorSlot")} onChange={chg("armorSlot")} placeholder="head, chest, arms, legs…" testId="library-item-armor-slot" />
+                <ItemField field="armorBonus" label="DC bonus" value={val("armorBonus") ?? 0} onChange={chg("armorBonus")} kind="number" min={0} testId="library-item-armor-bonus" />
+                <ItemField field="caWoundReductionSteps" label="Wound reduction (steps)" value={val("caWoundReductionSteps") ?? 0} onChange={chg("caWoundReductionSteps")} kind="number" min={0} testId="library-item-ca-wound-reduction" />
+              </CaFieldGrid>
+              <p className="text-[11px] text-stone-500 mt-1">0 by default. Each step lowers a wound one tier (Severe → Moderate → Minor → none).</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] text-stone-500 block mb-1">DC bonus scaling</span>
+                  <RankScalingEditor
+                    scaling={normalizeCARankScaling(val("armorBonusScaling"))}
+                    onChange={(next) => setDraft({ armorBonusScaling: next })}
+                    testId="library-item-armor-bonus-scaling"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-stone-500 block mb-1">Wound reduction scaling</span>
+                  <RankScalingEditor
+                    scaling={normalizeCARankScaling(val("caWoundReductionStepsScaling"))}
+                    onChange={(next) => setDraft({ caWoundReductionStepsScaling: next })}
+                    testId="library-item-ca-wound-reduction-scaling"
+                  />
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -1177,32 +1459,166 @@ export function LibraryItemSheet({
         {/* ============================= AMMUNITION ============================= */}
         {type === "ammunition" && toggleableSection("ammunition", <Crosshair className="h-3.5 w-3.5" />, "Ammunition", (
           !isEditing ? (
-            <CaChipGroup cols={3}>
-              <CaChipCell icon={<Crosshair className="h-3 w-3" />} label="Type">{val("ammunitionType") || "—"}</CaChipCell>
-              <CaChipCell label="Break chance">{val("breakChance") ?? 10}%</CaChipCell>
-              {isV3 && <CaChipCell label="V3 type">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>}
-            </CaChipGroup>
-          ) : (
-            <CaFieldGrid>
-              <ItemField field="ammunitionType" label="Ammunition type" value={val("ammunitionType")} onChange={chg("ammunitionType")} placeholder="arrow, bolt…" testId="library-item-ammo-type" />
-              <ItemField field="breakChance" label="Break chance" value={val("breakChance") ?? 10} onChange={chg("breakChance")} kind="number" min={0} max={100} suffix="%" testId="library-item-break-chance" />
-              {isV3 && (
-                <ItemField
-                  field="ammunitionTypeId"
-                  label="V3 type"
-                  value={val("ammunitionTypeId")}
-                  onChange={chg("ammunitionTypeId")}
-                  kind="select"
-                  options={[{ value: "", label: "None" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
-                  testId="library-item-ammo-type-id"
-                />
+            <>
+              <CaChipGroup cols={3}>
+                <CaChipCell icon={<Crosshair className="h-3 w-3" />} label="Type">{val("ammunitionType") || "—"}</CaChipCell>
+                <CaChipCell label="Break chance">{val("breakChance") ?? 10}%</CaChipCell>
+                {isCA ? (
+                  <CaChipCell label="Damage boost">+{scaledStat(val("ammoDamageBoost") ?? 0, "ammoDamageBoostScaling")}</CaChipCell>
+                ) : isV3 ? (
+                  <CaChipCell label="V3 type">{(ammoTypes as any[]).find((t) => t.id === val("ammunitionTypeId"))?.name ?? "—"}</CaChipCell>
+                ) : null}
+              </CaChipGroup>
+              {isCA && (
+                <p className="text-[11px] text-stone-500 mt-1.5">
+                  Only boosts damage while this and a matching weapon are both equipped. Equipping more than one
+                  ammunition type at once blocks rolling until one is unequipped.
+                </p>
               )}
-            </CaFieldGrid>
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField field="ammunitionType" label="Ammunition type" value={val("ammunitionType")} onChange={chg("ammunitionType")} placeholder="arrow, bolt…" testId="library-item-ammo-type" />
+                <ItemField field="breakChance" label="Break chance" value={val("breakChance") ?? 10} onChange={chg("breakChance")} kind="number" min={0} max={100} suffix="%" testId="library-item-break-chance" />
+                {isCA && (
+                  <ItemField field="ammoDamageBoost" label="Damage boost" value={val("ammoDamageBoost") ?? 0} onChange={chg("ammoDamageBoost")} kind="number" min={0} testId="library-item-ammo-damage-boost" />
+                )}
+                {isV3 && (
+                  <ItemField
+                    field="ammunitionTypeId"
+                    label="V3 type"
+                    value={val("ammunitionTypeId")}
+                    onChange={chg("ammunitionTypeId")}
+                    kind="select"
+                    options={[{ value: "", label: "None" }, ...(ammoTypes as any[]).map((t) => ({ value: t.id, label: t.name }))]}
+                    testId="library-item-ammo-type-id"
+                  />
+                )}
+              </CaFieldGrid>
+              {isCA && (
+                <div className="mt-2">
+                  <span className="text-[10px] text-stone-500 block mb-1">Damage boost scaling</span>
+                  <RankScalingEditor
+                    scaling={normalizeCARankScaling(val("ammoDamageBoostScaling"))}
+                    onChange={(next) => setDraft({ ammoDamageBoostScaling: next })}
+                    testId="library-item-ammo-damage-boost-scaling"
+                  />
+                </div>
+              )}
+            </>
+          )
+        ))}
+
+        {/* ============================= CONTAINER ============================== */}
+        {isCA && type === "container" && toggleableSection("container", <Boxes className="h-3.5 w-3.5" />, "Container", (
+          !isEditing ? (
+            <>
+              <CaChipGroup cols={2}>
+                <CaChipCell icon={<Boxes className="h-3 w-3" />} label="Kind">{CA_CONTAINER_KIND_LABELS[(val("caContainerKind") as CAContainerKind) ?? "backpack"]}</CaChipCell>
+                <CaChipCell label="Capacity">{scaledStat(val("carryCapacity") ?? 0, "carryCapacityScaling")} lb</CaChipCell>
+              </CaChipGroup>
+              <p className="text-[11px] text-stone-500 mt-1.5">
+                {CA_CONTAINER_KIND_DESCRIPTIONS[(val("caContainerKind") as CAContainerKind) ?? "backpack"]}
+              </p>
+            </>
+          ) : (
+            <>
+              <CaFieldGrid>
+                <ItemField
+                  field="caContainerKind"
+                  label="Kind"
+                  value={val("caContainerKind") ?? "backpack"}
+                  onChange={chg("caContainerKind")}
+                  kind="select"
+                  options={CA_CONTAINER_KINDS.map((k) => ({ value: k, label: CA_CONTAINER_KIND_LABELS[k] }))}
+                  testId="library-item-ca-container-kind"
+                />
+                <ItemField field="carryCapacity" label="Capacity" value={val("carryCapacity") ?? 0} onChange={chg("carryCapacity")} kind="number" min={0} suffix="lb" testId="library-item-ca-container-capacity" />
+              </CaFieldGrid>
+              <p className="text-[11px] text-stone-500 mt-1">{CA_CONTAINER_KIND_DESCRIPTIONS[(val("caContainerKind") as CAContainerKind) ?? "backpack"]}</p>
+              <div className="mt-1">
+                <ToggleRow label="Container (holds items)" value={!!val("isContainer")} onChange={chg("isContainer")} testId="toggle-library-item-container-2" />
+              </div>
+              <div className="mt-2">
+                <span className="text-[10px] text-stone-500 block mb-1">Capacity scaling</span>
+                <RankScalingEditor
+                  scaling={normalizeCARankScaling(val("carryCapacityScaling"))}
+                  onChange={(next) => setDraft({ carryCapacityScaling: next })}
+                  suffix="lb"
+                  testId="library-item-ca-container-capacity-scaling"
+                />
+              </div>
+            </>
           )
         ))}
 
         {/* ================================ RUNE ================================ */}
-        {type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
+        {/* C.A.'s own rune authoring - "unlimited possibilities" means a
+            free-text label per boost rather than a fixed target list, and
+            nothing here is applied to the host automatically when socketed. */}
+        {isCA && type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
+          !isEditing ? (
+            runeBoosts.length === 0 ? (
+              <p className="text-xs text-stone-500 italic">No boosts set - this rune does nothing yet.</p>
+            ) : (
+              <div className="space-y-1" data-testid="library-item-rune-boosts">
+                {runeBoosts.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-stone-300">{b.label || "Unnamed boost"}</span>
+                    <span className="font-mono font-semibold" style={{ color: "var(--ca-gilt)" }}>{b.amount > 0 ? `+${b.amount}` : b.amount}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            <>
+              <p className="text-[11px] text-stone-500 mb-2">
+                What this rune grants once socketed - type whatever it boosts ("Damage", "Carry Capacity", "Fire
+                Resistance", anything) and by how much. The player applies it themselves when they use the host item.
+              </p>
+              <div className="space-y-1" data-testid="library-item-rune-boosts">
+                {runeBoosts.length === 0 && <p className="text-[11px] text-stone-500">No boosts yet.</p>}
+                {runeBoosts.map((b, i) => (
+                  <div key={b.id} className="flex items-center gap-1">
+                    <input
+                      value={b.label}
+                      onChange={(e) => writeRuneBoosts(runeBoosts.map((r, j) => (j === i ? { ...r, label: e.target.value } : r)))}
+                      placeholder="What it boosts…"
+                      className="flex-1 min-w-0 h-7 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                      data-testid={`library-item-rune-boost-${i}-label`}
+                    />
+                    <input
+                      type="number"
+                      value={b.amount}
+                      onChange={(e) => writeRuneBoosts(runeBoosts.map((r, j) => (j === i ? { ...r, amount: Math.round(Number(e.target.value) || 0) } : r)))}
+                      className="w-16 h-7 shrink-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                      data-testid={`library-item-rune-boost-${i}-amount`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => writeRuneBoosts(runeBoosts.filter((_, j) => j !== i))}
+                      className="text-stone-500 hover:text-red-400 shrink-0"
+                      data-testid={`library-item-rune-boost-${i}-remove`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="text-[11px] text-amber-500 hover:text-amber-400"
+                  onClick={() => writeRuneBoosts([...runeBoosts, makeCARuneBoost()])}
+                  data-testid="library-item-rune-boost-add"
+                >
+                  + Add boost
+                </button>
+              </div>
+            </>
+          )
+        ))}
+
+        {!isCA && type === "rune" && toggleableSection("rune", <Gem className="h-3.5 w-3.5" />, "Rune", (
           !isEditing ? (
             <>
               <CaChipGroup cols={3}>
@@ -1270,6 +1686,77 @@ export function LibraryItemSheet({
               </div>
             </>
           )
+        ))}
+
+        {/* =========================== C.A. RUNE SLOTS =========================== */}
+        {isCA && type !== "rune" && toggleableSection("rune-slots", <Gem className="h-3.5 w-3.5" />, "Rune Slots", (
+          <>
+            {isEditing && (
+              <div className="mb-2" style={{ maxWidth: 160 }}>
+                <ItemField field="runeSlotCount" label="Slot count" value={runeSlotCount} onChange={chg("runeSlotCount")} kind="number" min={0} testId="library-item-rune-slot-count" />
+              </div>
+            )}
+            {runeSlotCount === 0 ? (
+              <p className="text-xs text-stone-500 italic">No rune slots on this item.</p>
+            ) : (
+              <div className="space-y-1.5" data-testid="library-item-rune-slots">
+                {Array.from({ length: runeSlotCount }, (_, slotIndex) => {
+                  const socket = runeSockets.find((s) => s.slotIndex === slotIndex);
+                  const availableRunes = (characterItems ?? []).filter(
+                    (it: any) => caNormalizeItemType(it.itemType) === "rune" && it.id !== item?.id,
+                  );
+                  return (
+                    <div
+                      key={slotIndex}
+                      className="flex items-center justify-between gap-2 rounded-lg border bg-stone-900/50 px-2.5 py-1.5"
+                      style={{ borderColor: "var(--ca-gilt-line-soft)" }}
+                      data-testid={`library-item-rune-slot-${slotIndex}`}
+                    >
+                      {socket ? (
+                        <>
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-stone-200 block truncate">{socket.name}</span>
+                            {socket.boosts.length > 0 && (
+                              <span className="text-[10px] text-stone-500 block truncate">
+                                {socket.boosts.map((b) => `${b.label || "?"} ${b.amount > 0 ? "+" : ""}${b.amount}`).join(", ")}
+                              </span>
+                            )}
+                          </div>
+                          {!!onCaUnsocketRune && (
+                            <button
+                              type="button"
+                              onClick={() => onCaUnsocketRune(slotIndex)}
+                              className="text-stone-500 hover:text-red-400 shrink-0"
+                              title="Unsocket"
+                              data-testid={`button-library-item-rune-slot-${slotIndex}-unsocket`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
+                      ) : onCaSocketRune && availableRunes.length > 0 ? (
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) onCaSocketRune(e.target.value, slotIndex);
+                          }}
+                          className="h-7 flex-1 min-w-0 rounded border border-stone-700 bg-stone-800 text-stone-200 text-xs px-1.5"
+                          data-testid={`select-library-item-rune-slot-${slotIndex}-socket`}
+                        >
+                          <option value="">Socket a rune…</option>
+                          {availableRunes.map((r: any) => (
+                            <option key={r.id} value={r.id}>{r.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-stone-500 italic">Empty</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         ))}
 
         {/* =============================== SCROLL =============================== */}

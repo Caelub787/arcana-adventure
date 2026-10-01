@@ -32466,6 +32466,26 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
       setSyncingTechniques(false);
     }
   };
+  const handleCaSocketRune = async (runeItemId: string, slotIndex: number) => {
+    if (!character?.id || !item?.id) return;
+    try {
+      await api.caSocketRune(character.id, item.id, runeItemId, slotIndex);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+    } catch (err: any) {
+      toast({ title: 'Could not socket rune', description: err?.message || 'Please try again.', variant: 'destructive' });
+    }
+  };
+  const handleCaUnsocketRune = async (slotIndex: number) => {
+    if (!character?.id || !item?.id) return;
+    try {
+      await api.caUnsocketRune(character.id, item.id, slotIndex);
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+    } catch (err: any) {
+      toast({ title: 'Could not unsocket rune', description: err?.message || 'Please try again.', variant: 'destructive' });
+    }
+  };
   const [absorbing, setAbsorbing] = useState(false);
   const handleAbsorb = async () => {
     if (!character?.id || !item?.id) return;
@@ -32835,6 +32855,8 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
             characterMana={character?.mana}
             characterItems={items}
             characterCustomSkills={characterCustomSkills as any[]}
+            onCaSocketRune={isWoundSystem(campaignSystem) ? handleCaSocketRune : undefined}
+            onCaUnsocketRune={isWoundSystem(campaignSystem) ? handleCaUnsocketRune : undefined}
             renderAfterHandling={currentData.itemType === 'consumable' && isWoundSystem(campaignSystem) && (
               <CAWoundConsumablePanel
                 item={currentData}
