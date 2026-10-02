@@ -524,6 +524,18 @@ async function ensureKnowledgeSystemSchema() {
     // C.A. wound/HP/Focus rework: Focus is a new resource alongside HP/Energy/Mana.
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS focus integer NOT NULL DEFAULT 10`,
     `ALTER TABLE IF EXISTS characters ADD COLUMN IF NOT EXISTS max_focus integer NOT NULL DEFAULT 10`,
+    // Soundscape: sounds on hotbar slots, rolls and item uses, plus saved GM mixes.
+    `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS sound_id text`,
+    `ALTER TABLE IF EXISTS roll_entries ADD COLUMN IF NOT EXISTS sound_id text`,
+    `ALTER TABLE IF EXISTS items ADD COLUMN IF NOT EXISTS use_sound_id text`,
+    `CREATE TABLE IF NOT EXISTS soundscape_scenes (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      campaign_id varchar NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      name text NOT NULL,
+      layers jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamp NOT NULL DEFAULT now()
+    )`,
+    `CREATE INDEX IF NOT EXISTS soundscape_scenes_campaign_idx ON soundscape_scenes (campaign_id)`,
   ];
   return runSchemaGuard("knowledge", statements);
 }

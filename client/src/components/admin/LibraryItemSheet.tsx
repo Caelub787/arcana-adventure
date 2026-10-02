@@ -34,8 +34,10 @@ import {
   Package, Sword, Shield, Coins, Trash2, X, Sparkles, ImageIcon,
   FlaskConical, Crosshair, Gem, ScrollText, BookOpen, Hammer, Dices, Layers,
   Pencil, Check, Feather, HeartPulse, Skull, Boxes, Wand2, Eye, EyeOff,
-  Plus, Search,
+  Plus, Search, Music,
 } from "lucide-react";
+import { SoundPicker } from "@/components/game/SoundPicker";
+import { getSound } from "@shared/soundscape";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -2355,6 +2357,22 @@ export function LibraryItemSheet({
             </>
           )
         ))}
+
+        {/* ============================ SOUND ON USE ============================ */}
+        {toggleableSection("sound", <Music className="h-3.5 w-3.5" />, "Sound on use", (
+          isEditing ? (
+            <div className="space-y-1">
+              <p className="text-[11px] text-stone-500">Plays for the whole table when this item is used or one of its rolls goes off (a roll's own sound wins).</p>
+              <SoundPicker
+                value={val("useSoundId")}
+                onChange={(soundId) => setDraft({ useSoundId: soundId })}
+                testId="library-item-use-sound"
+              />
+            </div>
+          ) : (
+            <span className="text-sm text-stone-300">{getSound(val("useSoundId"))?.name}</span>
+          )
+        ), !getSound(val("useSoundId")))}
 
         {/* =============================== EFFECTS ============================== */}
         {toggleableSection("effects", <Sparkles className="h-3.5 w-3.5" />, "Effects", (

@@ -6,7 +6,7 @@ import {
   DEFAULT_MAP_GRID, defaultElementData, mapStyle, normalizeGrid,
   type MapElementKind,
 } from "@shared/mapDoc";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema, soundscapeScenes } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -22,6 +22,7 @@ import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/system
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
 import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
+import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOUNDSCAPE, type SoundscapeState } from "@shared/soundscape";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import multer from "multer";
 import sharp from "sharp";
@@ -502,6 +503,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
+  // Soundscape: what each campaign's table is currently hearing. In-memory on
+  // purpose — a server restart is a natural "silence", like stopping the music.
+  const soundscapeStates = new Map<string, SoundscapeState>();
 
   // Recent dice-roll notifications per campaign, so the pinned-roster
   // player tracker's roll memory survives a page reload instead of only
@@ -2646,6 +2650,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Soundscape: the GM sets the shared music/ambience mix; everyone in the
+        // room (and anyone who joins later, via GET .../soundscape) hears it.
+        if (message.type === "soundscape_update") {
+          const { campaignId } = message;
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign || userCampaign.role !== 'gm' || userCampaign.spectator) return;
+          const state = normalizeSoundscapeState(message.state);
+          state.updatedAt = Date.now();
+          soundscapeStates.set(campaignId, state);
+          const payload = JSON.stringify({ type: "soundscape_state", campaignId, state });
+          campaignRooms.get(campaignId)?.forEach((client) => {
+            if (client.readyState === 1) client.send(payload);
+          });
+          return;
+        }
+
+        // Soundscape one-shot (a sword clash on a roll, a door on an item use…):
+        // any member can fire one, it plays once for the whole table.
+        if (message.type === "soundscape_sfx") {
+          const { campaignId, soundId } = message;
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign || userCampaign.spectator || !isKnownSound(soundId)) return;
+          const volume = Math.min(1, Math.max(0, Number(message.volume ?? 1) || 1));
+          const payload = JSON.stringify({ type: "soundscape_sfx", campaignId, soundId, volume, userId: authenticatedUserId });
+          campaignRooms.get(campaignId)?.forEach((client) => {
+            if (client !== ws && client.readyState === 1) client.send(payload);
+          });
+          return;
+        }
+
         // Handle beacon - broadcast temporary attention marker to all campaign members
         // Creates a pulsating ring animation at the specified grid location
         if (message.type === "beacon") {
@@ -5504,6 +5538,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Re-validate access per entry on every read: permissions may have been
       // revoked since assignment, so stale entries must not leak data.
       const enriched = await Promise.all(entries.map(async (entry) => {
+        if (entry.soundId) {
+          // Soundscape slot: GM-only, and only while the sound still exists in the library.
+          if (!isGM || !isKnownSound(entry.soundId)) return null;
+          return { ...entry, character: null, item: null, rollEntry: null, sourceCharacter: null };
+        }
         if (entry.characterId && entry.skillKey) {
           // A skill slot: whose skill it is comes along for the ride, same as
           // an ability roll, but there's no rollEntry row to look up — the
@@ -5656,12 +5695,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const itemId = req.body.itemId || null;
       const rollEntryId = req.body.rollEntryId || null;
       const skillKey = req.body.skillKey || null;
+      const soundId = req.body.soundId || null;
 
       if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
         return res.status(400).json({ error: "loadoutIndex must be 0-8" });
       }
       if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
         return res.status(400).json({ error: "slotIndex must be 0-9" });
+      }
+      if (soundId) {
+        // Soundscape slots are a GM tool: they drive the table's shared mix.
+        if (characterId || itemId || rollEntryId || skillKey) return res.status(400).json({ error: "soundId can't be combined with other targets" });
+        if (!isKnownSound(soundId)) return res.status(400).json({ error: "Unknown sound" });
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        if (!(await hasGmAccess(userId, campaignId, campaign.gmUserId))) return res.status(403).json({ error: "Only the GM can put sounds on the hotbar" });
+        const entry = await storage.upsertFreeHotbarEntry({
+          userId, campaignId, loadoutIndex, slotIndex,
+          characterId: null, itemId: null, rollEntryId: null, skillKey: null, soundId,
+        });
+        return res.json(entry);
       }
       if (skillKey) {
         if (!isCASkillKey(skillKey)) return res.status(400).json({ error: "Unknown skill" });
@@ -5676,12 +5729,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const entry = await storage.upsertFreeHotbarEntry({
         userId, campaignId, loadoutIndex, slotIndex,
-        characterId, itemId, rollEntryId, skillKey,
+        characterId, itemId, rollEntryId, skillKey, soundId: null,
       });
       res.json(entry);
     } catch (err) {
       console.error("Failed to update free hotbar:", err);
       res.status(500).json({ error: "Failed to update free hotbar" });
+    }
+  });
+
+  // --- Soundscape --------------------------------------------------------------
+  const requireSoundscapeAccess = async (req: any, res: any, gmOnly: boolean): Promise<boolean> => {
+    const userId = req.session.userId!;
+    const campaign = await storage.getCampaign(req.params.campaignId);
+    if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return false; }
+    const isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId);
+    if (gmOnly ? !isGM : !isGM && !(await storage.isCampaignMember(campaign.id, userId))) {
+      res.status(403).json({ error: gmOnly ? "Only the GM can do that" : "Not a member of this campaign" });
+      return false;
+    }
+    return true;
+  };
+
+  app.get("/api/campaigns/:campaignId/soundscape", requireAuth, async (req, res) => {
+    try {
+      if (!(await requireSoundscapeAccess(req, res, false))) return;
+      res.json(soundscapeStates.get(req.params.campaignId) ?? EMPTY_SOUNDSCAPE);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to load soundscape" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/soundscape/scenes", requireAuth, async (req, res) => {
+    try {
+      if (!(await requireSoundscapeAccess(req, res, true))) return;
+      const rows = await db.select().from(soundscapeScenes)
+        .where(eq(soundscapeScenes.campaignId, req.params.campaignId))
+        .orderBy(soundscapeScenes.createdAt);
+      res.json(rows);
+    } catch (err) {
+      console.error("Failed to load soundscape scenes:", err);
+      res.status(500).json({ error: "Failed to load soundscape scenes" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/soundscape/scenes", requireAuth, async (req, res) => {
+    try {
+      if (!(await requireSoundscapeAccess(req, res, true))) return;
+      const name = String(req.body?.name ?? "").trim().slice(0, 80);
+      const layers = normalizeSceneLayers(req.body?.layers);
+      if (!name) return res.status(400).json({ error: "Name the scene" });
+      if (!layers.length) return res.status(400).json({ error: "A scene needs at least one sound" });
+      const [row] = await db.insert(soundscapeScenes).values({ campaignId: req.params.campaignId, name, layers }).returning();
+      res.json(row);
+    } catch (err) {
+      console.error("Failed to save soundscape scene:", err);
+      res.status(500).json({ error: "Failed to save soundscape scene" });
+    }
+  });
+
+  app.put("/api/campaigns/:campaignId/soundscape/scenes/:sceneId", requireAuth, async (req, res) => {
+    try {
+      if (!(await requireSoundscapeAccess(req, res, true))) return;
+      const patch: { name?: string; layers?: ReturnType<typeof normalizeSceneLayers> } = {};
+      if (req.body?.name !== undefined) {
+        const name = String(req.body.name).trim().slice(0, 80);
+        if (!name) return res.status(400).json({ error: "Name the scene" });
+        patch.name = name;
+      }
+      if (req.body?.layers !== undefined) patch.layers = normalizeSceneLayers(req.body.layers);
+      const [row] = await db.update(soundscapeScenes).set(patch)
+        .where(and(eq(soundscapeScenes.id, req.params.sceneId), eq(soundscapeScenes.campaignId, req.params.campaignId)))
+        .returning();
+      if (!row) return res.status(404).json({ error: "Scene not found" });
+      res.json(row);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update soundscape scene" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/soundscape/scenes/:sceneId", requireAuth, async (req, res) => {
+    try {
+      if (!(await requireSoundscapeAccess(req, res, true))) return;
+      await db.delete(soundscapeScenes)
+        .where(and(eq(soundscapeScenes.id, req.params.sceneId), eq(soundscapeScenes.campaignId, req.params.campaignId)));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete soundscape scene" });
     }
   });
 
@@ -5879,6 +6013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               noRoll: roll.noRoll,
               enableChatMessage: roll.enableChatMessage,
               chatMessage: roll.chatMessage,
+              soundId: roll.soundId,
               applyTokenEffects: roll.applyTokenEffects,
               tokenEffectIds: roll.tokenEffectIds,
               effectTriggerCondition: roll.effectTriggerCondition,
@@ -11644,6 +11779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   noRoll: roll.noRoll,
                   enableChatMessage: roll.enableChatMessage,
                   chatMessage: roll.chatMessage,
+                  soundId: roll.soundId,
                   applyTokenEffects: roll.applyTokenEffects,
                   tokenEffectIds: roll.tokenEffectIds,
                   effectTriggerCondition: roll.effectTriggerCondition,
@@ -15560,6 +15696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               noRoll: roll.noRoll,
               enableChatMessage: roll.enableChatMessage,
               chatMessage: roll.chatMessage,
+              soundId: roll.soundId,
               applyTokenEffects: roll.applyTokenEffects,
               tokenEffectIds: roll.tokenEffectIds,
               effectTriggerCondition: roll.effectTriggerCondition,

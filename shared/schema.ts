@@ -842,6 +842,9 @@ export const items = pgTable("items", {
   // independent socketing model (see shared/ca.ts CASocketedRune), distinct
   // from AA-V3's `socketedRunes` column above.
   caRuneSockets: jsonb("ca_rune_sockets").$type<CASocketedRune[]>().default(sql`'[]'::jsonb`).notNull(),
+  // Soundscape: a library sound (shared/soundscape.ts id) played for the
+  // whole table when this item is used.
+  useSoundId: text("use_sound_id"),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -1354,6 +1357,9 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   // whatever attribute die + skill mod the character currently has —
   // computed live client-side, not snapshotted here.
   skillKey: text("skill_key"),
+  // Soundscape (GM): a library sound id — loops toggle in/out of the mix,
+  // one-shots play for everyone.
+  soundId: text("sound_id"),
 }, (table) => ({
   uniqueSlot: uniqueIndex("free_hotbar_user_campaign_loadout_slot_unique").on(
     table.userId,
@@ -1362,6 +1368,19 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
     table.slotIndex,
   ),
 }));
+
+// Soundscape: a GM's saved mix for a campaign (layers reference shared/soundscape.ts ids).
+export const soundscapeScenes = pgTable("soundscape_scenes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  layers: jsonb("layers").$type<{ soundId: string; volume: number; loop: boolean }[]>().default(sql`'[]'::jsonb`).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  campaignIdx: index("soundscape_scenes_campaign_idx").on(table.campaignId),
+}));
+
+export type SoundscapeSceneRow = typeof soundscapeScenes.$inferSelect;
 
 export const insertFreeHotbarEntrySchema = createInsertSchema(freeHotbarEntries).omit({
   id: true,
@@ -2106,6 +2125,8 @@ export const rollEntries = pgTable("roll_entries", {
   noRoll: boolean("no_roll").default(false),
   enableChatMessage: boolean("enable_chat_message").default(false),
   chatMessage: text("chat_message"),
+  // Soundscape: a library sound played for the whole table on this roll.
+  soundId: text("sound_id"),
   applyTokenEffects: boolean("apply_token_effects").default(false),
   tokenEffectIds: text("token_effect_ids").array(),
   effectTriggerCondition: text("effect_trigger_condition").default("always"),

@@ -1359,11 +1359,32 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/free-hotbar`);
   }
 
-  async setFreeHotbarSlot(campaignId: string, data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null }): Promise<any> {
+  async setFreeHotbarSlot(campaignId: string, data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null }): Promise<any> {
     return this.request(`/campaigns/${campaignId}/free-hotbar`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  }
+
+  // Soundscape
+  async getSoundscapeState(campaignId: string): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/soundscape`);
+  }
+
+  async getSoundscapeScenes(campaignId: string): Promise<{ id: string; name: string; layers: { soundId: string; volume: number; loop: boolean }[] }[]> {
+    return this.request(`/campaigns/${campaignId}/soundscape/scenes`);
+  }
+
+  async createSoundscapeScene(campaignId: string, data: { name: string; layers: { soundId: string; volume: number; loop: boolean }[] }): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/soundscape/scenes`, { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  async updateSoundscapeScene(campaignId: string, sceneId: string, data: { name?: string; layers?: { soundId: string; volume: number; loop: boolean }[] }): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/soundscape/scenes/${sceneId}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  async deleteSoundscapeScene(campaignId: string, sceneId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/soundscape/scenes/${sceneId}`, { method: 'DELETE' });
   }
 
   async deleteFreeHotbarEntry(campaignId: string, entryId: string): Promise<void> {
@@ -4496,6 +4517,19 @@ export class GameWebSocket {
     this.send(message);
   }
   
+  // Soundscape: GM pushes the whole shared mix; anyone fires a one-shot for the table.
+  sendSoundscapeUpdate(state: unknown) {
+    if (!this.campaignId) return;
+    const message = { type: 'soundscape_update', campaignId: this.campaignId, state };
+    if (!this.joinedCampaign) { this.pendingMessages.push(message); return; }
+    this.send(message);
+  }
+
+  sendSoundscapeSfx(soundId: string, volume = 1) {
+    if (!this.campaignId || !this.joinedCampaign) return;
+    this.send({ type: 'soundscape_sfx', campaignId: this.campaignId, soundId, volume });
+  }
+
   // Send ruler/AOE measurement marker - broadcasts to all OTHER campaign members.
   // action 'place' adds a persistent marker, 'clear' removes the sender's markers,
   // 'clearAll' (GM) removes everyone's markers. Pure measurement layer (no damage).

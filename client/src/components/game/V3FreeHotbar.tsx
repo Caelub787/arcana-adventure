@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap, RotateCcw } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, User, Package, ArrowLeft, X, Library, Filter, Eye, Dices, Flame, Zap, RotateCcw, Music, Play, Square } from "lucide-react";
 import { LazyItemImage, executeCharacterRollEntry } from "./GameComponents";
 import { vitalBarColor } from "@/lib/vitalBarColor";
 import { getHotbarPosition, setHotbarPosition, clearHotbarPosition, type HotbarPosition } from "@/lib/hotbarPosition";
@@ -22,6 +22,8 @@ import { isSwampySystem } from "@shared/systems";
 import { SWAMPY_MAX_HOPE } from "@shared/swampy";
 import { caAbilityRollLabel, caAuraOf, CA_SKILLS, caAttrValueToDieSides, caEffectiveSkillMod } from "@shared/ca";
 import { AuraCurrentField } from "@/components/game/CAPanels";
+import { getSound, SOUNDSCAPE_LIBRARY } from "@shared/soundscape";
+import { soundscape, triggerSound } from "@/lib/soundscape";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -58,6 +60,8 @@ export interface FreeHotbarEntryView {
   rollEntryId?: string | null;
   /** C.A. only: one of characterId's skills, rolled live off its current mods. */
   skillKey?: string | null;
+  /** Soundscape (GM only): a library sound — loops toggle in the mix, one-shots play for all. */
+  soundId?: string | null;
   character: FreeHotbarCharView | null;
   item: any | null;
   rollEntry?: any | null;
@@ -122,6 +126,9 @@ interface V3FreeHotbarProps {
 }
 
 export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
+  // Sound slots light up while their loop is in the Soundscape mix.
+  const [, setSoundscapeTick] = useState(0);
+  useEffect(() => soundscape.subscribe(() => setSoundscapeTick((t) => t + 1)), []);
   const woundRules = isWoundSystem(campaignSystem) ? woundSystemRules(campaignSystem) : null;
   const isSwampy = isSwampySystem(campaignSystem);
   const isMobile = useIsMobile();
@@ -339,7 +346,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   const setSlotMutation = useMutation({
-    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null }) =>
+    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null }) =>
       api.setFreeHotbarSlot(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['free-hotbar', campaignId] });
@@ -401,12 +408,20 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     if (entry.item) return entry.item.name;
     if (entry.rollEntry) return caAbilityRollLabel(entry.sourceCharacter, entry.rollEntry);
     if (entry.skillKey) return CA_SKILLS.find((s) => s.key === entry.skillKey)?.name ?? entry.skillKey;
+    if (entry.soundId) {
+      const def = getSound(entry.soundId);
+      return def ? `${def.name} — ${def.loop && def.kind !== 'sfx' ? 'toggle in the mix' : 'play for everyone'}` : undefined;
+    }
     return undefined;
   };
 
   const handleSlotClick = (slotIndex: number) => {
     const entry = currentEntries.get(slotIndex);
     if (!entry) { setPickerSlot(slotIndex); return; }
+    if (entry.soundId) {
+      triggerSound(entry.soundId, { isGM });
+      return;
+    }
     if (entry.characterId && entry.character) {
       if (entry.character.canEdit === false) {
         setPeekCharId(entry.characterId);
@@ -599,6 +614,24 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
                         </span>
                       </div>
                     </div>
+                  ) : entry.soundId ? (
+                    // A Soundscape sound: lit while that loop is in the mix.
+                    (() => {
+                      const def = getSound(entry.soundId);
+                      const live = soundscape.state.layers.some((l) => l.soundId === entry.soundId);
+                      return (
+                        <div className={`relative w-full h-full pointer-events-none flex flex-col items-center justify-center gap-0.5 ${live ? 'bg-amber-600/30' : ''}`}>
+                          {def?.kind === 'sfx' ? (
+                            <Zap className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: "var(--ca-gilt-bright)" }} />
+                          ) : (
+                            <Music className={`h-4 w-4 sm:h-5 sm:w-5 ${live ? 'animate-pulse' : ''}`} style={{ color: "var(--ca-gilt-bright)" }} />
+                          )}
+                          <span className="hidden sm:block text-[8px] leading-none px-0.5 w-full text-center truncate text-stone-200">
+                            {def?.name ?? entry.soundId}
+                          </span>
+                        </div>
+                      );
+                    })()
                   ) : entry.skillKey ? (
                     // A skill roll: same layout as an ability roll tile, whose
                     // character it is behind, which skill in front.
@@ -664,6 +697,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           }
           onAssignSkill={(characterId, skillKey) =>
             setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, characterId, skillKey })
+          }
+          onAssignSound={(soundId) =>
+            setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, soundId })
           }
           showAbilities={isWoundSystem(campaignSystem)}
         />
@@ -793,7 +829,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   );
 }
 
-function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem, onAssignRoll, onAssignSkill, showAbilities }: {
+function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssignItem, onAssignRoll, onAssignSkill, onAssignSound, showAbilities }: {
   campaignId: string;
   isGM: boolean;
   onClose: () => void;
@@ -801,6 +837,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
   onAssignItem: (itemId: string) => void;
   onAssignRoll: (rollEntryId: string) => void;
   onAssignSkill: (characterId: string, skillKey: string) => void;
+  onAssignSound: (soundId: string) => void;
   /** C.A. only - no other system has abilities/skills to put on a slot. */
   showAbilities: boolean;
 }) {
@@ -809,6 +846,12 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
   const [browsingAbilityOf, setBrowsingAbilityOf] = useState<{ id: string; name: string } | null>(null);
   const [browsingSkillOf, setBrowsingSkillOf] = useState<{ id: string; name: string } | null>(null);
   const [librarySection, setLibrarySection] = useState<null | 'admin' | 'personal'>(null);
+  const [browsingSounds, setBrowsingSounds] = useState(false);
+  const [, setPreviewTick] = useState(0);
+  useEffect(() => {
+    const off = soundscape.subscribe(() => setPreviewTick((t) => t + 1));
+    return () => { off(); soundscape.preview(null); };
+  }, []);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [typeFilterOpen, setTypeFilterOpen] = useState(false);
   const [typeSearch, setTypeSearch] = useState('');
@@ -861,8 +904,10 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
   const inItemBrowser = !!browsingChar || !!librarySection;
   const inAbilityBrowser = !!browsingAbilityOf;
   const inSkillBrowser = !!browsingSkillOf;
-  const inBrowser = inItemBrowser || inAbilityBrowser || inSkillBrowser;
-  const browserTitle = browsingAbilityOf
+  const inBrowser = inItemBrowser || inAbilityBrowser || inSkillBrowser || browsingSounds;
+  const filteredSounds = SOUNDSCAPE_LIBRARY.filter((s) =>
+    !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q) || s.tags.some((t) => t.includes(q)));
+  const browserTitle = browsingSounds ? 'Soundscape' : browsingAbilityOf
     ? `${browsingAbilityOf.name}'s Ability`
     : browsingSkillOf
     ? `${browsingSkillOf.name}'s Skills`
@@ -879,7 +924,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
           <DialogTitle className="text-stone-200 flex items-center gap-2">
             {inBrowser && (
               <button
-                onClick={() => { setBrowsingChar(null); setBrowsingAbilityOf(null); setBrowsingSkillOf(null); setLibrarySection(null); setSearch(''); setTypeFilter(null); }}
+                onClick={() => { setBrowsingChar(null); setBrowsingAbilityOf(null); setBrowsingSkillOf(null); setLibrarySection(null); setBrowsingSounds(false); soundscape.preview(null); setSearch(''); setTypeFilter(null); }}
                 className="text-stone-400 hover:text-stone-200"
                 data-testid="button-picker-back"
                 aria-label="Back"
@@ -892,7 +937,7 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
         </DialogHeader>
         <div className="flex items-center gap-2">
           <Input
-            placeholder={inAbilityBrowser ? 'Search rolls...' : inSkillBrowser ? 'Search skills...' : inItemBrowser ? 'Search items...' : 'Search characters...'}
+            placeholder={browsingSounds ? 'Search sounds...' : inAbilityBrowser ? 'Search rolls...' : inSkillBrowser ? 'Search skills...' : inItemBrowser ? 'Search items...' : 'Search characters...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-stone-800 border-stone-700 flex-1"
@@ -1001,7 +1046,38 @@ function SlotPickerDialog({ campaignId, isGM, onClose, onAssignCharacter, onAssi
                     onClick={() => { setLibrarySection('personal'); setSearch(''); }} data-testid="button-library-personal">
                     <Library className="h-4 w-4 mr-2" /> Campaign & My Library
                   </Button>
+                  <Button variant="outline" className="w-full justify-start border-stone-600 text-stone-300 hover:bg-stone-700"
+                    onClick={() => { setBrowsingSounds(true); setSearch(''); }} data-testid="button-library-sounds">
+                    <Music className="h-4 w-4 mr-2" /> Soundscape (music & effects)
+                  </Button>
                 </div>
+              )}
+            </>
+          )}
+          {browsingSounds && (
+            <>
+              {filteredSounds.map((snd) => (
+                <div key={snd.id} className="flex items-center gap-2 p-2 rounded-lg bg-stone-800/70 border border-stone-700" data-testid={`picker-sound-${snd.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => soundscape.preview(soundscape.previewing === snd.id ? null : snd.id)}
+                    className="w-8 h-8 rounded-md bg-stone-700 hover:bg-stone-600 flex items-center justify-center shrink-0"
+                    title="Preview"
+                  >
+                    {soundscape.previewing === snd.id ? <Square className="h-3.5 w-3.5 text-amber-400" /> : <Play className="h-3.5 w-3.5" style={{ color: "var(--ca-gilt)" }} />}
+                  </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-stone-200 truncate">{snd.name}</span>
+                    <span className="block text-[11px] text-stone-500 truncate">{snd.category} · {snd.loop && snd.kind !== 'sfx' ? 'toggles in the mix' : 'plays once for all'}</span>
+                  </span>
+                  <Button size="sm" variant="outline" className="h-7 w-7 p-0 border-amber-700 text-amber-400 hover:bg-amber-900/30"
+                    onClick={() => { soundscape.preview(null); onAssignSound(snd.id); }} title="Assign to slot" data-testid={`button-assign-sound-${snd.id}`}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              {filteredSounds.length === 0 && (
+                <p className="text-sm text-stone-500 text-center py-4">No sounds match.</p>
               )}
             </>
           )}

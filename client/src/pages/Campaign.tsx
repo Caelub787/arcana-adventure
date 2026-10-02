@@ -29,6 +29,7 @@ import { V3_ATTRIBUTES, v3DurabilityAdjustedValue } from "@shared/v3";
 import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEditor";
 import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import { V3FreeHotbar } from "@/components/game/V3FreeHotbar";
+import { SoundscapePanel } from "@/components/game/SoundscapePanel";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -14697,6 +14698,13 @@ export default function Campaign() {
             isGm={role === 'gm'}
           />
         </div>
+      )}
+
+      {/* Soundscape — the GM's shared music/ambience/effects mixer, as a tab at
+          the top-centre. Everyone mounts it (it's what plays the audio);
+          spectator/cast views hear the mix without the controls. */}
+      {campaignId && (
+        <SoundscapePanel campaignId={campaignId} isGM={role === 'gm'} hideControls={spectatorMode} />
       )}
 
       {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3, C.A. and

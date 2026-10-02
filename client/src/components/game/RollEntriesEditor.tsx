@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { sortRollsForDisplay, collectFolderNames, type RollDisplayNode } from "@/lib/rollSort";
 import { getEffectTypes, getEffectTypeLabel } from "@/lib/effectTypes";
 import { isWoundSystem, woundSystemRules } from "@shared/systemRules";
+import { SoundPicker } from "./SoundPicker";
 
 interface RollEntry {
   id: string;
@@ -50,6 +51,7 @@ interface RollEntry {
   noRoll?: boolean;
   enableChatMessage?: boolean;
   chatMessage?: string;
+  soundId?: string | null;
   applyTokenEffects?: boolean;
   tokenEffectIds?: string[];
   effectTriggerCondition?: string;
@@ -186,6 +188,7 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     noRoll: false,
     enableChatMessage: false,
     chatMessage: "",
+    soundId: null,
     applyTokenEffects: false,
     tokenEffectIds: [],
     effectTriggerCondition: "always",
@@ -1016,6 +1019,15 @@ function RollForm({
             />
           </div>
         )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Sound" testId={`section-${prefix}-sound`}>
+        <p className="text-[11px] text-stone-500 mb-1.5">Plays for the whole table when this is rolled.</p>
+        <SoundPicker
+          value={form.soundId}
+          onChange={(soundId) => setForm((f) => ({ ...f, soundId }))}
+          testId={`${prefix}-sound`}
+        />
       </CollapsibleSection>
 
       <CollapsibleSection title="Token Effects" testId={`${prefix}-token-effects`}>
@@ -1913,6 +1925,7 @@ const RollCard = React.memo(function RollCard({
                     {roll.energyCost > 0 && <span className="text-[10px] text-cyan-400">Energy Cost: {roll.energyCost}</span>}
                     {(campaignSystem === 'aa-v2' || campaignSystem === 'aa-v3') && roll.manaCost > 0 && <span className="text-[10px] text-amber-400">Mana Cost: {roll.manaCost}</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">Chat Message</span>}
+                    {roll.soundId && <span className="text-[10px] text-amber-400">Sound</span>}
                     {roll.applyTokenEffects && (
                       <p className="text-[10px] text-amber-400">
                         Applies effects ({roll.effectTriggerCondition || 'always'})

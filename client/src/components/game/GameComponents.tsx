@@ -44,6 +44,7 @@ import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Min
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type SystemTrait, type CharacterTrait, type TokenEffect, type TokenActiveEffect, type ThrownItem, type CharacterActionTokenWithType, api, gameWs } from "@/lib/api";
+import { triggerSound } from "@/lib/soundscape";
 import { TUTORIAL_SECTION_META } from "@/components/tutorial/tutorialSteps";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -172,6 +173,7 @@ export function executeCharacterRollEntry(
   opts: { character: any; campaignSystem?: string; label: string },
 ): void {
   const { character, campaignSystem, label } = opts;
+  if (rollEntry.soundId) triggerSound(rollEntry.soundId);
   const notify = (result: number, modifier: number, breakdown: string) => {
     triggerRollNotification({
       type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
@@ -8337,6 +8339,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     // checked + spent above, so we mirror that same "committed once gating
     // passes" semantic. Range/attack-resolution failures past this point
     // still consume, matching how energy/mana are handled.
+    // Soundscape: the roll's sound (else the item's "sound on use") plays for the whole table.
+    triggerSound(rollEntry.soundId || (itemData as any)?.useSoundId);
     if (rollEntry.hasItemCost) {
       void consumeRollItemCosts(rollEntry, allItems).then(() => {
         if (character?.id) {
@@ -20610,6 +20614,8 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
       });
       return;
     }
+    // Soundscape: the roll's sound plays for the whole table once it goes off.
+    if (rollEntry.soundId) triggerSound(rollEntry.soundId);
     if (rollEntry.hasItemCost) {
       void consumeRollItemCosts(rollEntry, items).then(() => {
         if (character?.id) {
@@ -31038,6 +31044,7 @@ function CAWoundConsumablePanel({ item, character, canUse, campaignSystem, onCon
       selectedOption?.mode === 'deal' ? placements : undefined,
     ),
     onSuccess: (res) => {
+      triggerSound(item?.useSoundId);
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
@@ -32604,6 +32611,8 @@ export function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, char
     }
 
     // All sufficiency gating passed — consume any required items now.
+    // Soundscape: the roll's sound (else the item's "sound on use") plays for the whole table.
+    triggerSound(rollEntry.soundId || item?.useSoundId);
     if (rollEntry.hasItemCost) {
       void consumeRollItemCosts(rollEntry, items).then(() => {
         if (character?.id) {
