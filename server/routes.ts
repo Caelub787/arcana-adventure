@@ -6,7 +6,7 @@ import {
   DEFAULT_MAP_GRID, defaultElementData, mapStyle, normalizeGrid,
   type MapElementKind,
 } from "@shared/mapDoc";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema, soundscapeScenes } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema, soundscapeScenes, tokens as tokensTable } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -24,6 +24,7 @@ import { isWoundSystem } from "@shared/systemRules";
 import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
 import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOUNDSCAPE, type SoundscapeState } from "@shared/soundscape";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
+import { initAgnosticRealtime, handleAgnosticUpgrade } from "./agnostic/realtime";
 import multer from "multer";
 import sharp from "sharp";
 import fs from "fs";
@@ -486,10 +487,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Canvas Realms realtime (Yjs) ws server with host session auth.
   initCanvasRealtime(sessionMiddleware);
 
+  // Agnostic system realtime channel (/ws/agnostic): permission-filtered live
+  // data + collaborative sheet documents. Tokens are the only host table it
+  // touches, so it gets just that hook.
+  initAgnosticRealtime(sessionMiddleware, {
+    deleteTokensForNote: async (campaignId, noteId) => {
+      const removed = await db.delete(tokensTable).where(eq(tokensTable.agnosticNoteId, noteId)).returning({ id: tokensTable.id });
+      for (const t of removed) broadcastToCampaign(campaignId, { type: "token_deleted", tokenId: t.id });
+    },
+  });
+
   httpServer.on("upgrade", (req, socket, head) => {
     const pathname = (req.url || "").split("?")[0];
     if (pathname.startsWith("/api/realtime/")) {
       handleRealtimeUpgrade(req, socket, head);
+      return;
+    }
+    if (pathname === "/ws/agnostic") {
+      handleAgnosticUpgrade(req, socket as any, head);
       return;
     }
     if (pathname === "/ws") {

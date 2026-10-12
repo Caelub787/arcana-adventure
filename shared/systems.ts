@@ -13,7 +13,8 @@ export type SystemSlug =
   | "aa-v2"
   | "aa-v3"
   | "ca"
-  | "swampy";
+  | "swampy"
+  | "agnostic";
 
 export const SYSTEM_SLUGS: SystemSlug[] = [
   "arcana-adventure",
@@ -21,6 +22,7 @@ export const SYSTEM_SLUGS: SystemSlug[] = [
   "aa-v3",
   "ca",
   "swampy",
+  "agnostic",
 ];
 
 export const SYSTEM_LABELS: Record<SystemSlug, string> = {
@@ -29,12 +31,14 @@ export const SYSTEM_LABELS: Record<SystemSlug, string> = {
   "aa-v3": "A.A. V3",
   ca: "C.A.",
   swampy: "Swampy",
+  agnostic: "Agnostic",
 };
 
 /** Longer name shown in tooltips next to the short label. */
 export const SYSTEM_FULL_NAMES: Partial<Record<SystemSlug, string>> = {
   ca: "Cultivator's Adventure",
   swampy: "Swampy",
+  agnostic: "Agnostic — build your own system",
 };
 
 const LABEL_TO_SLUG: Record<string, SystemSlug> = Object.entries(SYSTEM_LABELS)
@@ -65,7 +69,12 @@ export function systemSlug(label?: string | null): SystemSlug {
 // systems; admins still see everything so existing campaigns stay editable.
 // ---------------------------------------------------------------------------
 
-export const PUBLIC_SYSTEM_SLUGS: SystemSlug[] = ["ca", "swampy"];
+export const PUBLIC_SYSTEM_SLUGS: SystemSlug[] = ["ca", "swampy", "agnostic"];
+
+/** True for Agnostic — the fully notes-based, GM-built system. */
+export function isAgnosticSystem(slug?: string | null): boolean {
+  return slug === "agnostic";
+}
 
 export function isPublicSystem(slug?: string | null): boolean {
   return PUBLIC_SYSTEM_SLUGS.includes(slug as SystemSlug);

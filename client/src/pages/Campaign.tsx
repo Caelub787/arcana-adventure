@@ -8,7 +8,7 @@ import { AuraCurrentField, AuraEdgeField } from "@/components/game/CAPanels";
 import { caAuraOf, CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS, caNormalizeItemType } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
 import { isWoundSystem } from "@shared/systemRules";
-import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, isSwampySystem, type SystemSlug } from "@shared/systems";
+import { systemLabel, selectableSystemSlugs, SYSTEM_FULL_NAMES, DEFAULT_SYSTEM_SLUG, PUBLIC_SYSTEM_SLUGS, isSwampySystem, isAgnosticSystem, type SystemSlug } from "@shared/systems";
 import { SwampyLedgerPanel, SwampyDeckPanel, SwampyFearTrack } from "@/components/game/SwampyPanels";
 import { GlobalSearch, SearchPreviewPanel } from "@/components/game/GlobalSearch";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
@@ -30,6 +30,12 @@ import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEdit
 import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import { V3FreeHotbar } from "@/components/game/V3FreeHotbar";
 import { SoundscapePanel } from "@/components/game/SoundscapePanel";
+import { AgRoot } from "@/agnostic/AgRoot";
+import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
+import { AgTracker } from "@/agnostic/AgTracker";
+import { AgTokenOverlay } from "@/agnostic/AgToken";
+import { setAgTargets } from "@/agnostic/widgets";
+import { agClient } from "@/agnostic/client";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -7757,6 +7763,8 @@ export default function Campaign() {
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
   const isSwampy = isSwampySystem((campaign as any)?.system);
+  // Agnostic: fully notes-based, GM-built system (its own data layer + live channel).
+  const isAgnostic = isAgnosticSystem((campaign as any)?.system);
 
   // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
   const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
@@ -9474,6 +9482,13 @@ export default function Campaign() {
     }
   }, [tokensData]);
 
+  // Agnostic buttons can act on "@target": the note behind the targeted token.
+  useEffect(() => {
+    if (!isAgnostic) return;
+    const t = targetedTokenId ? (tokens as any[]).find((x: any) => x.id === targetedTokenId) : null;
+    setAgTargets(t?.agnosticNoteId ? [t.agnosticNoteId] : []);
+  }, [isAgnostic, targetedTokenId, tokens]);
+
   // Load current map from campaign
   useEffect(() => {
     if (campaign && typeof campaign === 'object') {
@@ -10699,6 +10714,13 @@ export default function Campaign() {
   };
 
   const handleDropCharacterOnMap = useCallback((characterId: string, gridX: number, gridY: number) => {
+    // Agnostic: any note can be a token ("ag:<noteId>").
+    if (characterId.startsWith('ag:')) {
+      const noteId = characterId.slice(3);
+      const note = agClient.getScope(`campaign:${effectiveCampaignId}`)?.notes.get(noteId);
+      createTokenMutation.mutate({ type: note?.type === 'character' ? 'player' : 'enemy', agnosticNoteId: noteId, x: gridX, y: gridY, image: note?.portrait || goblinToken });
+      return;
+    }
     const character = characters?.find((c: any) => c.id.toString() === characterId);
     if (!character) return;
     
@@ -10721,7 +10743,7 @@ export default function Campaign() {
       image: tokenImage,
     };
     createTokenMutation.mutate(newToken);
-  }, [characters, systemSpecies, createTokenMutation]);
+  }, [characters, systemSpecies, createTokenMutation, effectiveCampaignId]);
 
   const handleMapClickToPlace = useCallback((gridX: number, gridY: number) => {
     if (!placingCharacterId) return;
@@ -10953,6 +10975,7 @@ export default function Campaign() {
   }
 
   return (
+    <AgRoot scope={isAgnostic && effectiveCampaignId ? { kind: "campaign", id: effectiveCampaignId } : null}>
     <div data-section="campaign" className="relative h-dvh w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
       {/* Roll Notification Container */}
@@ -11187,7 +11210,10 @@ export default function Campaign() {
             dice tray opening to the right - on mobile too, since the left
             toolbar column renders at the same left:16px position and
             heights regardless of device. */}
-        {PLAYER_TRACKER_LAYOUT === 'vertical-left' ? (
+        {isAgnostic ? (
+          // Agnostic: the GM-designed tracker (its own placement, cards and values).
+          <AgTracker rollFeed={rollFeed as any} isMobile={isMobile} leftOffset={(leftToolbarBottom ?? (selectionToolsTop + 88 + 8 + 5 * 40 + 4 * 8)) + 8} />
+        ) : PLAYER_TRACKER_LAYOUT === 'vertical-left' ? (
           // "Below the left toolbar" means below ALL of it, not just the
           // Select/Ruler pair - BattleMap stacks a second column right under
           // those (camera controls, token options, and up to three more
@@ -13488,6 +13514,7 @@ export default function Campaign() {
              </div>
            )}
            <BattleMap
+             renderTokenOverlay={isAgnostic ? (token: any, tokenSize: number) => <AgTokenOverlay noteId={token.agnosticNoteId} tokenSize={tokenSize} /> : undefined}
              tokens={tokens}
              onMoveToken={spectatorMode ? () => {} : handleMoveToken}
              tokenMovePathsRef={tokenMovePathsRef}
@@ -14213,7 +14240,10 @@ export default function Campaign() {
                   rollCharacterId={character?.id}
                 />
               )}
-              {activeSidePanel === 'characters' && effectiveCampaignId && (
+              {activeSidePanel === 'characters' && effectiveCampaignId && isAgnostic && (
+                <AgCampaignPanel onPlaceOnMap={(noteId) => setPlacingCharacterId(`ag:${noteId}`)} />
+              )}
+              {activeSidePanel === 'characters' && effectiveCampaignId && !isAgnostic && (
                 <div className="h-full p-4 pt-3 overflow-hidden">
                   {isSandbox ? (
                     <SandboxCharactersContent 
@@ -15460,5 +15490,6 @@ export default function Campaign() {
         />
       )}
     </div>
+    </AgRoot>
   );
 }

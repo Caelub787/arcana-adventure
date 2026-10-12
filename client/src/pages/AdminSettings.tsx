@@ -69,6 +69,7 @@ import { isWoundSystem } from "@shared/systemRules";
 import { CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS } from "@shared/ca";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
 import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS } from "@shared/systems";
+import { AgLibrary } from "@/agnostic/AgLibrary";
 
 type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'ca-abilities' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
 
@@ -294,6 +295,8 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // live systems for the same reason they can't start a campaign in an older
   // one - the rest are half-built.
   const pickableSystems = selectableSystemSlugs(isAdmin);
+  // Agnostic has one page (its own library), not the per-type views.
+  useEffect(() => { if (systemSlug === 'agnostic' && currentView !== 'dashboard') setCurrentView('dashboard'); }, [systemSlug, currentView]);
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   // C.A. and Swampy also use the new @arcana/library-dialogs ItemDialog (a
   // blank customizable sheet) rather than the legacy form, which is built
@@ -1285,7 +1288,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           {renderLibraryModeTabs()}
         </div>
 
-        {currentView === 'dashboard' && (
+        {/* Agnostic keeps its own, entirely separate libraries. */}
+        {systemSlug === 'agnostic' && user && (
+          <AgLibrary scope={personalMode ? { kind: 'library', id: user.id } : { kind: 'admin', id: 'admin' }} />
+        )}
+
+        {currentView === 'dashboard' && systemSlug !== 'agnostic' && (
           <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} personalMode={personalMode} />
         )}
 
