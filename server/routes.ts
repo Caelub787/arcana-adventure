@@ -4073,7 +4073,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[DELETE] Starting cascade delete for campaign ${req.params.id}`);
       await storage.deleteCampaign(req.params.id);
       // Agnostic data hangs off the campaign by scope id (no FK) — remove it too.
-      await deleteAgnosticCampaignData(req.params.id).catch((e) => console.warn("[agnostic] campaign cleanup failed", e));
+      // Only Agnostic campaigns have any; nothing runs for other systems.
+      if ((campaign as any).system === "agnostic") {
+        await deleteAgnosticCampaignData(req.params.id).catch((e) => console.warn("[agnostic] campaign cleanup failed", e));
+      }
       console.log(`[DELETE] Campaign ${req.params.id} deleted successfully`);
       res.json({ success: true });
     } catch (err: any) {

@@ -25,11 +25,11 @@ export class AgComputer {
   private visiting = new Set<string>();
 
   constructor(private data: ComputeData) {
-    for (const l of data.links) {
+    for (const l of Array.from(data.links)) {
       this.addEdge(l.fromNoteId, l.label, l.toNoteId);
       this.addEdge(l.toNoteId, l.reverseLabel, l.fromNoteId);
     }
-    for (const m of data.modifiers) {
+    for (const m of Array.from(data.modifiers)) {
       for (const target of this.follow(m.noteId, m.via)) {
         const list = this.incomingMods.get(target) ?? [];
         list.push(m);
@@ -152,7 +152,7 @@ export class AgComputer {
 
   computeAll(): Map<string, Computed> {
     const all = new Map<string, Computed>();
-    for (const fields of this.data.fieldsByNote.values()) for (const f of fields.values()) all.set(f.id, this.effOf(f));
+    for (const fields of Array.from(this.data.fieldsByNote.values())) for (const f of Array.from(fields.values())) all.set(f.id, this.effOf(f));
     return all;
   }
 

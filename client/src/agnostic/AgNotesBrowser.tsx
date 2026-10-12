@@ -35,10 +35,10 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const [io, setIo] = useState(false);
   const [importing, setImporting] = useState(false);
   const isGM = viewer.isGM;
-  const all = [...state.notes.values()];
+  const all = [...Array.from(state.notes.values())];
   const typeIds = useMemo(() => {
     const base = opts.types ?? AG_BUILTIN_TYPES.map((t) => t.id);
-    return [...new Set([...base, ...all.map((n) => n.type).filter((t) => !opts.types || opts.types.includes(t))])];
+    return [...Array.from(new Set([...base, ...all.map((n) => n.type).filter((t) => !opts.types || opts.types.includes(t))]))];
   }, [all.length, opts.types]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = all
     .filter((n) => (tab === "templates" ? n.isTemplate : !n.isTemplate))
@@ -82,7 +82,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
             {isGM && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
-            {[...groups.entries()].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
+            {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
             {!list.length && <div className="text-sm text-stone-500 p-3 text-center">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
             {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
           </div>
@@ -141,7 +141,7 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [type, setType] = useState(types[0] ?? "character");
-  const templates = [...state.notes.values()].filter((n) => n.isTemplate && n.type === type);
+  const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate && n.type === type);
   const [templateId, setTemplateId] = useState<string>("");
   const [owners, setOwners] = useState<string[]>([]);
   const players = state.members.filter((m) => m.role !== "gm");
@@ -218,11 +218,11 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
   const { state } = useAg();
   const { toast } = useToast();
   const [done, setDone] = useState<Set<string>>(new Set());
-  const notes = [...state.notes.values()].sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
+  const notes = [...Array.from(state.notes.values())].sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
   const copy = async (n: AgNote) => {
     try {
       await agClient.request(target, { op: "note.copyFrom", sourceNoteId: n.id, sourceScope: source });
-      setDone(new Set([...done, n.id]));
+      setDone(new Set([...Array.from(done), n.id]));
     } catch (e: any) { toast({ title: "Couldn't copy", description: e.message, variant: "destructive" }); }
   };
   return (

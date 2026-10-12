@@ -12,7 +12,7 @@ export function ComponentsManager() {
   const { state, request } = useAg();
   const { toast } = useToast();
   const [editing, setEditing] = useState<string | null>(null);
-  const comps = [...state.components.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const comps = [...Array.from(state.components.values())].sort((a, b) => a.name.localeCompare(b.name));
   const create = async () => {
     try {
       const res = await request<{ componentId: string }>({ op: "component.upsert", component: { name: "New component", params: ["value", "max"], layout: { width: 220, height: 40, items: [
@@ -46,7 +46,7 @@ function ComponentEditor({ comp, onBack }: { comp: AgComponentDef; onBack: () =>
   const { toast } = useToast();
   const [paramsText, setParamsText] = useState(comp.params.join(", "));
   // Preview against any sheet so the GM can see real numbers while designing.
-  const notes = [...state.notes.values()];
+  const notes = [...Array.from(state.notes.values())];
   const [previewNote, setPreviewNote] = useState(notes[0]?.id ?? "");
   // Sensible preview wiring: "value"/"current" → hp, "max" → hp_max, otherwise the same-named field.
   const guess = (p: string) => (p === "value" || p === "current" ? "hp" : p === "max" ? "hp_max" : p);

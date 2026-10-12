@@ -25,7 +25,7 @@ export function getAgTargets() { return currentTargets; }
 
 // --- field edits ------------------------------------------------------------------------
 export function useFieldWriter() {
-  const { request } = useAg();
+  const { request, key } = useAg();
   const { toast } = useToast();
   return useMemo(() => {
     const fail = (e: any) => { toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }); throw e; };
@@ -33,15 +33,15 @@ export function useFieldWriter() {
       set: (f: AgField, value: any) => {
         const before = f.value;
         return request({ op: "field.set", id: f.id, value })
-          .then(() => pushUndo({ label: `${f.label} change`, undo: () => request({ op: "field.set", id: f.id, value: before }) }))
+          .then(() => pushUndo(key, { label: `${f.label} change`, undo: () => request({ op: "field.set", id: f.id, value: before }) }))
           .catch(fail).catch(() => {});
       },
       adjust: (f: AgField, delta: number) =>
         request({ op: "field.adjust", id: f.id, delta })
-          .then(() => pushUndo({ label: `${f.label} ${delta > 0 ? "+" : ""}${delta}`, undo: () => request({ op: "field.adjust", id: f.id, delta: -delta }) }))
+          .then(() => pushUndo(key, { label: `${f.label} ${delta > 0 ? "+" : ""}${delta}`, undo: () => request({ op: "field.adjust", id: f.id, delta: -delta }) }))
           .catch(fail).catch(() => {}),
     };
-  }, [request, toast]);
+  }, [request, toast, key]);
 }
 
 const pct = (v: number, max: number) => (max > 0 ? Math.max(0, Math.min(100, (v / max) * 100)) : 0);
@@ -494,7 +494,7 @@ export function useRefOptions(noteId: string) {
     const own = fieldsOf(state, noteId).map((f) => ({ ref: f.key, label: f.label, type: f.type, via: null as string | null }));
     const via: typeof own = [];
     const seen = new Set<string>();
-    for (const link of state.links.values()) {
+    for (const link of Array.from(state.links.values())) {
       const pairs: Array<[string, string]> = [];
       if (link.fromNoteId === noteId) pairs.push([link.label, link.toNoteId]);
       if (link.toNoteId === noteId) pairs.push([link.reverseLabel, link.fromNoteId]);

@@ -16,7 +16,7 @@ export function ActionPicker({ noteId, value, onChange }: { noteId: string; valu
   const { state } = useAg();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null | "new">(null);
-  const actions = [...state.actions.values()].filter((a) => a.noteId === noteId);
+  const actions = [...Array.from(state.actions.values())].filter((a) => a.noteId === noteId);
   const current = value ? state.actions.get(value) : undefined;
   return (
     <>

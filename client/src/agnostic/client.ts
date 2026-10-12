@@ -88,8 +88,8 @@ class AgnosticClient {
       this.connected = true;
       this.backoff = 500;
       this.connListeners.forEach((l) => l());
-      for (const { state } of this.scopes.values()) this.raw({ t: "scope.sub", scope: state.scope });
-      for (const d of this.docs.values()) if (!d.revoked) this.raw({ t: "doc.sub", scope: d.scope, doc: d.name });
+      for (const { state } of Array.from(this.scopes.values())) this.raw({ t: "scope.sub", scope: state.scope });
+      for (const d of Array.from(this.docs.values())) if (!d.revoked) this.raw({ t: "doc.sub", scope: d.scope, doc: d.name });
       const queued = this.outbox;
       this.outbox = [];
       queued.forEach((m) => this.raw(m));
@@ -107,9 +107,9 @@ class AgnosticClient {
       this.connected = false;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
       this.connListeners.forEach((l) => l());
-      for (const d of this.docs.values()) { d.synced = false; this.notifyDoc(d); }
+      for (const d of Array.from(this.docs.values())) { d.synced = false; this.notifyDoc(d); }
       // Anything in flight can't be answered on a new socket.
-      for (const [id, p] of this.pending) { clearTimeout(p.timer); p.reject(new Error("Connection lost — try again")); this.pending.delete(id); }
+      for (const [id, p] of Array.from(this.pending)) { clearTimeout(p.timer); p.reject(new Error("Connection lost — try again")); this.pending.delete(id); }
       if (this.scopes.size || this.docs.size) {
         setTimeout(() => this.ensure(), this.backoff);
         this.backoff = Math.min(this.backoff * 2, 8000);

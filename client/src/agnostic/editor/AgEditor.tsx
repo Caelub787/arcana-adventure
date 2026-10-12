@@ -253,7 +253,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
       )}
       {picker === "image" && <ImageBrowser open onOpenChange={(o) => { if (!o) setPicker(null); }} onSelect={(src) => { editor?.chain().focus().setImage({ src }).run(); setPicker(null); }} />}
       {picker === "note" && (
-        <NotePickerDialog onClose={() => setPicker(null)} exclude={noteId} onPick={(id) => { editor?.chain().focus().insertContent({ type: "agNoteLink", attrs: { noteId: id } }).insertContent(" ").run(); setPicker(null); }} notes={[...state.notes.values()].filter((n) => !n.isTemplate)} />
+        <NotePickerDialog onClose={() => setPicker(null)} exclude={noteId} onPick={(id) => { editor?.chain().focus().insertContent({ type: "agNoteLink", attrs: { noteId: id } }).insertContent(" ").run(); setPicker(null); }} notes={[...Array.from(state.notes.values())].filter((n) => !n.isTemplate)} />
       )}
     </>
   );
@@ -324,7 +324,7 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
           )}
           {config.type === "agComponent" && (
             <>
-              {row("Component", <select value={a.componentId} onChange={(e) => update({ componentId: e.target.value, bindings: {} })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-1 text-sm"><option value="">Choose…</option>{[...state.components.values()].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
+              {row("Component", <select value={a.componentId} onChange={(e) => update({ componentId: e.target.value, bindings: {} })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-1 text-sm"><option value="">Choose…</option>{[...Array.from(state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
               {(comp?.params ?? []).map((p) => <React.Fragment key={p}>{row(`$${p}`, <RefPicker noteId={noteId} value={a.bindings?.[p]} onChange={(ref) => update({ bindings: { ...(a.bindings ?? {}), [p]: ref } })} />)}</React.Fragment>)}
               {!state.components.size && <div className="text-xs text-stone-500">Make components in the Components tab first.</div>}
             </>

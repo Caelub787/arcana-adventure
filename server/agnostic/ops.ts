@@ -396,7 +396,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         const from = noteOf(store, body.fromNoteId), to = noteOf(store, body.toNoteId);
         if (from.id === to.id) fail("A sheet can't connect to itself");
         const label = labelKey(body.label) || "link", reverseLabel = labelKey(body.reverseLabel) || "linked";
-        const dupe = [...store.links.values()].find((l) => l.fromNoteId === from.id && l.toNoteId === to.id && l.label === label);
+        const dupe = [...Array.from(store.links.values())].find((l) => l.fromNoteId === from.id && l.toNoteId === to.id && l.label === label);
         if (dupe) return { linkId: dupe.id };
         const l: AgLink = { id: randomUUID(), fromNoteId: from.id, toNoteId: to.id, label, reverseLabel, acl: normalizeAcl(body.acl), createdAt: Date.now() };
         await store.putLink(l, cs);
@@ -449,9 +449,10 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const steps = cleanSteps(a.steps);
       return store.run(async (cs) => {
         noteOf(store, a.noteId);
+        // An id is only reused when it belongs to THIS scope — never another campaign's row.
         const existing = a.id ? store.actions.get(a.id) : undefined;
         const action: AgAction = {
-          id: existing?.id ?? a.id ?? randomUUID(), noteId: a.noteId, name: cleanLabel(a.name, 80) || "Action", steps,
+          id: existing?.id ?? randomUUID(), noteId: a.noteId, name: cleanLabel(a.name, 80) || "Action", steps,
           acl: a.acl ? normalizeAcl(a.acl) : existing?.acl ?? { view: "inherit", edit: "owners" },
           color: a.color ? String(a.color).slice(0, 40) : existing?.color ?? null,
         };

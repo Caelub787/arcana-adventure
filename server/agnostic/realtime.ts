@@ -113,7 +113,7 @@ function pushEntity(c: Conn, sub: ScopeSub, kind: Kind, id: string) {
 
 /** Expand a ChangeSet so permission changes re-evaluate everything beneath them. */
 function expand(store: ScopeStore, cs: ChangeSet) {
-  for (const noteId of cs.aclNotes) {
+  for (const noteId of Array.from(cs.aclNotes)) {
     cs.notes.add(noteId);
     store.fieldsOf(noteId).forEach((f) => cs.fields.add(f.id));
     store.regionsOf(noteId).forEach((r) => cs.regions.add(r.id));
@@ -121,22 +121,22 @@ function expand(store: ScopeStore, cs: ChangeSet) {
     store.linksOf(noteId).forEach((l) => cs.links.add(l.id));
   }
   // A link's visibility depends on both ends.
-  for (const noteId of cs.notes) store.linksOf(noteId).forEach((l) => cs.links.add(l.id));
+  for (const noteId of Array.from(cs.notes)) store.linksOf(noteId).forEach((l) => cs.links.add(l.id));
 }
 
 function fanOut(store: ScopeStore, cs: ChangeSet) {
   expand(store, cs);
-  for (const c of conns) {
+  for (const c of Array.from(conns)) {
     const sub = c.scopes.get(store.key);
     if (!sub) continue;
     // Removed notes are removed before their children are re-evaluated.
-    for (const id of cs.notes) pushEntity(c, sub, "note", id);
-    for (const id of cs.fields) pushEntity(c, sub, "field", id);
-    for (const id of cs.regions) pushEntity(c, sub, "region", id);
-    for (const id of cs.links) pushEntity(c, sub, "link", id);
-    for (const id of cs.modifiers) pushEntity(c, sub, "modifier", id);
-    for (const id of cs.actions) pushEntity(c, sub, "action", id);
-    for (const id of cs.components) pushEntity(c, sub, "component", id);
+    for (const id of Array.from(cs.notes)) pushEntity(c, sub, "note", id);
+    for (const id of Array.from(cs.fields)) pushEntity(c, sub, "field", id);
+    for (const id of Array.from(cs.regions)) pushEntity(c, sub, "region", id);
+    for (const id of Array.from(cs.links)) pushEntity(c, sub, "link", id);
+    for (const id of Array.from(cs.modifiers)) pushEntity(c, sub, "modifier", id);
+    for (const id of Array.from(cs.actions)) pushEntity(c, sub, "action", id);
+    for (const id of Array.from(cs.components)) pushEntity(c, sub, "component", id);
     if (cs.settings && store.settings) send(c, { t: "settings", scope: store.key, settings: store.settings });
     // Open documents whose permissions may have moved.
     if (cs.aclNotes.size || cs.regions.size || cs.notes.size) recheckDocs(c, store, cs);
@@ -160,7 +160,7 @@ function docAccess(store: ScopeStore, viewer: AgViewer, name: string): { ok: boo
 function recheckDocs(c: Conn, store: ScopeStore, cs: ChangeSet) {
   const sub = c.scopes.get(store.key);
   if (!sub) return;
-  for (const d of [...c.docs.values()]) {
+  for (const d of [...Array.from(c.docs.values())]) {
     if (d.scopeKey !== store.key) continue;
     if (!cs.aclNotes.has(d.noteId) && !cs.notes.has(d.noteId) && !(d.regionId && cs.regions.has(d.regionId))) continue;
     const a = docAccess(store, sub.viewer, d.name);
@@ -189,7 +189,7 @@ async function subscribeScope(c: Conn, scope: AgScope) {
   ensureFanout(store);
   const pick = <T,>(kind: Kind, ids: Iterable<string>) => {
     const out: T[] = [];
-    for (const id of ids) { const v = visible(store, kind, id, viewer); if (v) { sub.sent[kind].add(id); out.push(v as T); } }
+    for (const id of Array.from(ids)) { const v = visible(store, kind, id, viewer); if (v) { sub.sent[kind].add(id); out.push(v as T); } }
     return out;
   };
   send(c, {
@@ -268,7 +268,7 @@ function maybeAutoVersion(store: ScopeStore, noteId: string, userId: string) {
 
 function relayAwareness(c: Conn, name: string, u: string) {
   if (!c.docs.has(name)) return;
-  for (const other of conns) {
+  for (const other of Array.from(conns)) {
     if (other !== c && other.docs.has(name)) send(other, { t: "doc.awareness", doc: name, u });
   }
 }
@@ -281,7 +281,7 @@ async function handle(c: Conn, msg: AgClientMsg) {
       const key = scopeKey(msg.scope);
       c.scopes.get(key)?.off();
       c.scopes.delete(key);
-      for (const d of [...c.docs.values()]) if (d.scopeKey === key) closeDoc(c, d.name);
+      for (const d of [...Array.from(c.docs.values())]) if (d.scopeKey === key) closeDoc(c, d.name);
       return;
     }
     case "doc.sub": return subscribeDoc(c, msg.scope, msg.doc);
@@ -302,7 +302,7 @@ async function handle(c: Conn, msg: AgClientMsg) {
         send(c, { t: "op.ack", rid: msg.rid, ok: false, error: "You no longer have access to this." });
         sub.off();
         c.scopes.delete(key);
-        for (const d of [...c.docs.values()]) if (d.scopeKey === key) { closeDoc(c, d.name); send(c, { t: "doc.revoked", doc: d.name }); }
+        for (const d of [...Array.from(c.docs.values())]) if (d.scopeKey === key) { closeDoc(c, d.name); send(c, { t: "doc.revoked", doc: d.name }); }
         send(c, { t: "scope.denied", scope: key, reason: "You no longer have access to this." });
         return;
       }
@@ -353,17 +353,17 @@ export function initAgnosticRealtime(session: any, hooks: HostHooks) {
     ws.on("pong", () => { c.alive = true; });
     ws.on("close", () => {
       conns.delete(c);
-      for (const s of c.scopes.values()) s.off();
-      for (const name of [...c.docs.keys()]) closeDoc(c, name);
+      for (const s of Array.from(c.scopes.values())) s.off();
+      for (const name of [...Array.from(c.docs.keys())]) closeDoc(c, name);
     });
   });
   const heartbeat = setInterval(() => {
-    for (const c of conns) {
+    for (const c of Array.from(conns)) {
       if (!c.alive) { c.ws.terminate(); continue; }
       c.alive = false;
       try { c.ws.ping(); } catch {}
     }
-    sweepStores((key) => [...conns].some((c) => c.scopes.has(key)));
+    sweepStores((key) => [...Array.from(conns)].some((c) => c.scopes.has(key)));
   }, 30_000);
   wss.on("close", () => clearInterval(heartbeat));
 }

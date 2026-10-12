@@ -11,8 +11,8 @@ import { useAg } from "./hooks";
 export function ImportExportDialog({ onClose }: { onClose: () => void }) {
   const { state, request, scope } = useAg();
   const { toast } = useToast();
-  const templates = [...state.notes.values()].filter((n) => n.isTemplate);
-  const comps = [...state.components.values()];
+  const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate);
+  const comps = [...Array.from(state.components.values())];
   const [pickT, setPickT] = useState<Set<string>>(new Set(templates.map((t) => t.id)));
   const [pickC, setPickC] = useState<Set<string>>(new Set(comps.map((c) => c.id)));
   const [gmText, setGmText] = useState(false);
@@ -24,7 +24,7 @@ export function ImportExportDialog({ onClose }: { onClose: () => void }) {
   const doExport = async () => {
     setBusy(true);
     try {
-      const { bundle } = await request<{ bundle: AgExportBundle }>({ op: "export", templateIds: [...pickT], componentIds: [...pickC], includeGmText: gmText, includeTracker: tracker });
+      const { bundle } = await request<{ bundle: AgExportBundle }>({ op: "export", templateIds: [...Array.from(pickT)], componentIds: [...Array.from(pickC)], includeGmText: gmText, includeTracker: tracker });
       const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);

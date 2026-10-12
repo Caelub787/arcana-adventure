@@ -28,7 +28,7 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
   if (!note) return null;
   const update = (patch: any) => request({ op: "note.update", id: noteId, patch }).catch((e) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
   const players = state.members.filter((m) => m.role !== "gm");
-  const types = [...new Set([...AG_BUILTIN_TYPES.map((t) => t.id), ...[...state.notes.values()].map((n) => n.type)])];
+  const types = [...Array.from(new Set([...AG_BUILTIN_TYPES.map((t) => t.id), ...[...Array.from(state.notes.values())].map((n) => n.type)]))];
 
   return (
     <div className="p-3 space-y-5 text-stone-200" data-testid="ag-settings-panel">
@@ -114,7 +114,7 @@ function TokenBarsSection({ noteId, bars, onChange }: { noteId: string; bars: Ag
 function ActionsSection({ noteId }: { noteId: string }) {
   const { state } = useAg();
   const [editing, setEditing] = useState<string | null | "new">(null);
-  const actions = [...state.actions.values()].filter((a) => a.noteId === noteId);
+  const actions = [...Array.from(state.actions.values())].filter((a) => a.noteId === noteId);
   return (
     <Section title="Buttons" icon={<Dices className="h-3.5 w-3.5" />}>
       <div className="space-y-1">
@@ -136,10 +136,10 @@ function ActionsSection({ noteId }: { noteId: string }) {
 
 /** Sheets show their template, locked; changing it wipes the sheet (after a confirm) and can be undone. */
 function TemplateLockSection({ noteId }: { noteId: string }) {
-  const { state, request } = useAg();
+  const { state, request, key } = useAg();
   const { toast } = useToast();
   const note = state.notes.get(noteId)!;
-  const templates = [...state.notes.values()].filter((n) => n.isTemplate);
+  const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate);
   const current = note.templateId ? state.notes.get(note.templateId) : undefined;
   const [pending, setPending] = useState<string | null | undefined>(undefined);
   const [lastUndo, setLastUndo] = useState<string | null>(null);
@@ -152,7 +152,7 @@ function TemplateLockSection({ noteId }: { noteId: string }) {
       const { versionId } = await request<{ versionId: string }>({ op: "note.switchTemplate", id: noteId, templateId: target ?? null });
       setLastUndo(versionId);
       const undo = () => request({ op: "version.restore", versionId });
-      pushUndo({ label: "Template change", undo });
+      pushUndo(key, { label: "Template change", undo });
       toast({ title: "Template changed", description: "Ctrl+Z or “Undo template change” brings the old sheet back." });
     } catch (e: any) { toast({ title: "Couldn't change template", description: e.message, variant: "destructive" }); }
   };
@@ -193,7 +193,7 @@ function TemplateSection({ noteId }: { noteId: string }) {
   const { state, request } = useAg();
   const { toast } = useToast();
   const t = state.notes.get(noteId)!;
-  const sheets = [...state.notes.values()].filter((n) => n.templateId === noteId);
+  const sheets = [...Array.from(state.notes.values())].filter((n) => n.templateId === noteId);
   const [mode, setMode] = useState<"fields" | "full">("fields");
   const [removeMissing, setRemoveMissing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -209,7 +209,7 @@ function TemplateSection({ noteId }: { noteId: string }) {
   const apply = async () => {
     setBusy(true);
     try {
-      const r = await request<{ applied: number }>({ op: "template.apply", templateId: noteId, noteIds: [...selected], mode, removeMissing });
+      const r = await request<{ applied: number }>({ op: "template.apply", templateId: noteId, noteIds: [...Array.from(selected)], mode, removeMissing });
       toast({ title: `Updated ${r.applied} sheet${r.applied === 1 ? "" : "s"}`, description: "Each sheet's previous state is in its Version history." });
     } catch (e: any) { toast({ title: "Couldn't apply", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }

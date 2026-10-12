@@ -87,7 +87,7 @@ export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick
     const s = q.trim().toLowerCase();
     if (!s) return [];
     const out: Array<{ ref: string; label: string }> = [];
-    for (const f of state.fields.values()) {
+    for (const f of Array.from(state.fields.values())) {
       if (f.noteId === noteId || (allowTypes && !allowTypes.includes(f.type))) continue;
       const n = state.notes.get(f.noteId);
       if (!n || n.isTemplate) continue;
@@ -98,7 +98,7 @@ export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick
     return out;
   }, [q, state, noteId, allowTypes]);
   const absolute = value ? /^@\{([^}]+)\}\.(.+)$/.exec(value) : null;
-  const absLabel = absolute ? (() => { const n = state.notes.get(absolute[1]); const f = [...state.fields.values()].find((x) => x.noteId === absolute[1] && x.key === absolute[2]); return n ? `${f?.label ?? absolute[2]} — ${n.name}` : null; })() : null;
+  const absLabel = absolute ? (() => { const n = state.notes.get(absolute[1]); const f = [...Array.from(state.fields.values())].find((x) => x.noteId === absolute[1] && x.key === absolute[2]); return n ? `${f?.label ?? absolute[2]} — ${n.name}` : null; })() : null;
   const current = options.find((o) => o.ref === value) ?? (absLabel ? { ref: value!, label: absLabel } : undefined);
   return (
     <Popover open={open} onOpenChange={setOpen}>

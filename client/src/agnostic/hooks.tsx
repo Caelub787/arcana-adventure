@@ -43,11 +43,11 @@ function useScopeState(scope: AgScope): ScopeState | undefined {
 
 /** Filter a scope state down to what `viewer` could see (preview as player). */
 export function filterState(st: ScopeState, viewer: AgViewer): ScopeState {
-  const notes = new Map([...st.notes].filter(([, n]) => canViewNote(n, viewer)));
-  const fields = new Map([...st.fields].filter(([, f]) => { const n = notes.get(f.noteId); return !!n && canViewField(f, n, viewer); }));
-  const regions = new Map([...st.regions].filter(([, r]) => { const n = notes.get(r.noteId); return !!n && canViewRegion(r, n, viewer); }));
-  const actions = new Map([...st.actions].filter(([, a]) => { const n = notes.get(a.noteId); return !!n && canSeeAction(a as any, n, viewer); }));
-  const links = new Map([...st.links].filter(([, l]) => canViewLink(l, notes.get(l.fromNoteId), notes.get(l.toNoteId), viewer)));
+  const notes = new Map([...Array.from(st.notes)].filter(([, n]) => canViewNote(n, viewer)));
+  const fields = new Map([...Array.from(st.fields)].filter(([, f]) => { const n = notes.get(f.noteId); return !!n && canViewField(f, n, viewer); }));
+  const regions = new Map([...Array.from(st.regions)].filter(([, r]) => { const n = notes.get(r.noteId); return !!n && canViewRegion(r, n, viewer); }));
+  const actions = new Map([...Array.from(st.actions)].filter(([, a]) => { const n = notes.get(a.noteId); return !!n && canSeeAction(a as any, n, viewer); }));
+  const links = new Map([...Array.from(st.links)].filter(([, l]) => canViewLink(l, notes.get(l.fromNoteId), notes.get(l.toNoteId), viewer)));
   return { ...st, notes, fields, regions, actions, links, modifiers: new Map(), isGM: false };
 }
 
@@ -99,7 +99,7 @@ export function useNote(noteId: string | null | undefined): AgNote | undefined {
 
 export function fieldsOf(state: ScopeState, noteId: string): AgField[] {
   const out: AgField[] = [];
-  for (const f of state.fields.values()) if (f.noteId === noteId) out.push(f);
+  for (const f of Array.from(state.fields.values())) if (f.noteId === noteId) out.push(f);
   return out.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
 }
 
@@ -113,7 +113,7 @@ export function follow(state: ScopeState, noteId: string, label: string): string
   const l = label.toLowerCase();
   if (l === "self" || !l) return [noteId];
   const out: string[] = [];
-  for (const link of state.links.values()) {
+  for (const link of Array.from(state.links.values())) {
     if (link.fromNoteId === noteId && link.label === l) out.push(link.toNoteId);
     if (link.toNoteId === noteId && link.reverseLabel === l) out.push(link.fromNoteId);
   }
@@ -122,11 +122,11 @@ export function follow(state: ScopeState, noteId: string, label: string): string
 
 export function connectionLabels(state: ScopeState, noteId: string): string[] {
   const set = new Set<string>();
-  for (const link of state.links.values()) {
+  for (const link of Array.from(state.links.values())) {
     if (link.fromNoteId === noteId) set.add(link.label);
     if (link.toNoteId === noteId) set.add(link.reverseLabel);
   }
-  return [...set];
+  return [...Array.from(set)];
 }
 
 /**
@@ -147,10 +147,10 @@ export function resolveRef(state: ScopeState, noteId: string, ref: string | unde
   const path = r.replace(/^@/, "").toLowerCase().split(".").filter(Boolean);
   if (!path.length) return [];
   let set = [start];
-  for (let i = 0; i < path.length - 1; i++) set = [...new Set(set.flatMap((id) => follow(state, id, path[i])))];
+  for (let i = 0; i < path.length - 1; i++) set = [...Array.from(new Set(set.flatMap((id) => follow(state, id, path[i]))))];
   const key = path[path.length - 1];
   const out: AgField[] = [];
-  for (const id of set) for (const f of state.fields.values()) if (f.noteId === id && f.key === key) out.push(f);
+  for (const id of set) for (const f of Array.from(state.fields.values())) if (f.noteId === id && f.key === key) out.push(f);
   return out;
 }
 

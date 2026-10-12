@@ -9487,6 +9487,8 @@ export default function Campaign() {
     if (!isAgnostic) return;
     const t = targetedTokenId ? (tokens as any[]).find((x: any) => x.id === targetedTokenId) : null;
     setAgTargets(t?.agnosticNoteId ? [t.agnosticNoteId] : []);
+    // Leaving this campaign: its targets must not follow into another one.
+    return () => setAgTargets([]);
   }, [isAgnostic, targetedTokenId, tokens]);
 
   // Load current map from campaign

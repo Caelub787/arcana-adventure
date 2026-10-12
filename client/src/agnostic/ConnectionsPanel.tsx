@@ -26,7 +26,7 @@ export function ConnectionsPanel({ noteId }: { noteId: string }) {
   const [picking, setPicking] = useState(false);
   const [preset, setPreset] = useState(0);
   const [custom, setCustom] = useState({ label: "", reverse: "" });
-  const links = [...state.links.values()].filter((l) => l.fromNoteId === noteId || l.toNoteId === noteId);
+  const links = [...Array.from(state.links.values())].filter((l) => l.fromNoteId === noteId || l.toNoteId === noteId);
 
   const create = async (otherId: string) => {
     setPicking(false);
@@ -74,7 +74,7 @@ export function ConnectionsPanel({ noteId }: { noteId: string }) {
         )}
       </section>
       {isGM && <ModifiersSection noteId={noteId} />}
-      {picking && <NotePickerDialog title="Connect to…" notes={[...state.notes.values()].filter((n) => !n.isTemplate)} exclude={noteId} onClose={() => setPicking(false)} onPick={create} />}
+      {picking && <NotePickerDialog title="Connect to…" notes={[...Array.from(state.notes.values())].filter((n) => !n.isTemplate)} exclude={noteId} onClose={() => setPicking(false)} onPick={create} />}
     </div>
   );
 }
@@ -82,17 +82,17 @@ export function ConnectionsPanel({ noteId }: { noteId: string }) {
 function ModifiersSection({ noteId }: { noteId: string }) {
   const { state, request } = useAg();
   const { toast } = useToast();
-  const mods = [...state.modifiers.values()].filter((m) => m.noteId === noteId);
+  const mods = [...Array.from(state.modifiers.values())].filter((m) => m.noteId === noteId);
   const labels = new Set<string>(["self"]);
-  for (const l of state.links.values()) { if (l.fromNoteId === noteId) labels.add(l.label); if (l.toNoteId === noteId) labels.add(l.reverseLabel); }
+  for (const l of Array.from(state.links.values())) { if (l.fromNoteId === noteId) labels.add(l.label); if (l.toNoteId === noteId) labels.add(l.reverseLabel); }
   const save = (m: Partial<AgModifier> & { noteId: string }) => request({ op: "modifier.upsert", modifier: { via: "owner", targetKey: "", op: "add", amount: "1", condition: null, label: null, ...m } as any })
     .catch((e) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
   return (
     <section className="space-y-2">
       <div className="text-xs uppercase tracking-wide text-amber-400/90 flex items-center gap-1"><Wand2 className="h-3.5 w-3.5" /> This sheet changes…</div>
       <div className="text-[11px] text-stone-500">E.g. a sword adds 2 to its owner's <span className="font-mono">damage</span> while <span className="font-mono">equipped</span>.</div>
-      {mods.map((m) => <ModifierRow key={m.id} mod={m} labels={[...labels]} onSave={(patch) => save({ ...m, ...patch })} onDelete={() => request({ op: "modifier.delete", id: m.id })} />)}
-      <button type="button" onClick={() => save({ noteId, via: [...labels].find((l) => l !== "self") ?? "self", targetKey: "", amount: "1" })} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs inline-flex items-center gap-1" data-testid="ag-modifier-add"><Plus className="h-3.5 w-3.5" /> Add a modifier</button>
+      {mods.map((m) => <ModifierRow key={m.id} mod={m} labels={[...Array.from(labels)]} onSave={(patch) => save({ ...m, ...patch })} onDelete={() => request({ op: "modifier.delete", id: m.id })} />)}
+      <button type="button" onClick={() => save({ noteId, via: [...Array.from(labels)].find((l) => l !== "self") ?? "self", targetKey: "", amount: "1" })} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs inline-flex items-center gap-1" data-testid="ag-modifier-add"><Plus className="h-3.5 w-3.5" /> Add a modifier</button>
     </section>
   );
 }

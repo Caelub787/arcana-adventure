@@ -18,7 +18,7 @@ import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
 type Tab = "sheet" | "fields" | "links" | "settings";
 
 export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => void }) {
-  const { state, realViewer, previewUserId } = useAg();
+  const { state, realViewer, previewUserId, key: scopeKeyStr } = useAg();
   const perms = usePerms(noteId);
   const note = perms.note;
   const [tab, setTab] = useState<Tab>("sheet");
@@ -35,12 +35,12 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !isTextTarget(e.target)) {
         e.preventDefault();
-        void undoLast();
+        void undoLast(scopeKeyStr);
       }
     };
     el.addEventListener("keydown", onKey);
     return () => el.removeEventListener("keydown", onKey);
-  }, []);
+  }, [scopeKeyStr]);
 
   if (!note) {
     return <div className="p-6 text-sm text-stone-400">{state.ready ? "This sheet was deleted, or you can no longer see it." : "Loading…"}</div>;
@@ -51,7 +51,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
     ["fields", "Values", <Hash key="f" className="h-3.5 w-3.5" />],
     ...(isGM ? ([["links", "Links", <Link2 key="l" className="h-3.5 w-3.5" />], ["settings", "Settings", <Settings key="g" className="h-3.5 w-3.5" />]] as Array<[Tab, string, React.ReactNode]>) : []),
   ];
-  const lastUndo = peekUndo();
+  const lastUndo = peekUndo(scopeKeyStr);
 
   return (
     <ActiveEditorProvider noteId={noteId}>
@@ -63,7 +63,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
           ))}
           <div className="ml-auto flex items-center gap-1 shrink-0">
             {!connected && <span className="text-[10px] text-red-300 inline-flex items-center gap-1" title="Reconnecting — your edits will sync when it's back"><WifiOff className="h-3 w-3" /> offline</span>}
-            {lastUndo && <button type="button" onClick={() => undoLast()} className="h-7 px-1.5 rounded text-[11px] text-stone-400 hover:text-stone-100 hover:bg-stone-800 inline-flex items-center gap-1" title={`Undo ${lastUndo.label} (Ctrl+Z)`}><Undo2 className="h-3.5 w-3.5" /></button>}
+            {lastUndo && <button type="button" onClick={() => undoLast(scopeKeyStr)} className="h-7 px-1.5 rounded text-[11px] text-stone-400 hover:text-stone-100 hover:bg-stone-800 inline-flex items-center gap-1" title={`Undo ${lastUndo.label} (Ctrl+Z)`}><Undo2 className="h-3.5 w-3.5" /></button>}
             {realViewer.isGM && <PreviewSelect />}
           </div>
         </div>

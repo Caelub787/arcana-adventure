@@ -35,7 +35,7 @@ function makeEntry(name: string, noteId: string, doc: Y.Doc): Entry {
   const e: Entry = { name, noteId, doc, subs: new Set(), saveTimer: null, releaseTimer: null, listeners: new Set() };
   doc.on("update", (update: Uint8Array, origin: unknown) => {
     scheduleSave(e);
-    for (const l of e.listeners) l(update, origin);
+    for (const l of Array.from(e.listeners)) l(update, origin);
   });
   return e;
 }
@@ -118,7 +118,7 @@ export async function putState(name: string, noteId: string, state: string | nul
 
 /** Flush every pending save — used before snapshots and at shutdown. */
 export async function flushNote(noteId: string) {
-  await Promise.all([...entries.values()].filter((e) => e.noteId === noteId && e.saveTimer).map((e) => {
+  await Promise.all([...Array.from(entries.values())].filter((e) => e.noteId === noteId && e.saveTimer).map((e) => {
     clearTimeout(e.saveTimer!);
     e.saveTimer = null;
     return flush(e);
@@ -126,7 +126,7 @@ export async function flushNote(noteId: string) {
 }
 
 export function openDocNames(noteId: string): string[] {
-  return [...entries.values()].filter((e) => e.noteId === noteId).map((e) => e.name);
+  return [...Array.from(entries.values())].filter((e) => e.noteId === noteId).map((e) => e.name);
 }
 
 /** Drop a doc from memory without saving (its note's epoch moved on). */

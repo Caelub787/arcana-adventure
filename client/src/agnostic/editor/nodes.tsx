@@ -401,13 +401,13 @@ function LinksView(p: NodeViewProps) {
   const a = p.node.attrs;
   const cols: string[] = Array.isArray(a.columns) ? a.columns : [];
   const labels = new Set<string>();
-  for (const l of ag.state.links.values()) { if (l.fromNoteId === ctx.noteId) labels.add(l.label); if (l.toNoteId === ctx.noteId) labels.add(l.reverseLabel); }
+  for (const l of Array.from(ag.state.links.values())) { if (l.fromNoteId === ctx.noteId) labels.add(l.label); if (l.toNoteId === ctx.noteId) labels.add(l.reverseLabel); }
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="connections" tools={<>
       <ConfigPopover>
         <Row label="Connection">
           <input list="ag-link-labels" value={a.label} placeholder="e.g. items" onChange={(e) => p.updateAttributes({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" />
-          <datalist id="ag-link-labels">{[...labels].map((l) => <option key={l} value={l} />)}</datalist>
+          <datalist id="ag-link-labels">{[...Array.from(labels)].map((l) => <option key={l} value={l} />)}</datalist>
         </Row>
         <Row label="Columns"><input value={cols.join(", ")} placeholder="weight, qty" onChange={(e) => p.updateAttributes({ columns: e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></Row>
       </ConfigPopover>
@@ -455,7 +455,7 @@ function ComponentNodeView(p: NodeViewProps) {
         <Row label="Component">
           <select value={a.componentId} onChange={(e) => p.updateAttributes({ componentId: e.target.value, bindings: {} })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded text-xs px-1">
             <option value="">Choose…</option>
-            {[...ag.state.components.values()].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {[...Array.from(ag.state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Row>
         {(comp?.params ?? []).map((param) => (

@@ -82,7 +82,7 @@ export class ScopeStore {
       const result = await fn(cs);
       // Anything structural may change formula results anywhere in the scope.
       for (const id of this.recompute()) cs.fields.add(id);
-      for (const l of this.listeners) {
+      for (const l of Array.from(this.listeners)) {
         try { l(cs); } catch (e) { console.error("[agnostic] listener failed", e); }
       }
       return result;
@@ -116,12 +116,12 @@ export class ScopeStore {
   recompute(): string[] {
     const next = this.computer().computeAll();
     const changed: string[] = [];
-    for (const [id, c] of next) {
+    for (const [id, c] of Array.from(next)) {
       const prev = this.computed.get(id);
       if (!prev || prev.eff !== c.eff || prev.err !== c.err) changed.push(id);
     }
     this.computed = next;
-    for (const [id, c] of next) {
+    for (const [id, c] of Array.from(next)) {
       const f = this.fields.get(id);
       if (f) { f.eff = c.eff; f.err = c.err; }
     }
@@ -131,10 +131,10 @@ export class ScopeStore {
   fieldsOf(noteId: string): AgField[] {
     return Array.from(this.fieldsByNote.get(noteId)?.values() ?? []);
   }
-  regionsOf(noteId: string) { return [...this.regions.values()].filter((r) => r.noteId === noteId); }
-  actionsOf(noteId: string) { return [...this.actions.values()].filter((a) => a.noteId === noteId); }
-  modifiersOf(noteId: string) { return [...this.modifiers.values()].filter((m) => m.noteId === noteId); }
-  linksOf(noteId: string) { return [...this.links.values()].filter((l) => l.fromNoteId === noteId || l.toNoteId === noteId); }
+  regionsOf(noteId: string) { return [...Array.from(this.regions.values())].filter((r) => r.noteId === noteId); }
+  actionsOf(noteId: string) { return [...Array.from(this.actions.values())].filter((a) => a.noteId === noteId); }
+  modifiersOf(noteId: string) { return [...Array.from(this.modifiers.values())].filter((m) => m.noteId === noteId); }
+  linksOf(noteId: string) { return [...Array.from(this.links.values())].filter((l) => l.fromNoteId === noteId || l.toNoteId === noteId); }
 
   // --- writes (call inside run()) --------------------------------------------------
   async putNote(n: AgNote, cs: ChangeSet, aclChanged = false) {
@@ -258,7 +258,7 @@ export function peekStore(scope: AgScope): ScopeStore | undefined {
 /** Unload scopes nobody is using (the realtime layer reports who is). */
 export function sweepStores(inUse: (key: string) => boolean, idleMs = 10 * 60_000) {
   const now = Date.now();
-  for (const [key, s] of stores) {
+  for (const [key, s] of Array.from(stores)) {
     if (!inUse(key) && now - s.touchedAt > idleMs) stores.delete(key);
   }
 }

@@ -85,9 +85,9 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
   const t = settings.tracker;
   const [cardId, setCardId] = useState(t.cards[0]?.id ?? "default");
   const card = t.cards.find((c) => c.id === cardId) ?? t.cards[0];
-  const sheets = [...state.notes.values()].filter((n) => !n.isTemplate);
+  const sheets = [...Array.from(state.notes.values())].filter((n) => !n.isTemplate);
   const [previewId, setPreviewId] = useState(t.pinned[0] ?? sheets[0]?.id ?? "");
-  const types = useMemo(() => [...new Set(sheets.map((n) => n.type))], [sheets.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const types = useMemo(() => [...Array.from(new Set(sheets.map((n) => n.type)))], [sheets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (next: AgCampaignSettings["tracker"]) =>
     request({ op: "settings.update", settings: { ...settings, tracker: next } }).catch((e) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
@@ -189,7 +189,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
 function TokenBarDefaults({ previewId, types }: { previewId: string; types: string[] }) {
   const { state, request } = useAg();
   const settings = state.settings!;
-  const kinds = [...new Set([...types, ...Object.keys(settings.tokenBarsByType)])];
+  const kinds = [...Array.from(new Set([...types, ...Object.keys(settings.tokenBarsByType)]))];
   const save = (type: string, bars: AgTokenBar[]) =>
     request({ op: "settings.update", settings: { ...settings, tokenBarsByType: { ...settings.tokenBarsByType, [type]: bars } } });
   return (

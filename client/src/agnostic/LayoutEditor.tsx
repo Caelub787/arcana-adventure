@@ -331,7 +331,7 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
           <div className={row}><span className={lbl}>Component</span>
             <select value={w.componentId} onChange={(e) => onWidget({ componentId: e.target.value, bindings: {} } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded text-xs px-1">
               <option value="">Choose…</option>
-              {[...state.components.values()].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {[...Array.from(state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           {(state.components.get(w.componentId)?.params ?? []).map((p) => (
