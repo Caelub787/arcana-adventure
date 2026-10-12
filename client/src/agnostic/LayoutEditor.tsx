@@ -55,9 +55,12 @@ interface Props {
   createRegion?: () => Promise<string>;
   maxWidth?: number;
   liveDrag?: boolean;
+  /** Ctrl+Z / Ctrl+Shift+Z on the design surface (canvases share the document's history). */
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
-export function LayoutEditor({ layout, onChange, opts, params, allowRichText, allowLastRoll, createRegion, maxWidth, liveDrag }: Props) {
+export function LayoutEditor({ layout, onChange, opts, params, allowRichText, allowLastRoll, createRegion, maxWidth, liveDrag, onUndo, onRedo }: Props) {
   const [local, setLocal] = useState<AgLayout>(layout);
   const [selected, setSelected] = useState<string | null>(null);
   const dragging = useRef<null | { id: string; mode: "move" | "resize"; edge: string; startX: number; startY: number; orig: AgLayoutItem; lastSent: number }>(null);
@@ -131,6 +134,8 @@ export function LayoutEditor({ layout, onChange, opts, params, allowRichText, al
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); (e.shiftKey ? onRedo : onUndo)?.(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") { e.preventDefault(); onRedo?.(); return; }
     if (!sel) return;
     const step = e.shiftKey ? 16 : SNAP;
     const move = (dx: number, dy: number) => { e.preventDefault(); updateItem(sel.id, { x: Math.max(0, sel.x + dx), y: Math.max(0, sel.y + dy) }); };
@@ -146,8 +151,9 @@ export function LayoutEditor({ layout, onChange, opts, params, allowRichText, al
   const handleStyle = (h: string): React.CSSProperties => {
     const s = 12 / scale;
     const pos: React.CSSProperties = { width: s, height: s, cursor: `${h}-resize` };
-    if (h.includes("n")) pos.top = -s / 2; else if (h.includes("s")) pos.bottom = -s / 2; else pos.top = `calc(50% - ${s / 2}px)`;
-    if (h.includes("w")) pos.left = -s / 2; else if (h.includes("e")) pos.right = -s / 2; else pos.left = `calc(50% - ${s / 2}px)`;
+    // Handles sit just outside the item so a finger on a small item moves it rather than resizing it.
+    if (h.includes("n")) pos.top = -s; else if (h.includes("s")) pos.bottom = -s; else pos.top = `calc(50% - ${s / 2}px)`;
+    if (h.includes("w")) pos.left = -s; else if (h.includes("e")) pos.right = -s; else pos.left = `calc(50% - ${s / 2}px)`;
     return pos;
   };
 

@@ -13,8 +13,8 @@ import type { IncomingMessage } from "http";
 import type { Socket } from "net";
 import { WebSocketServer, WebSocket } from "ws";
 import * as Y from "yjs";
-import type { AgScope, AgViewer, AgNote, AgField, AgRegion, AgLink, AgAction } from "@shared/agnostic/types";
-import { parseDocName, scopeKey, noteDocName, regionDocName } from "@shared/agnostic/types";
+import type { AgScope, AgViewer, AgNote, AgField, AgAction } from "@shared/agnostic/types";
+import { parseDocName, scopeKey } from "@shared/agnostic/types";
 import {
   canViewNote, canViewField, canViewRegion, canEditRegion, canViewBody, canEditBody, canViewLink, canSeeAction,
 } from "@shared/agnostic/acl";
@@ -403,5 +403,3 @@ export async function noteForViewer(scope: AgScope, noteId: string, userId: stri
   return n && canViewNote(n, viewer) ? n : null;
 }
 
-export { noteDocName, regionDocName };
-export type { AgRegion, AgLink };

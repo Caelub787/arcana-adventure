@@ -2,7 +2,7 @@
 // the scope store and writes back through ops — the same HP shows (and
 // changes) identically on a sheet, the tracker and a battlemap token.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus, Dices, ExternalLink, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
 import type { AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
@@ -511,4 +511,3 @@ export function useRefOptions(noteId: string) {
   }, [state, noteId]);
 }
 
-export { ExternalLink };

@@ -43,3 +43,11 @@
 
 .ag-prose .ProseMirror-selectednode { outline: 2px solid rgba(245,158,11,.7); border-radius: 4px; }
 .ag-prose [data-node-view-wrapper] { white-space: normal; }
+
+/* Touch screens have no hover: keep block tools reachable. */
+.ag-touch-only { display: none; }
+@media (hover: none) {
+  .ag-node-tools { opacity: 1 !important; }
+  .ag-node-body { padding-top: 22px; }
+  .ag-touch-only { display: inline; }
+}

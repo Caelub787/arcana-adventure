@@ -2,7 +2,7 @@
 // side panel, My Library and the Admin library.
 import React, { useMemo, useState } from "react";
 import {
-  Plus, Search, FolderOpen, Pin, PinOff, MapPin, LayoutTemplate, Puzzle, Download, Upload, Library, ChevronRight, ChevronDown, Lock,
+  Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock,
 } from "lucide-react";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
@@ -239,7 +239,6 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
   );
 }
 
-export { Upload, LayoutTemplate, Puzzle };
 
 /** One click: a blank template for each kind, ready to be designed. */
 function StarterTemplates({ types }: { types: string[] }) {

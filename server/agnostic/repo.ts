@@ -186,3 +186,10 @@ export async function findNoteScope(noteId: string): Promise<AgScope | null> {
   const [row] = await db.select({ scope: agnosticNotes.scope, scopeId: agnosticNotes.scopeId }).from(agnosticNotes).where(eq(agnosticNotes.id, noteId));
   return row ? { kind: row.scope as AgScope["kind"], id: row.scopeId } : null;
 }
+
+/** A campaign was deleted: its notes (cascading to fields/docs/versions…) and settings go too. */
+export async function deleteAgnosticCampaignData(campaignId: string) {
+  await db.delete(agnosticNotes).where(and(eq(agnosticNotes.scope, "campaign"), eq(agnosticNotes.scopeId, campaignId)));
+  await db.delete(agnosticComponents).where(and(eq(agnosticComponents.scope, "campaign"), eq(agnosticComponents.scopeId, campaignId)));
+  await db.delete(agnosticSettings).where(eq(agnosticSettings.campaignId, campaignId));
+}

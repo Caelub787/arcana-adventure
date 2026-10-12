@@ -25,6 +25,7 @@ import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOp
 import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOUNDSCAPE, type SoundscapeState } from "@shared/soundscape";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import { initAgnosticRealtime, handleAgnosticUpgrade } from "./agnostic/realtime";
+import { deleteAgnosticCampaignData } from "./agnostic/repo";
 import multer from "multer";
 import sharp from "sharp";
 import fs from "fs";
@@ -4071,6 +4072,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[DELETE] Starting cascade delete for campaign ${req.params.id}`);
       await storage.deleteCampaign(req.params.id);
+      // Agnostic data hangs off the campaign by scope id (no FK) — remove it too.
+      await deleteAgnosticCampaignData(req.params.id).catch((e) => console.warn("[agnostic] campaign cleanup failed", e));
       console.log(`[DELETE] Campaign ${req.params.id} deleted successfully`);
       res.json({ success: true });
     } catch (err: any) {

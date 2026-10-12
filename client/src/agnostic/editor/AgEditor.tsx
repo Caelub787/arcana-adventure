@@ -2,7 +2,7 @@
 // Yjs) that can hold live values, resource bars, buttons, columns, free
 // canvases, charts, connection tables, components, and sections / words with
 // their own permissions. Regions are nested editors bound to their own docs.
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -98,7 +98,7 @@ function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeho
   useEffect(() => () => { if (active?.active === editor) active?.setActive(null); }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <AgDocContext.Provider value={{ doc, noteId }}>
+    <AgDocContext.Provider value={{ doc, noteId, undo: () => undoManager.undo(), redo: () => undoManager.redo() }}>
       <EditorContent editor={editor} className={inline ? "inline" : ""} />
     </AgDocContext.Provider>
   );
@@ -282,7 +282,6 @@ export function NotePickerDialog({ notes, onPick, onClose, exclude, title = "Lin
   );
 }
 
-export { useCallback };
 
 /** Set up a value / bar / button / chart / table / component before it lands in the document. */
 function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: string; config: { type: string; attrs: Record<string, any>; title: string }; onCancel: () => void; onInsert: (attrs: Record<string, any>) => void }) {

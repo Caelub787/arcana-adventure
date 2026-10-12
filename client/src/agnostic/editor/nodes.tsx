@@ -10,7 +10,7 @@ import type { AgLayout, AgLayoutItem } from "@shared/agnostic/types";
 import { regionDocName } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useAg, useAgMaybe, usePerms, useMemberName } from "../hooks";
+import { useAg, useAgMaybe, useMemberName } from "../hooks";
 import { FieldDisplay, ActionButton, ChartWidget, LinksTable, NoteChip, ComponentView, LayoutView } from "../widgets";
 import { LayoutEditor, RefList } from "../LayoutEditor";
 import { RefPicker, AclEditor } from "../pickers";
@@ -20,7 +20,7 @@ import { CANVAS_ORIGIN } from "../client";
 import { AgEditor } from "./AgEditor";
 
 /** The Y.Doc and note an editor instance is bound to (regions get their own). */
-export interface AgDocCtx { doc: Y.Doc; noteId: string }
+export interface AgDocCtx { doc: Y.Doc; noteId: string; undo?: () => void; redo?: () => void }
 export const AgDocContext = createContext<AgDocCtx | null>(null);
 const useDocCtx = () => useContext(AgDocContext);
 
@@ -34,17 +34,17 @@ const stopInside = ({ event }: { event: Event }) => {
 function Shell({ selected, editable, children, tools, label, className = "", inline }: {
   selected: boolean; editable: boolean; children: React.ReactNode; tools?: React.ReactNode; label?: string; className?: string; inline?: boolean;
 }) {
-  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{children}{editable && selected && tools}</NodeViewWrapper>;
+  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{children}{editable && <span className={selected ? "" : "ag-touch-only"}>{tools}</span>}</NodeViewWrapper>;
   return (
     <NodeViewWrapper className={`group relative my-1.5 ${className}`}>
       {editable && (
-        <div className={`absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 shadow ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"} transition-opacity`} contentEditable={false}>
+        <div className={`ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 shadow ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"} transition-opacity`} contentEditable={false}>
           <span data-drag-handle draggable className="h-6 w-5 grid place-items-center cursor-grab text-stone-400" title="Drag to move"><GripVertical className="h-3.5 w-3.5" /></span>
           {label && <span className="text-[10px] text-stone-400 px-0.5">{label}</span>}
           {tools}
         </div>
       )}
-      <div className={selected ? "ring-1 ring-amber-400/70 rounded" : ""}>{children}</div>
+      <div className={`${editable ? "ag-node-body" : ""} ${selected ? "ring-1 ring-amber-400/70 rounded" : ""}`}>{children}</div>
     </NodeViewWrapper>
   );
 }
@@ -232,7 +232,7 @@ function ColumnsView(p: NodeViewProps) {
   return (
     <NodeViewWrapper className="ag-columns-wrap group relative my-1.5">
       {editable && (
-        <div contentEditable={false} className="absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+        <div contentEditable={false} className="ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
           <span data-drag-handle draggable className="h-6 w-5 grid place-items-center cursor-grab text-stone-400"><GripVertical className="h-3.5 w-3.5" /></span>
           <span className="text-[10px] text-stone-400 px-0.5">{n} columns</span>
           <ToolButton title="Remove columns" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
@@ -310,11 +310,13 @@ function CanvasView(p: NodeViewProps) {
       <ToolButton title={designing ? "Done arranging" : "Arrange"} onClick={() => setDesigning(!designing)}>{designing ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <LayoutGrid className="h-3.5 w-3.5" />}</ToolButton>
       <ToolButton title="Remove canvas" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
     </>}>
-      <div contentEditable={false} className="w-full" data-testid="ag-canvas">
+      <div contentEditable={false} className={`w-full ${designing && editable ? "pt-6" : ""}`} data-testid="ag-canvas">
         {designing && editable ? (
           <LayoutEditor
             layout={layout}
             liveDrag
+            onUndo={ctx.undo}
+            onRedo={ctx.redo}
             allowRichText
             createRegion={createRegion}
             opts={{ noteId: ctx.noteId, renderRegion }}
@@ -478,4 +480,3 @@ export const AgComponent = Node.create({
 
 export const AG_NODES = [AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgNoteLink, AgComponent];
 
-export { usePerms, useMemo };
