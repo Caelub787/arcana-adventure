@@ -488,6 +488,8 @@ export const tokens = pgTable("tokens", {
   lightRadius: integer("light_radius"), // Light emitted by this token (e.g. torch)
   lightColor: text("light_color").default("#ffcc44"), // Color of token-emitted light
   lightIntensity: real("light_intensity").default(1.0), // 0.0-1.0 intensity of token light
+  // Agnostic system: the note this token stands for (portrait + live resource bars).
+  agnosticNoteId: varchar("agnostic_note_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

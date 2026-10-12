@@ -736,6 +736,8 @@ function HoldMenuButton({ options, testId, holdMs = 250, forceOpen = false }: {
 
 // 2. BattleMap
 interface BattleMapProps {
+  /** Agnostic system: draws a note-backed token's portrait, name and bars. */
+  renderTokenOverlay?: (token: any, tokenSize: number) => React.ReactNode;
   tokens: Token[];
   onMoveToken: (id: string, x: number, y: number, force?: boolean, path?: { x: number; y: number }[]) => void;
   // Shared with the parent: the exact grid-cell route a token's last commit
@@ -1278,7 +1280,7 @@ function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: Rule
   );
 }
 
-export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange, tutorialForceOpenHoldMenu = null }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange, tutorialForceOpenHoldMenu = null, renderTokenOverlay }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
 
@@ -3793,6 +3795,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               tabIndex={0}
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-xl" decoding="sync" loading="eager" style={{ imageRendering: 'auto' }} />
+              {/* Agnostic: the token stands for a note — its live portrait, name and the GM-chosen bars. */}
+              {(token as any).agnosticNoteId && renderTokenOverlay ? renderTokenOverlay(token, tokenSize) : null}
               
               {/* Initiative Turn Border - yellow border for current turn character (z-index 1 to sit under HP/energy bars) */}
               {character && currentTurnCharacterId === character.id && (

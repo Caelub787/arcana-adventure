@@ -8,6 +8,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import { registerRoutes } from "./routes";
 import { pool as dbPool } from "./db";
+import { AGNOSTIC_SCHEMA_STATEMENTS } from "@shared/agnostic-schema";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -536,6 +537,8 @@ async function ensureKnowledgeSystemSchema() {
       created_at timestamp NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS soundscape_scenes_campaign_idx ON soundscape_scenes (campaign_id)`,
+    // Agnostic system tables (+ tokens.agnostic_note_id) — see shared/agnostic-schema.ts.
+    ...AGNOSTIC_SCHEMA_STATEMENTS,
   ];
   return runSchemaGuard("knowledge", statements);
 }
