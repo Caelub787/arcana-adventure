@@ -48,7 +48,9 @@ function ComponentEditor({ comp, onBack }: { comp: AgComponentDef; onBack: () =>
   // Preview against any sheet so the GM can see real numbers while designing.
   const notes = [...state.notes.values()];
   const [previewNote, setPreviewNote] = useState(notes[0]?.id ?? "");
-  const [bindings, setBindings] = useState<Record<string, string>>(() => Object.fromEntries(comp.params.map((p) => [p, p])));
+  // Sensible preview wiring: "value"/"current" → hp, "max" → hp_max, otherwise the same-named field.
+  const guess = (p: string) => (p === "value" || p === "current" ? "hp" : p === "max" ? "hp_max" : p);
+  const [bindings, setBindings] = useState<Record<string, string>>(() => Object.fromEntries(comp.params.map((p) => [p, guess(p)])));
   const save = (patch: Partial<{ name: string; params: string[]; layout: AgLayout }>) =>
     request({ op: "component.upsert", component: { id: comp.id, name: comp.name, params: comp.params, layout: comp.layout, ...patch } }).catch((e) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
   return (

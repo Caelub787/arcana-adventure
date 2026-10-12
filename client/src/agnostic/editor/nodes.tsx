@@ -34,7 +34,7 @@ const stopInside = ({ event }: { event: Event }) => {
 function Shell({ selected, editable, children, tools, label, className = "", inline }: {
   selected: boolean; editable: boolean; children: React.ReactNode; tools?: React.ReactNode; label?: string; className?: string; inline?: boolean;
 }) {
-  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{children}{editable && tools}</NodeViewWrapper>;
+  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{children}{editable && selected && tools}</NodeViewWrapper>;
   return (
     <NodeViewWrapper className={`group relative my-1.5 ${className}`}>
       {editable && (
@@ -70,7 +70,7 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
 const DISPLAYS: Array<[string, string]> = [["value", "Value"], ["input", "Editable"], ["bar", "Resource bar"], ["pips", "Pips"], ["dial", "Dial"], ["badge", "Badge"]];
 
 // --------------------------------------------------------------------------- field (inline + block)
-function FieldConfig({ attrs, update, noteId, block }: { attrs: any; update: (a: any) => void; noteId: string; block: boolean }) {
+export function FieldConfig({ attrs, update, noteId, block }: { attrs: any; update: (a: any) => void; noteId: string; block: boolean }) {
   return (
     <>
       <Row label="Value"><RefPicker noteId={noteId} value={attrs.ref} onChange={(ref) => update({ ref })} /></Row>
@@ -97,7 +97,7 @@ function FieldInlineView(p: NodeViewProps) {
   if (!ctx) return <NodeViewWrapper as="span" />;
   const a = p.node.attrs;
   return (
-    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover defaultOpen={!a.ref}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block={false} /></ConfigPopover></span>}>
+    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block={false} /></ConfigPopover></span>}>
       <span contentEditable={false} className="align-baseline">{a.ref ? <FieldDisplay noteId={ctx.noteId} refPath={a.ref} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} /> : <span className="text-xs text-stone-500">[value]</span>}</span>
     </Shell>
   );
@@ -108,7 +108,7 @@ function FieldBlockView(p: NodeViewProps) {
   if (!ctx) return <NodeViewWrapper />;
   const a = p.node.attrs;
   return (
-    <Shell selected={p.selected} editable={p.editor.isEditable} label="value" tools={<><ConfigPopover defaultOpen={!a.ref}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block /></ConfigPopover><ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton></>}>
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="value" tools={<><ConfigPopover><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block /></ConfigPopover><ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton></>}>
       <div contentEditable={false} className="py-0.5">{a.ref ? <FieldDisplay noteId={ctx.noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} color={a.color || undefined} /> : <span className="text-xs text-stone-500">Choose a value (⚙)</span>}</div>
     </Shell>
   );
@@ -347,7 +347,7 @@ function ButtonView(p: NodeViewProps) {
   if (!ctx) return <NodeViewWrapper as="span" />;
   const a = p.node.attrs;
   return (
-    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover defaultOpen={!a.actionId}>
+    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover>
       <Row label="Does"><ActionPicker noteId={ctx.noteId} value={a.actionId} onChange={(actionId) => p.updateAttributes({ actionId })} /></Row>
       <Row label="Text"><input value={a.label ?? ""} placeholder="(action name)" onChange={(e) => p.updateAttributes({ label: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></Row>
     </ConfigPopover></span>}>
@@ -371,7 +371,7 @@ function ChartView(p: NodeViewProps) {
   const refs: string[] = Array.isArray(a.refs) ? a.refs : [];
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="chart" tools={<>
-      <ConfigPopover defaultOpen={!refs.length}>
+      <ConfigPopover>
         <Row label="Type"><select value={a.chart} onChange={(e) => p.updateAttributes({ chart: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded text-xs px-1"><option value="radar">Radar</option><option value="bar">Bars</option><option value="line">Line</option><option value="pie">Pie</option></select></Row>
         <RefList noteId={ctx.noteId} refs={refs} onChange={(r) => p.updateAttributes({ refs: r })} />
         <Row label="Scale max"><RefPicker noteId={ctx.noteId} value={a.maxRef} placeholder="(auto)" onChange={(maxRef) => p.updateAttributes({ maxRef })} /></Row>
@@ -402,7 +402,7 @@ function LinksView(p: NodeViewProps) {
   for (const l of ag.state.links.values()) { if (l.fromNoteId === ctx.noteId) labels.add(l.label); if (l.toNoteId === ctx.noteId) labels.add(l.reverseLabel); }
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="connections" tools={<>
-      <ConfigPopover defaultOpen={!a.label}>
+      <ConfigPopover>
         <Row label="Connection">
           <input list="ag-link-labels" value={a.label} placeholder="e.g. items" onChange={(e) => p.updateAttributes({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" />
           <datalist id="ag-link-labels">{[...labels].map((l) => <option key={l} value={l} />)}</datalist>
@@ -449,7 +449,7 @@ function ComponentNodeView(p: NodeViewProps) {
   const bindings: Record<string, string> = a.bindings && typeof a.bindings === "object" ? a.bindings : {};
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label={comp?.name ?? "component"} tools={<>
-      <ConfigPopover defaultOpen={!a.componentId}>
+      <ConfigPopover>
         <Row label="Component">
           <select value={a.componentId} onChange={(e) => p.updateAttributes({ componentId: e.target.value, bindings: {} })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded text-xs px-1">
             <option value="">Choose…</option>

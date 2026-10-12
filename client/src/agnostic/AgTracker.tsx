@@ -8,9 +8,11 @@ import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
 import { DEFAULT_TRACKER_CARD, agTypeLabel } from "@shared/agnostic/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useAg } from "./hooks";
+import { useAg, useAgMaybe } from "./hooks";
 import { LayoutView } from "./widgets";
 import { LayoutEditor } from "./LayoutEditor";
+import { ColorInput, RefPicker } from "./pickers";
+import type { AgTokenBar } from "@shared/agnostic/types";
 
 export interface RollFeedLike { characterName?: string; label?: string; total?: number; ts?: number; timestamp?: number }
 
@@ -20,7 +22,12 @@ export function cardFor(settings: AgCampaignSettings, noteId: string, type: stri
   return t.cards.find((c) => c.id === id) ?? t.cards[0] ?? DEFAULT_TRACKER_CARD;
 }
 
-export function AgTracker({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
+/** Safe to mount before Agnostic has connected: renders nothing until then. */
+export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
+  return useAgMaybe() ? <AgTrackerInner {...props} /> : null;
+}
+
+function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
   const { state, openNote, viewer } = useAg();
   const [designing, setDesigning] = useState(false);
   const settings = state.settings;
@@ -170,8 +177,45 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </section>
+
+          <TokenBarDefaults previewId={previewId} types={types} />
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Default battlemap bars per kind of sheet (a sheet can override in its Settings). */
+function TokenBarDefaults({ previewId, types }: { previewId: string; types: string[] }) {
+  const { state, request } = useAg();
+  const settings = state.settings!;
+  const kinds = [...new Set([...types, ...Object.keys(settings.tokenBarsByType)])];
+  const save = (type: string, bars: AgTokenBar[]) =>
+    request({ op: "settings.update", settings: { ...settings, tokenBarsByType: { ...settings.tokenBarsByType, [type]: bars } } });
+  return (
+    <section className="space-y-1.5">
+      <div className="text-xs uppercase tracking-wide text-amber-400/90">Bars on battlemap tokens (by kind)</div>
+      {kinds.map((ty) => {
+        const bars = settings.tokenBarsByType[ty] ?? [];
+        return (
+          <div key={ty} className="rounded border border-stone-800 p-1.5 space-y-1">
+            <div className="text-xs text-stone-300">{agTypeLabel(ty)}</div>
+            {bars.map((b, i) => (
+              <div key={b.id} className="flex flex-wrap items-center gap-1.5">
+                {previewId ? <div className="w-32"><RefPicker noteId={previewId} value={b.value} onChange={(value) => save(ty, bars.map((x, j) => (j === i ? { ...x, value } : x)))} /></div>
+                  : <input defaultValue={b.value} onBlur={(e) => save(ty, bars.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} className="h-7 w-28 bg-stone-950 border border-stone-700 rounded px-1 text-xs" />}
+                <span className="text-[11px] text-stone-500">of</span>
+                {previewId ? <div className="w-32"><RefPicker noteId={previewId} value={b.max} placeholder="(no max)" onChange={(max) => save(ty, bars.map((x, j) => (j === i ? { ...x, max } : x)))} /></div>
+                  : <input defaultValue={b.max ?? ""} onBlur={(e) => save(ty, bars.map((x, j) => (j === i ? { ...x, max: e.target.value || undefined } : x)))} className="h-7 w-28 bg-stone-950 border border-stone-700 rounded px-1 text-xs" />}
+                <ColorInput value={b.color} onChange={(color) => save(ty, bars.map((x, j) => (j === i ? { ...x, color } : x)))} />
+                <button type="button" onClick={() => save(ty, bars.filter((_, j) => j !== i))} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
+              </div>
+            ))}
+            <button type="button" onClick={() => save(ty, [...bars, { id: Math.random().toString(36).slice(2, 8), value: "hp", max: "hp_max", color: "#16a34a" }])} className="h-7 px-2 rounded bg-stone-800 text-[11px] inline-flex items-center gap-1"><Plus className="h-3 w-3" /> Bar</button>
+          </div>
+        );
+      })}
+      <div className="text-[10px] text-stone-500">Any sheet placed on the map shows these bars, linked to its live values.</div>
+    </section>
   );
 }

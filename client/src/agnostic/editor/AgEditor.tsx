@@ -25,7 +25,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
 import { CANVAS_ORIGIN } from "../client";
-import { AG_NODES, AgDocContext } from "./nodes";
+import { AG_NODES, AgDocContext, FieldConfig } from "./nodes";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RefPicker } from "../pickers";
+import { RefList } from "../LayoutEditor";
+import { ActionPicker } from "../ActionEditor";
 import { uploadImage } from "../widgets";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import "../agnostic.css";
@@ -89,6 +93,8 @@ function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeho
   }, [doc]);
 
   useEffect(() => { editor?.setEditable(editable); }, [editor, editable]);
+  // The sheet's main document is the toolbar's target until another editor is focused.
+  useEffect(() => { if (!nested && editor && active && !active.active) active.setActive(editor as Editor); }, [editor, nested, active?.active]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (active?.active === editor) active?.setActive(null); }, [editor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -174,6 +180,8 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [picker, setPicker] = useState<null | "note" | "image">(null);
+  const [configuring, setConfiguring] = useState<null | { type: string; attrs: Record<string, any>; title: string }>(null);
+  const configure = (type: string, attrs: Record<string, any>, title: string) => { setOpen(false); setConfiguring({ type, attrs, title }); };
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const insert = (content: any) => { editor?.chain().focus().insertContent(content).run(); setOpen(false); };
@@ -192,10 +200,10 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     finally { setBusy(false); setOpen(false); }
   };
   const items: Array<{ label: string; icon: React.ReactNode; gm?: boolean; run: () => void; hint?: string }> = [
-    { label: "Value (in text)", icon: <Hash className="h-4 w-4" />, run: () => insert({ type: "agField", attrs: { display: "value" } }) },
-    { label: "Value block", icon: <Hash className="h-4 w-4" />, run: () => insert({ type: "agFieldBlock", attrs: { display: "input" } }) },
-    { label: "Resource bar", icon: <Gauge className="h-4 w-4" />, run: () => insert({ type: "agFieldBlock", attrs: { display: "bar", color: "#16a34a" } }) },
-    { label: "Button / roll", icon: <Dices className="h-4 w-4" />, gm: true, run: () => insert({ type: "agButton", attrs: {} }) },
+    { label: "Value (in text)", icon: <Hash className="h-4 w-4" />, run: () => configure("agField", { ref: "", display: "value", label: "", showLabel: false }, "Value in the text") },
+    { label: "Value block", icon: <Hash className="h-4 w-4" />, run: () => configure("agFieldBlock", { ref: "", maxRef: "", display: "input", label: "", showLabel: true, color: "" }, "Value") },
+    { label: "Resource bar", icon: <Gauge className="h-4 w-4" />, run: () => configure("agFieldBlock", { ref: "", maxRef: "", display: "bar", label: "", showLabel: true, color: "#16a34a" }, "Resource bar") },
+    { label: "Button / roll", icon: <Dices className="h-4 w-4" />, gm: true, run: () => configure("agButton", { actionId: "", label: "" }, "Button") },
     { label: "Hidden section", icon: <EyeOff className="h-4 w-4" />, gm: true, run: () => makeRegion(false), hint: "Its own who-can-see / who-can-edit" },
     { label: "Secret words", icon: <Lock className="h-4 w-4" />, gm: true, run: () => makeRegion(true), hint: "Hidden words inside a sentence" },
     { label: "2 columns", icon: <Columns2 className="h-4 w-4" />, run: () => insert({ type: "agColumns", content: [col(), col()] }) },
@@ -204,10 +212,10 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Image (upload)", icon: <ImageIcon className="h-4 w-4" />, run: () => { setOpen(false); fileRef.current?.click(); } },
     { label: "Image (library)", icon: <ImageIcon className="h-4 w-4" />, run: () => { setOpen(false); setPicker("image"); } },
     { label: "Table", icon: <TableIcon className="h-4 w-4" />, run: () => { editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); setOpen(false); } },
-    { label: "Chart", icon: <BarChart3 className="h-4 w-4" />, run: () => insert({ type: "agChart", attrs: { chart: "radar", refs: [] } }) },
-    { label: "Connections table", icon: <Link2 className="h-4 w-4" />, run: () => insert({ type: "agLinks", attrs: {} }) },
+    { label: "Chart", icon: <BarChart3 className="h-4 w-4" />, run: () => configure("agChart", { chart: "radar", refs: [], maxRef: "", height: 220 }, "Chart") },
+    { label: "Connections table", icon: <Link2 className="h-4 w-4" />, run: () => configure("agLinks", { label: "", columns: [] }, "Connections table") },
     { label: "Link to a sheet", icon: <FileText className="h-4 w-4" />, run: () => { setOpen(false); setPicker("note"); } },
-    { label: "Component", icon: <Puzzle className="h-4 w-4" />, run: () => insert({ type: "agComponent", attrs: {} }) },
+    { label: "Component", icon: <Puzzle className="h-4 w-4" />, run: () => configure("agComponent", { componentId: "", bindings: {} }, "Component") },
     { label: "Divider", icon: <Minus className="h-4 w-4" />, run: () => { editor?.chain().focus().setHorizontalRule().run(); setOpen(false); } },
   ];
   return (
@@ -235,6 +243,14 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
         catch (err: any) { toast({ title: "Upload failed", description: err.message, variant: "destructive" }); }
         finally { setBusy(false); }
       }} />
+      {configuring && (
+        <InsertConfigDialog
+          noteId={noteId}
+          config={configuring}
+          onCancel={() => setConfiguring(null)}
+          onInsert={(attrs) => { editor?.chain().focus().insertContent({ type: configuring.type, attrs }).run(); setConfiguring(null); }}
+        />
+      )}
       {picker === "image" && <ImageBrowser open onOpenChange={(o) => { if (!o) setPicker(null); }} onSelect={(src) => { editor?.chain().focus().setImage({ src }).run(); setPicker(null); }} />}
       {picker === "note" && (
         <NotePickerDialog onClose={() => setPicker(null)} exclude={noteId} onPick={(id) => { editor?.chain().focus().insertContent({ type: "agNoteLink", attrs: { noteId: id } }).insertContent(" ").run(); setPicker(null); }} notes={[...state.notes.values()].filter((n) => !n.isTemplate)} />
@@ -267,3 +283,59 @@ export function NotePickerDialog({ notes, onPick, onClose, exclude, title = "Lin
 }
 
 export { useCallback };
+
+/** Set up a value / bar / button / chart / table / component before it lands in the document. */
+function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: string; config: { type: string; attrs: Record<string, any>; title: string }; onCancel: () => void; onInsert: (attrs: Record<string, any>) => void }) {
+  const { state } = useAg();
+  const [a, setA] = useState(config.attrs);
+  const update = (p: Record<string, any>) => setA((x) => ({ ...x, ...p }));
+  const comp = config.type === "agComponent" ? state.components.get(a.componentId) : undefined;
+  const ready =
+    config.type === "agField" || config.type === "agFieldBlock" ? !!a.ref
+    : config.type === "agButton" ? !!a.actionId
+    : config.type === "agChart" ? (a.refs ?? []).filter(Boolean).length > 0
+    : config.type === "agLinks" ? !!a.label
+    : config.type === "agComponent" ? !!a.componentId : true;
+  const row = (label: string, el: React.ReactNode) => <div className="flex items-center gap-1.5"><span className="text-[11px] text-stone-400 w-20 shrink-0">{label}</span><div className="flex-1 min-w-0">{el}</div></div>;
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-insert-config">
+        <DialogHeader><DialogTitle className="text-stone-100">Insert {config.title.toLowerCase()}</DialogTitle></DialogHeader>
+        <div className="space-y-2 text-stone-200">
+          {(config.type === "agField" || config.type === "agFieldBlock") && <FieldConfig attrs={a} update={update} noteId={noteId} block={config.type === "agFieldBlock"} />}
+          {config.type === "agButton" && (
+            <>
+              {row("Does", <ActionPicker noteId={noteId} value={a.actionId} onChange={(actionId) => update({ actionId })} />)}
+              {row("Text", <input value={a.label} placeholder="(action name)" onChange={(e) => update({ label: e.target.value })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-2 text-sm" />)}
+            </>
+          )}
+          {config.type === "agChart" && (
+            <>
+              {row("Type", <select value={a.chart} onChange={(e) => update({ chart: e.target.value })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-1 text-sm"><option value="radar">Radar</option><option value="bar">Bars</option><option value="line">Line</option><option value="pie">Pie</option></select>)}
+              <RefList noteId={noteId} refs={a.refs?.length ? a.refs : [""]} onChange={(refs) => update({ refs })} />
+              {row("Scale max", <RefPicker noteId={noteId} value={a.maxRef} placeholder="(auto)" onChange={(maxRef) => update({ maxRef })} />)}
+            </>
+          )}
+          {config.type === "agLinks" && (
+            <>
+              {row("Connection", <input value={a.label} placeholder="e.g. items" onChange={(e) => update({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-2 text-sm" />)}
+              {row("Columns", <input value={(a.columns ?? []).join(", ")} placeholder="weight, qty" onChange={(e) => update({ columns: e.target.value.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-2 text-sm" />)}
+              <div className="text-[10px] text-stone-500">Lists every sheet connected by that name (Links tab), with the chosen values as columns.</div>
+            </>
+          )}
+          {config.type === "agComponent" && (
+            <>
+              {row("Component", <select value={a.componentId} onChange={(e) => update({ componentId: e.target.value, bindings: {} })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-1 text-sm"><option value="">Choose…</option>{[...state.components.values()].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
+              {(comp?.params ?? []).map((p) => <React.Fragment key={p}>{row(`$${p}`, <RefPicker noteId={noteId} value={a.bindings?.[p]} onChange={(ref) => update({ bindings: { ...(a.bindings ?? {}), [p]: ref } })} />)}</React.Fragment>)}
+              {!state.components.size && <div className="text-xs text-stone-500">Make components in the Components tab first.</div>}
+            </>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onCancel} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
+            <button type="button" disabled={!ready} onClick={() => onInsert({ ...a, refs: Array.isArray(a.refs) ? a.refs.filter(Boolean) : a.refs })} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm disabled:opacity-50" data-testid="ag-insert-confirm">Insert</button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -11505,7 +11505,7 @@ export default function Campaign() {
       )}
 
       {/* Show message when player has no character assigned */}
-      {!spectatorMode && !isSandbox && !character && role === 'player' && (
+      {!spectatorMode && !isSandbox && !isAgnostic && !character && role === 'player' && (
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
@@ -14782,7 +14782,7 @@ export default function Campaign() {
       )}
 
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {!spectatorMode && !isSandbox && !isAAV3 && !isCA && !isSwampy && role === 'gm' && !isMobile && (
+      {!spectatorMode && !isSandbox && !isAAV3 && !isCA && !isSwampy && !isAgnostic && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}

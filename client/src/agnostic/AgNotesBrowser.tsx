@@ -84,6 +84,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
             {[...groups.entries()].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
             {!list.length && <div className="text-sm text-stone-500 p-3 text-center">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
+            {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
           </div>
         </>
       )}
@@ -121,7 +122,7 @@ function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; o
         <Portrait note={note} size={34} radius={6} />
         <span className="min-w-0">
           <span className="block text-sm text-stone-100 truncate">{note.name || "Untitled"}</span>
-          <span className="block text-[10px] text-stone-500 truncate">{agTypeLabel(note.type)}{template ? ` · ${template.name}` : ""}{viewer.isGM && note.ownerIds.length ? ` · ${note.ownerIds.map((id) => state.members.find((m) => m.userId === id)?.name ?? "?").join(", ")}` : ""}</span>
+          <span className="block text-[10px] text-stone-500 truncate">{agTypeLabel(note.type)}{note.isTemplate ? ` template · v${note.templateMeta?.version ?? 1}` : ""}{template ? ` · ${template.name}` : ""}{viewer.isGM && note.ownerIds.length ? ` · ${note.ownerIds.map((id) => state.members.find((m) => m.userId === id)?.name ?? "?").join(", ")}` : ""}</span>
         </span>
       </button>
       {note.isTemplate && <Lock className="h-3.5 w-3.5 text-stone-600" />}
@@ -239,3 +240,22 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
 }
 
 export { Upload, LayoutTemplate, Puzzle };
+
+/** One click: a blank template for each kind, ready to be designed. */
+function StarterTemplates({ types }: { types: string[] }) {
+  const { request } = useAg();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="text-center">
+      <button type="button" disabled={busy} onClick={async () => {
+        setBusy(true);
+        try { for (const t of types) await request({ op: "note.create", type: t, name: `${agTypeLabel(t)}`, isTemplate: true }); }
+        catch (e: any) { toast({ title: "Couldn't create them", description: e.message, variant: "destructive" }); }
+        finally { setBusy(false); }
+      }} className="h-9 px-3 rounded bg-stone-800 hover:bg-stone-700 text-xs text-stone-200" data-testid="ag-starter-templates">
+        Add blank templates: {types.map(agTypeLabel).join(", ")}
+      </button>
+    </div>
+  );
+}

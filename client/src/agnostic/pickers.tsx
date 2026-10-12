@@ -74,6 +74,7 @@ export function AclEditor({ acl, onChange, allowInherit = true, editLabel = "Edi
 export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick a value", allowTypes }: {
   noteId: string; value: string | undefined; onChange: (ref: string) => void; params?: string[]; placeholder?: string; allowTypes?: string[];
 }) {
+  const { state } = useAg();
   const options = useRefOptions(noteId).filter((o) => !allowTypes || allowTypes.includes(o.type));
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -81,7 +82,24 @@ export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick
     const s = q.trim().toLowerCase();
     return options.filter((o) => !s || o.label.toLowerCase().includes(s) || o.ref.includes(s));
   }, [options, q]);
-  const current = options.find((o) => o.ref === value);
+  // Searching also reaches values on any other sheet (linked directly by id).
+  const others = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return [];
+    const out: Array<{ ref: string; label: string }> = [];
+    for (const f of state.fields.values()) {
+      if (f.noteId === noteId || (allowTypes && !allowTypes.includes(f.type))) continue;
+      const n = state.notes.get(f.noteId);
+      if (!n || n.isTemplate) continue;
+      if (!(f.label.toLowerCase().includes(s) || n.name.toLowerCase().includes(s) || f.key.includes(s))) continue;
+      out.push({ ref: `@{${n.id}}.${f.key}`, label: `${f.label} — ${n.name}` });
+      if (out.length >= 30) break;
+    }
+    return out;
+  }, [q, state, noteId, allowTypes]);
+  const absolute = value ? /^@\{([^}]+)\}\.(.+)$/.exec(value) : null;
+  const absLabel = absolute ? (() => { const n = state.notes.get(absolute[1]); const f = [...state.fields.values()].find((x) => x.noteId === absolute[1] && x.key === absolute[2]); return n ? `${f?.label ?? absolute[2]} — ${n.name}` : null; })() : null;
+  const current = options.find((o) => o.ref === value) ?? (absLabel ? { ref: value!, label: absLabel } : undefined);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -103,7 +121,11 @@ export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick
               {o.label} <span className="text-[10px] text-stone-500 font-mono">{o.ref}</span>
             </button>
           ))}
-          {!shown.length && !params?.length && <div className="text-xs text-stone-500 p-2">No values yet — add fields to this sheet first, or type a reference and press Enter.</div>}
+          {others.length > 0 && <div className="text-[10px] uppercase tracking-wide text-stone-500 px-2 pt-1.5">Other sheets</div>}
+          {others.map((o) => (
+            <button key={o.ref} type="button" onClick={() => { onChange(o.ref); setOpen(false); setQ(""); }} className="w-full text-left px-2 py-1 rounded hover:bg-stone-800 text-sm text-stone-200">{o.label}</button>
+          ))}
+          {!shown.length && !others.length && !params?.length && <div className="text-xs text-stone-500 p-2">No values yet — add fields to this sheet first, search another sheet's values, or type a reference and press Enter.</div>}
         </div>
       </PopoverContent>
     </Popover>

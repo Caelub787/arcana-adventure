@@ -20,7 +20,7 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
     <>
       {note.portrait && <img src={note.portrait} alt="" className="absolute inset-0 w-full h-full object-cover rounded-xl pointer-events-none" draggable={false} />}
       {(showName || resolved.length > 0) && (
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-px" style={{ bottom: 2, width: tokenSize * 0.92 }}
+        <div className="absolute z-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-px" style={{ bottom: 2, width: tokenSize * 0.92 }}
           onPointerDown={(e) => { if ((e.target as HTMLElement).closest("[data-ag-token-bar]")) e.stopPropagation(); }}
           onClick={(e) => { if ((e.target as HTMLElement).closest("[data-ag-token-bar]")) e.stopPropagation(); }}>
           {showName && (

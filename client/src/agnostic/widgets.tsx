@@ -79,7 +79,8 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
   return (
     <Popover>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className="w-56 p-2 bg-stone-900 border-stone-700" onClick={(e) => e.stopPropagation()}>
+      {/* Portal events still bubble through React to whatever hosts the bar (a token starts a drag on pointerdown) — stop them here. */}
+      <PopoverContent className="w-56 p-2 bg-stone-900 border-stone-700" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <div className="text-xs text-stone-400 mb-1.5">{field.label}{max != null ? ` (max ${formatValue(max)})` : ""}</div>
         <div className="flex items-center gap-1">
           {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}

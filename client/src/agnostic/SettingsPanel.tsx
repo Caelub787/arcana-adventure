@@ -38,7 +38,7 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
           <AclEditor acl={note.acl} allowInherit={false} onChange={(acl: AgAcl) => update({ acl })} editLabel="Rename" />
           <div className="text-[11px] text-stone-400 pt-1">The rest of the sheet</div>
           <AclEditor acl={note.bodyAcl} onChange={(bodyAcl: AgAcl) => update({ bodyAcl })} />
-          <div className="text-[10px] text-stone-500">Every value, section and button can narrow this further.</div>
+          <div className="text-[10px] text-stone-500">Every value, section and button can narrow this further.{note.isTemplate ? " Sheets made from this template start with these settings (the template itself is only ever visible to you)." : ""}</div>
         </div>
       </Section>
 

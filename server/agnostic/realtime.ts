@@ -296,6 +296,21 @@ async function handle(c: Conn, msg: AgClientMsg) {
         sub = c.scopes.get(key);
       }
       if (!sub) { send(c, { t: "op.ack", rid: msg.rid, ok: false, error: "You don't have access to this." }); return; }
+      // Membership/role can change mid-session (kicked, promoted): re-check on every write.
+      const fresh = await resolveScopeAccess(c.userId, msg.scope);
+      if (!fresh) {
+        send(c, { t: "op.ack", rid: msg.rid, ok: false, error: "You no longer have access to this." });
+        sub.off();
+        c.scopes.delete(key);
+        for (const d of [...c.docs.values()]) if (d.scopeKey === key) { closeDoc(c, d.name); send(c, { t: "doc.revoked", doc: d.name }); }
+        send(c, { t: "scope.denied", scope: key, reason: "You no longer have access to this." });
+        return;
+      }
+      if (fresh.isGM !== sub.viewer.isGM) {
+        // Role changed: start over with what the new role may see.
+        await subscribeScope(c, msg.scope);
+        sub = c.scopes.get(key)!;
+      }
       try {
         const result = await runOp({ store: sub.store, viewer: sub.viewer, host }, msg.body);
         const touched = (msg.body as any).id && (msg.body.op === "field.set" || msg.body.op === "field.adjust") ? sub.store.fields.get((msg.body as any).id)?.noteId : null;

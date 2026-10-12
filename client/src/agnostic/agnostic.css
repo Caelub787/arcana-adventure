@@ -26,7 +26,7 @@
 .ag-prose .tableWrapper { overflow-x: auto; }
 .ag-prose p.is-editor-empty:first-child::before,
 .ag-prose .is-empty::before { content: attr(data-placeholder); float: left; color: #78716c; pointer-events: none; height: 0; }
-.ag-prose-inline { display: inline; }
+.ag-prose-inline { display: inline-block; min-width: 3.5em; min-height: 1.2em; vertical-align: baseline; }
 .ag-prose-inline > p { display: inline; margin: 0; }
 .ag-prose-inline > * + * { margin-top: 0; }
 

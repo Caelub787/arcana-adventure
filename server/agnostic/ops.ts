@@ -212,7 +212,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         const n = newNote(store, {
           type, name, folder: body.folder ?? null, portrait: body.portrait ?? null, ownerIds: (body.ownerIds ?? []).slice(0, 50),
           isTemplate: !!body.isTemplate, templateMeta: body.isTemplate ? { version: 1 } : null,
-          acl: { view: body.isTemplate ? "gm" : "everyone", edit: "gm" },
+          // A template's own permissions are what its sheets start with; the
+          // template itself is always GM-only (see acl.ts templateGuard).
+          acl: { view: "everyone", edit: "gm" },
         });
         await store.putNote(n, cs);
         let order = 0;
@@ -574,7 +576,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
             modifiers: t.modifiers ?? [],
             docs: Object.fromEntries(Object.entries(t.docs ?? {}).filter(([, v]) => typeof v === "string" && v.length < 5_000_000)),
           };
-          s.note.acl = normalizeAcl(s.note.acl, true, { view: "gm", edit: "gm" });
+          s.note.acl = normalizeAcl(s.note.acl, true, { view: "everyone", edit: "gm" });
           s.note.bodyAcl = normalizeAcl(s.note.bodyAcl);
           await snap.createFromSnapshot(store, s as any, {}, cs);
           templates++;
