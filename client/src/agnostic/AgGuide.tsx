@@ -1,12 +1,13 @@
 // The Agnostic guide: how the system fits together and how to use every part
 // of it, with a deep dive on components. Opens from the campaign panel, the
 // libraries, every sheet and the Components tab (each at the relevant topic).
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  BookOpen, Rocket, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
+  BookOpen, Minus, Rocket, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
 } from "lucide-react";
 import type { AgLayout } from "@shared/agnostic/types";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { FloatingPanel, bringFloatingPanelToFront, isFloatingPanelOnTop } from "@/components/ui/floating-panel";
 import { useToast } from "@/hooks/use-toast";
 import { useAgMaybe } from "./hooks";
 
@@ -14,16 +15,37 @@ export type GuideTopic =
   | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "privacy" | "tracker" | "libraries" | "formulas";
 
 // --------------------------------------------------------------------------- open from anywhere
-let openGuideFn: ((t?: GuideTopic) => void) | null = null;
+// One guide panel for the page, opened from any GuideButton. It's a floating,
+// non-blocking panel, so the GM can keep working while following it.
+let guide = { open: false, topic: "start" as GuideTopic, nonce: 0 };
+const guideListeners = new Set<() => void>();
+// Every place that can draw the panel registers; the page-level host (AgRoot /
+// library) wins over the fallback inside each GuideButton, so the panel never
+// lives inside something that might close (a popover, a dialog).
+let hostSeq = 0;
+const hosts: Array<{ id: number; primary: boolean }> = [];
+const activeHostId = () => (hosts.find((h) => h.primary) ?? hosts[0])?.id;
+function setGuide(next: Partial<typeof guide>) {
+  guide = { ...guide, ...next };
+  guideListeners.forEach((l) => l());
+}
+export function openGuide(topic?: GuideTopic) { setGuide({ open: true, topic: topic ?? guide.topic, nonce: guide.nonce + 1 }); }
+export function closeGuide() { setGuide({ open: false }); }
+function useGuideState() {
+  const [, force] = useState(0);
+  useEffect(() => { const l = () => force((n) => n + 1); guideListeners.add(l); return () => { guideListeners.delete(l); }; }, []);
+  return guide;
+}
+// Links inside the guide jump to another chapter.
+const openGuideFn = (t?: GuideTopic) => openGuide(t);
 
 /** A "Guide" / "?" button that opens the guide at a topic. */
 export function GuideButton({ topic = "start", label, className = "", compact }: { topic?: GuideTopic; label?: string; className?: string; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
-        onClick={() => (openGuideFn ? openGuideFn(topic) : setOpen(true))}
+        onClick={() => openGuide(topic)}
         className={compact
           ? `h-7 w-7 grid place-items-center rounded text-stone-400 hover:text-amber-200 hover:bg-stone-800 shrink-0 ${className}`
           : `h-9 rounded bg-stone-800 hover:bg-stone-700 text-xs text-amber-100 inline-flex items-center justify-center gap-1.5 px-3 ${className}`}
@@ -32,7 +54,7 @@ export function GuideButton({ topic = "start", label, className = "", compact }:
       >
         {compact ? <HelpCircle className="h-4 w-4" /> : <><BookOpen className="h-3.5 w-3.5" /> {label ?? "Guide: how Agnostic works"}</>}
       </button>
-      {open && <AgGuideDialog initial={topic} onClose={() => setOpen(false)} />}
+      <AgGuideHost primary={false} />
     </>
   );
 }
@@ -452,13 +474,88 @@ const TOPICS: Topic[] = [
   },
 ];
 
-// --------------------------------------------------------------------------- dialog
-export function AgGuideDialog({ initial = "start", onClose }: { initial?: GuideTopic; onClose: () => void }) {
-  const [topic, setTopic] = useState<GuideTopic>(initial);
-  const [q, setQ] = useState("");
+// --------------------------------------------------------------------------- panel
+/** Renders the guide panel when it's open. Mount once per Agnostic page (inside its scope). */
+export function AgGuideHost({ primary = true }: { primary?: boolean }) {
+  const g = useGuideState();
+  const [id] = useState(() => ++hostSeq);
   useEffect(() => {
-    openGuideFn = (t) => { if (t) setTopic(t); setQ(""); };
-    return () => { openGuideFn = null; };
+    hosts.push({ id, primary });
+    setGuide({});
+    return () => { hosts.splice(hosts.findIndex((h) => h.id === id), 1); setGuide({}); };
+  }, [id, primary]);
+  if (!g.open || activeHostId() !== id) return null;
+  const phone = typeof window !== "undefined" && window.innerWidth < 768;
+  return phone ? <PhoneGuide /> : (
+    <FloatingPanel
+      open
+      onClose={closeGuide}
+      title={<span className="inline-flex items-center gap-1.5"><BookOpen className="h-4 w-4 text-amber-400" />Agnostic guide</span>}
+      panelKey="ag-guide"
+      defaultSize={{ width: Math.min(560, window.innerWidth - 32), height: Math.min(680, window.innerHeight - 120) }}
+      defaultPosition={{ x: 72, y: 72 }}
+      minWidth={300}
+      minHeight={220}
+    >
+      <GuideContent />
+    </FloatingPanel>
+  );
+}
+
+/** Phones: a drawer along the bottom (drag its top edge to resize, or shrink it to a tab). */
+function PhoneGuide() {
+  const [h, setH] = useState(() => Math.round(window.innerHeight * 0.45));
+  const [small, setSmall] = useState(false);
+  const [z, setZ] = useState(() => bringFloatingPanelToFront("ag-guide", 10650, true));
+  // Sheets open full-screen on phones: keep the drawer above them so it can be followed along.
+  useEffect(() => {
+    const t = window.setInterval(() => { if (!isFloatingPanelOnTop("ag-guide")) setZ(bringFloatingPanelToFront("ag-guide")); }, 400);
+    return () => window.clearInterval(t);
+  }, []);
+  const drag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const sy = e.clientY, sh = h;
+    const move = (ev: PointerEvent) => setH(Math.max(140, Math.min(window.innerHeight - 60, sh - (ev.clientY - sy))));
+    const up = () => { window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true); };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+  };
+  if (small) {
+    return createPortal(
+      <button type="button" onClick={() => setSmall(false)} className="fixed right-3 bottom-24 h-10 px-3 rounded-full bg-amber-600 text-white text-sm shadow-lg inline-flex items-center gap-1.5" style={{ zIndex: z }} data-testid="ag-guide-restore">
+        <BookOpen className="h-4 w-4" /> Guide
+      </button>, document.body);
+  }
+  return createPortal(
+    <div className="fixed inset-x-0 bottom-0 flex flex-col rounded-t-xl border-t border-x border-stone-700 bg-stone-900 shadow-[0_-8px_30px_rgba(0,0,0,.5)]" style={{ height: h, zIndex: z }} data-testid="ag-guide-drawer">
+      <div className="shrink-0 flex items-center gap-1 pl-3 pr-1 h-11 border-b border-stone-800">
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 h-5 w-24 grid place-items-center touch-none cursor-ns-resize" onPointerDown={drag} title="Drag to resize" data-testid="ag-guide-drawer-handle"><span className="h-1 w-10 rounded-full bg-stone-600" /></div>
+        <BookOpen className="h-4 w-4 text-amber-400" /><span className="text-sm text-stone-100 font-medium">Agnostic guide</span>
+        <button type="button" onClick={() => setSmall(true)} className="ml-auto h-9 w-9 grid place-items-center rounded text-stone-400 hover:bg-stone-800" title="Shrink to a button"><Minus className="h-4 w-4" /></button>
+        <button type="button" onClick={closeGuide} className="h-9 w-9 grid place-items-center rounded text-stone-400 hover:bg-stone-800" title="Close" data-testid="ag-guide-close"><X className="h-4 w-4" /></button>
+      </div>
+      <div className="flex-1 min-h-0"><GuideContent /></div>
+    </div>, document.body);
+}
+
+/** Chapters list + the open chapter; lays itself out for the panel's width. */
+function GuideContent() {
+  const g = useGuideState();
+  const [topic, setTopic] = useState<GuideTopic>(g.topic);
+  const [q, setQ] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLElement>(null);
+  const [wide, setWide] = useState(false);
+  // A guide button (or a link inside the guide) asked for a chapter.
+  useEffect(() => { setTopic(g.topic); setQ(""); }, [g.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { guide.topic = topic; articleRef.current?.scrollTo({ top: 0 }); }, [topic]);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWide(el.clientWidth >= 620));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -467,36 +564,39 @@ export function AgGuideDialog({ initial = "start", onClose }: { initial?: GuideT
   const current = TOPICS.find((t) => t.id === topic) ?? TOPICS[0];
   const idx = TOPICS.indexOf(current);
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 p-0 max-w-4xl w-[calc(100vw-12px)] h-[min(88vh,820px)] flex flex-col overflow-hidden gap-0" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-guide">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-800 shrink-0 pr-10">
-          <BookOpen className="h-4 w-4 text-amber-400" />
-          <DialogTitle className="text-stone-100 text-base">Agnostic guide</DialogTitle>
-          <div className="relative ml-auto w-40 sm:w-56">
-            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the guide…" className="w-full h-8 pl-7 pr-6 rounded bg-stone-950 border border-stone-700 text-sm text-stone-100" data-testid="ag-guide-search" />
-            {q && <button type="button" onClick={() => setQ("")} className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 grid place-items-center text-stone-500"><X className="h-3 w-3" /></button>}
-          </div>
+    <div ref={rootRef} className="h-full flex flex-col bg-stone-900 text-stone-200 select-text" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-guide">
+      <div className="shrink-0 flex items-center gap-1.5 px-2 py-1.5 border-b border-stone-800">
+        {!wide && (
+          <select value={current.id} onChange={(e) => setTopic(e.target.value as GuideTopic)} className="h-8 flex-1 min-w-0 bg-stone-950 border border-stone-700 rounded px-1.5 text-sm text-stone-100" data-testid="ag-guide-chapter">
+            {TOPICS.map((t, i) => <option key={t.id} value={t.id}>{i + 1}. {t.title}</option>)}
+          </select>
+        )}
+        <div className={`relative ${wide ? "flex-1" : "w-32"}`}>
+          <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-8 pl-7 pr-6 rounded bg-stone-950 border border-stone-700 text-sm text-stone-100" data-testid="ag-guide-search" />
+          {q && <button type="button" onClick={() => setQ("")} className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 grid place-items-center text-stone-500"><X className="h-3 w-3" /></button>}
         </div>
-        <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
-          <nav className="shrink-0 sm:w-56 border-b sm:border-b-0 sm:border-r border-stone-800 flex sm:flex-col gap-0.5 p-1.5 overflow-x-auto sm:overflow-y-auto no-scrollbar">
+      </div>
+      <div className={`flex-1 min-h-0 flex ${wide ? "flex-row" : "flex-col"}`}>
+        {(wide || q) && (
+          <nav className={`shrink-0 flex gap-0.5 p-1.5 no-scrollbar ${wide ? "w-52 flex-col border-r border-stone-800 overflow-y-auto" : "flex-col border-b border-stone-800 max-h-48 overflow-y-auto"}`}>
             {shown.map((t) => (
-              <button key={t.id} type="button" onClick={() => setTopic(t.id)} className={`shrink-0 h-9 px-2.5 rounded text-left text-[13px] inline-flex items-center gap-2 ${t.id === topic ? "bg-amber-600/25 text-amber-100" : "text-stone-300 hover:bg-stone-800"}`} data-testid={`ag-guide-topic-${t.id}`}>
-                <span className={t.id === topic ? "text-amber-400" : "text-stone-500"}>{t.icon}</span><span className="whitespace-nowrap">{t.title}</span>
+              <button key={t.id} type="button" onClick={() => { setTopic(t.id); if (!wide) setQ(""); }} className={`shrink-0 h-9 px-2.5 rounded text-left text-[13px] inline-flex items-center gap-2 ${t.id === topic ? "bg-amber-600/25 text-amber-100" : "text-stone-300 hover:bg-stone-800"}`} data-testid={`ag-guide-topic-${t.id}`}>
+                <span className={t.id === topic ? "text-amber-400" : "text-stone-500"}>{t.icon}</span><span className="truncate">{t.title}</span>
               </button>
             ))}
             {!shown.length && <div className="text-xs text-stone-500 p-2">Nothing matches.</div>}
           </nav>
-          <article className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5" key={current.id} data-testid={`ag-guide-body-${current.id}`}>
-            <h2 className="text-lg font-semibold text-stone-100 flex items-center gap-2"><span className="text-amber-400">{current.icon}</span>{current.title}</h2>
-            {current.body}
-            <div className="flex justify-between pt-4 pb-2 border-t border-stone-800 mt-4">
-              {idx > 0 ? <button type="button" onClick={() => setTopic(TOPICS[idx - 1].id)} className="text-xs text-stone-400 hover:text-stone-100">← {TOPICS[idx - 1].title}</button> : <span />}
-              {idx < TOPICS.length - 1 && <button type="button" onClick={() => setTopic(TOPICS[idx + 1].id)} className="text-xs text-amber-300 hover:text-amber-200" data-testid="ag-guide-next">{TOPICS[idx + 1].title} →</button>}
-            </div>
-          </article>
-        </div>
-      </DialogContent>
-    </Dialog>
+        )}
+        <article ref={articleRef} className="flex-1 min-h-0 overflow-y-auto px-3.5 py-3 space-y-2.5" key={current.id} data-testid={`ag-guide-body-${current.id}`}>
+          <h2 className="text-lg font-semibold text-stone-100 flex items-center gap-2"><span className="text-amber-400">{current.icon}</span>{current.title}</h2>
+          {current.body}
+          <div className="flex justify-between gap-2 pt-4 pb-2 border-t border-stone-800 mt-4">
+            {idx > 0 ? <button type="button" onClick={() => setTopic(TOPICS[idx - 1].id)} className="text-xs text-stone-400 hover:text-stone-100 text-left">← {TOPICS[idx - 1].title}</button> : <span />}
+            {idx < TOPICS.length - 1 && <button type="button" onClick={() => setTopic(TOPICS[idx + 1].id)} className="text-xs text-amber-300 hover:text-amber-200 text-right" data-testid="ag-guide-next">{TOPICS[idx + 1].title} →</button>}
+          </div>
+        </article>
+      </div>
+    </div>
   );
 }

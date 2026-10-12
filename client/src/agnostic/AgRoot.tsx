@@ -4,6 +4,7 @@ import React from "react";
 import type { AgScope } from "@shared/agnostic/types";
 import { AgScopeProvider } from "./hooks";
 import { AgWindowsProvider, AgWindowStack, useAgWindows } from "./AgWindows";
+import { AgGuideHost } from "./AgGuide";
 
 function Inner({ scope, children }: { scope: AgScope; children: React.ReactNode }) {
   const win = useAgWindows();
@@ -11,6 +12,7 @@ function Inner({ scope, children }: { scope: AgScope; children: React.ReactNode 
     <AgScopeProvider scope={scope} onOpenNote={win?.open} blocking={false}>
       {children}
       <AgWindowStack />
+      <AgGuideHost />
     </AgScopeProvider>
   );
 }

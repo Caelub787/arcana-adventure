@@ -6,7 +6,7 @@ import type { AgScope } from "@shared/agnostic/types";
 import { AgScopeProvider } from "./hooks";
 import { AgWindowsProvider, AgWindowStack, useAgWindows } from "./AgWindows";
 import { AgNotesBrowser } from "./AgNotesBrowser";
-import { GuideButton } from "./AgGuide";
+import { GuideButton, AgGuideHost } from "./AgGuide";
 
 export const AG_LIBRARY_TYPES = ["character", "npc", "item", "species"];
 
@@ -18,6 +18,7 @@ function Inner({ scope }: { scope: AgScope }) {
         <AgNotesBrowser opts={{ types: AG_LIBRARY_TYPES }} />
       </div>
       <AgWindowStack />
+      <AgGuideHost />
     </AgScopeProvider>
   );
 }
