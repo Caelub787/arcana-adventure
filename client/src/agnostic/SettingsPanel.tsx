@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { agClient } from "./client";
 import { useAg, usePerms } from "./hooks";
 import { AclEditor, ColorInput, RefPicker } from "./pickers";
+import { LookButton } from "./look";
 import { ActionEditorDialog } from "./ActionEditor";
 import { pushUndo } from "./undo";
 
@@ -100,6 +101,7 @@ function TokenBarsSection({ noteId, bars, onChange }: { noteId: string; bars: Ag
           <div className="w-32"><RefPicker noteId={noteId} value={b.max} placeholder="(no max)" onChange={(max) => set(i, { max })} /></div>
           <ColorInput value={b.color} onChange={(color) => set(i, { color })} />
           <label className="text-[11px] inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!b.showNumbers} onChange={(e) => set(i, { showNumbers: e.target.checked })} />numbers</label>
+          <LookButton look={b.look} onChange={(look) => set(i, { look })} kind="tokenBar" title="Bar look: thickness, width, colours, style" />
           <button type="button" onClick={() => onChange(list.filter((_, j) => j !== i))} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       ))}

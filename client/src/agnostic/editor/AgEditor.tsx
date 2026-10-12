@@ -25,7 +25,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
 import { CANVAS_ORIGIN } from "../client";
-import { AG_NODES, AgDocContext, FieldConfig } from "./nodes";
+import { AG_NODES, AgDocContext, FieldConfig, lookKindFor } from "./nodes";
+import { LookEditor } from "../look";
+import { FieldDisplay, ActionButton, ChartWidget, LinksTable, ComponentView } from "../widgets";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RefPicker } from "../pickers";
 import { RefList } from "../LayoutEditor";
@@ -44,6 +46,20 @@ export function ActiveEditorProvider({ noteId, children }: { noteId: string; chi
   return <ActiveEditorContext.Provider value={value}>{children}</ActiveEditorContext.Provider>;
 }
 export const useActiveEditor = () => useContext(ActiveEditorContext);
+
+// --------------------------------------------------------------------------- images
+/** Images drag-resize from their sides / corners and can be aligned. */
+const AgImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      align: { default: null, parseHTML: (el: HTMLElement) => el.getAttribute("data-align"), renderHTML: (a: any) => (a.align ? { "data-align": a.align } : {}) },
+    };
+  },
+}).configure({
+  inline: false, allowBase64: false,
+  resize: { enabled: true, directions: ["left", "right", "bottom-left", "bottom-right"], minWidth: 40, minHeight: 24, alwaysPreserveAspectRatio: true },
+});
 
 // --------------------------------------------------------------------------- editor
 export function AgEditor({ docName, noteId, nested, inline, placeholder }: { docName: string; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string }) {
@@ -80,7 +96,7 @@ function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeho
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TaskList, TaskItem.configure({ nested: true }),
       TableKit.configure({ table: { resizable: true } }),
-      Image.configure({ inline: false, allowBase64: false }),
+      AgImage,
       ...AG_NODES,
     ],
     editorProps: {
@@ -146,6 +162,20 @@ export function EditorToolbar({ noteId, isGM }: { noteId: string; isGM: boolean 
       <button type="button" disabled={disabled} className={btn(!!editor?.isActive({ textAlign: "left" }))} title="Left" onClick={run((e) => e.chain().focus().setTextAlign("left").run())}><AlignLeft className="h-4 w-4" /></button>
       <button type="button" disabled={disabled} className={btn(!!editor?.isActive({ textAlign: "center" }))} title="Centre" onClick={run((e) => e.chain().focus().setTextAlign("center").run())}><AlignCenter className="h-4 w-4" /></button>
       <button type="button" disabled={disabled} className={btn(!!editor?.isActive({ textAlign: "right" }))} title="Right" onClick={run((e) => e.chain().focus().setTextAlign("right").run())}><AlignRight className="h-4 w-4" /></button>
+      {editor?.isActive("image") && (
+        <>
+          <span className="w-px h-5 bg-stone-700 mx-1 shrink-0" />
+          <span className="text-[10px] text-stone-500 shrink-0">Image</span>
+          {([["S", 160], ["M", 320], ["L", 520], ["Full", 2000]] as const).map(([t, w]) => (
+            <button key={t} type="button" className="h-7 px-1.5 rounded text-[11px] text-stone-300 hover:bg-stone-800 shrink-0" title={`Width: ${t === "Full" ? "the whole line" : `${w}px`}`} onClick={run((e) => e.chain().focus().updateAttributes("image", { width: w, height: null }).run())} data-testid={`ag-image-size-${t}`}>{t}</button>
+          ))}
+          {(["left", "center", "right"] as const).map((al) => (
+            <button key={al} type="button" className={btn(editor.getAttributes("image").align === al || (al === "left" && !editor.getAttributes("image").align))} title={`Align ${al}`} onClick={run((e) => e.chain().focus().updateAttributes("image", { align: al === "left" ? null : al }).run())}>
+              {al === "left" ? <AlignLeft className="h-4 w-4" /> : al === "center" ? <AlignCenter className="h-4 w-4" /> : <AlignRight className="h-4 w-4" />}
+            </button>
+          ))}
+        </>
+      )}
       {editor?.isActive("table") && (
         <>
           <span className="w-px h-5 bg-stone-700 mx-1 shrink-0" />
@@ -296,9 +326,20 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
     : config.type === "agLinks" ? !!a.label
     : config.type === "agComponent" ? !!a.componentId : true;
   const row = (label: string, el: React.ReactNode) => <div className="flex items-center gap-1.5"><span className="text-[11px] text-stone-400 w-20 shrink-0">{label}</span><div className="flex-1 min-w-0">{el}</div></div>;
+  const isField = config.type === "agField" || config.type === "agFieldBlock";
+  const lookKind = isField ? lookKindFor(a.display, config.type === "agField")
+    : config.type === "agButton" ? "button" : config.type === "agChart" ? "chart" : config.type === "agLinks" ? "links" : config.type === "agComponent" ? "component" : null;
+  const look = { ...(a.color ? { color: a.color } : {}), ...(a.look ?? {}) };
+  const preview = !ready ? null
+    : isField ? <FieldDisplay noteId={noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={look} />
+    : config.type === "agButton" ? <ActionButton actionId={a.actionId} label={a.label || undefined} look={look} />
+    : config.type === "agChart" ? <ChartWidget noteId={noteId} chart={a.chart} refs={(a.refs ?? []).filter(Boolean)} maxRef={a.maxRef || undefined} height={Math.min(220, look.height ?? a.height ?? 220)} look={look} />
+    : config.type === "agLinks" ? <LinksTable noteId={noteId} label={a.label} columns={a.columns ?? []} look={look} />
+    : config.type === "agComponent" ? <ComponentView componentId={a.componentId} noteId={noteId} bindings={a.bindings ?? {}} />
+    : null;
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-insert-config">
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm max-h-[90vh] overflow-y-auto" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-insert-config">
         <DialogHeader><DialogTitle className="text-stone-100">Insert {config.title.toLowerCase()}</DialogTitle></DialogHeader>
         <div className="space-y-2 text-stone-200">
           {(config.type === "agField" || config.type === "agFieldBlock") && <FieldConfig attrs={a} update={update} noteId={noteId} block={config.type === "agFieldBlock"} />}
@@ -325,9 +366,22 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
           {config.type === "agComponent" && (
             <>
               {row("Component", <select value={a.componentId} onChange={(e) => update({ componentId: e.target.value, bindings: {} })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-1 text-sm"><option value="">Choose…</option>{[...Array.from(state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>)}
-              {(comp?.params ?? []).map((p) => <React.Fragment key={p}>{row(`$${p}`, <RefPicker noteId={noteId} value={a.bindings?.[p]} onChange={(ref) => update({ bindings: { ...(a.bindings ?? {}), [p]: ref } })} />)}</React.Fragment>)}
+              {(comp?.params ?? []).map((p) => <React.Fragment key={p}>{row(`$${p}`, <RefPicker noteId={noteId} value={a.bindings?.[p]} placeholder={`(this sheet's ${p})`} onChange={(ref) => update({ bindings: { ...(a.bindings ?? {}), [p]: ref } })} />)}</React.Fragment>)}
+              {comp && comp.params.length > 0 && <div className="text-[10px] text-stone-500">Leave a parameter empty to use this sheet's value with the same name.</div>}
               {!state.components.size && <div className="text-xs text-stone-500">Make components in the Components tab first.</div>}
             </>
+          )}
+          {preview && (
+            <div className="rounded border border-dashed border-stone-700 p-2" data-testid="ag-insert-preview">
+              <div className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Preview</div>
+              <div style={{ width: look.width ? `${look.width}%` : undefined, marginLeft: look.align && look.align !== "left" ? "auto" : undefined, marginRight: look.align === "center" ? "auto" : undefined }}>{preview}</div>
+            </div>
+          )}
+          {lookKind && (
+            <details className="rounded border border-stone-800 px-2 py-1" data-testid="ag-insert-look">
+              <summary className="text-xs text-stone-300 cursor-pointer select-none py-1">Look & size — colours, text, style (change any time with ⚙ or by dragging its edges)</summary>
+              <LookEditor look={look} onChange={(l) => update({ look: l, ...(isField ? { color: "" } : {}) })} kind={lookKind} />
+            </details>
           )}
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onCancel} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>

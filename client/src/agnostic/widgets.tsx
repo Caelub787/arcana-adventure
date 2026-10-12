@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
-import type { AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
+import type { AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/lib/api";
 import { pushUndo } from "./undo";
+import { mergeLook, defaultLabelPos } from "./lookUtil";
 
 // --- battlemap / tracker targets ("@target" in actions) -----------------------------
 let currentTargets: string[] = [];
@@ -99,23 +100,59 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
   );
 }
 
-export function ResourceBar({ field, maxField, color = "#16a34a", label, showNumbers = true, height = 14, compact }: {
-  field: AgField; maxField?: AgField; color?: string; label?: string; showNumbers?: boolean; height?: number; compact?: boolean;
+/** Text shown on a bar / dial for its numbers mode. */
+function numbersText(mode: AgLook["numbers"], cur: number, max: number | null) {
+  if (mode === "none") return "";
+  if (mode === "percent") return max != null && max > 0 ? `${Math.round(pct(cur, max))}%` : formatValue(cur);
+  if (mode === "value" || max == null) return formatValue(cur);
+  return `${formatValue(cur)}/${formatValue(max)}`;
+}
+
+function barFill(color: string, style: AgLook["barStyle"]): React.CSSProperties {
+  switch (style) {
+    case "gradient": return { background: `linear-gradient(180deg, color-mix(in srgb, ${color} 55%, white) 0%, ${color} 45%, color-mix(in srgb, ${color} 70%, black) 100%)` };
+    case "striped": return { background: `repeating-linear-gradient(45deg, ${color} 0 6px, color-mix(in srgb, ${color} 72%, black) 6px 12px)` };
+    case "glow": return { background: color, boxShadow: `0 0 8px ${color}, inset 0 0 4px color-mix(in srgb, ${color} 50%, white)` };
+    default: return { background: color };
+  }
+}
+
+export function ResourceBar({ field, maxField, color = "#16a34a", label, showNumbers = true, height = 14, compact, look }: {
+  field: AgField; maxField?: AgField; color?: string; label?: string; showNumbers?: boolean; height?: number; compact?: boolean; look?: AgLook;
 }) {
   const { canEditField } = usePerms(field.noteId);
+  const L = look ?? {};
   const cur = asNumber(effOf(field) as any);
   const max = maxField ? asNumber(effOf(maxField) as any) : null;
+  const fill = L.color ?? color;
+  const vertical = L.direction === "up";
+  const h = height;
+  const p = max != null ? pct(cur, max) : 100;
+  const mode = !showNumbers ? "none" : L.numbers;
+  const nums = numbersText(mode, cur, max);
+  const name = label ?? field.label;
+  const text = [L.labelPos === "inside" ? name : !compact && label ? label : "", nums].filter(Boolean).join(" ");
+  const fontSize = L.fontSize ?? Math.max(8, Math.min(12, (vertical ? 14 : h) - 3));
+  const segments = L.barStyle === "segments" && max != null && max >= 2 && max <= 60 ? Math.round(max) : 0;
   const bar = (
     <div
-      className={`relative w-full rounded-sm overflow-hidden bg-black/60 border border-black/40 ${canEditField(field) ? "cursor-pointer" : ""}`}
-      style={{ height }}
-      title={`${label ?? field.label}: ${formatValue(cur)}${max != null ? ` / ${formatValue(max)}` : ""}`}
+      className={`relative w-full overflow-hidden ${L.border ? "" : "border border-black/40"} ${canEditField(field) ? "cursor-pointer" : ""}`}
+      style={{ height: h, background: L.track ?? "rgba(0,0,0,0.6)", borderRadius: L.radius ?? 2, border: L.border ? `1px solid ${L.border}` : undefined }}
+      title={`${name}: ${formatValue(cur)}${max != null ? ` / ${formatValue(max)}` : ""}`}
       data-testid={`ag-bar-${field.key}`}
     >
-      <div className="absolute inset-y-0 left-0 transition-[width] duration-500 ease-out" style={{ width: `${max != null ? pct(cur, max) : 100}%`, background: color }} />
-      {showNumbers && height >= 10 && (
-        <div className="absolute inset-0 flex items-center justify-center font-mono text-white leading-none" style={{ fontSize: Math.max(8, Math.min(12, height - 3)), textShadow: "0 0 2px #000, 0 0 2px #000" }}>
-          {!compact && label ? `${label} ` : ""}{formatValue(cur)}{max != null ? `/${formatValue(max)}` : ""}
+      <div
+        className={`absolute ease-out duration-500 ${vertical ? "inset-x-0 bottom-0 transition-[height]" : `inset-y-0 transition-[width] ${L.direction === "left" ? "right-0" : "left-0"}`}`}
+        style={{ ...(vertical ? { height: `${p}%` } : { width: `${p}%` }), ...barFill(fill, L.barStyle), borderRadius: L.radius ? Math.max(0, L.radius - 1) : undefined }}
+      />
+      {segments > 0 && Array.from({ length: segments - 1 }, (_, i) => (
+        <div key={i} className="absolute pointer-events-none" style={vertical
+          ? { left: 0, right: 0, height: 1, bottom: `${((i + 1) / segments) * 100}%`, background: L.track ?? "rgba(0,0,0,0.75)" }
+          : { top: 0, bottom: 0, width: 1, left: `${((i + 1) / segments) * 100}%`, background: L.track ?? "rgba(0,0,0,0.75)" }} />
+      ))}
+      {text && (L.fontSize || h >= 10) && (
+        <div className={`absolute inset-0 flex items-center justify-center leading-none ${L.bold ? "font-bold" : "font-mono"} ${vertical ? "[writing-mode:vertical-rl] rotate-180" : ""}`} style={{ fontSize, color: L.textColor ?? "#fff", fontStyle: L.italic ? "italic" : undefined, textShadow: "0 0 2px #000, 0 0 2px #000" }}>
+          {text}
         </div>
       )}
     </div>
@@ -123,41 +160,56 @@ export function ResourceBar({ field, maxField, color = "#16a34a", label, showNum
   return canEditField(field) ? <NumberEditor field={field} max={max}>{bar}</NumberEditor> : bar;
 }
 
-function Pips({ field, maxField, color = "#f59e0b" }: { field: AgField; maxField?: AgField; color?: string }) {
+const PIP_GLYPH: Record<string, string> = { heart: "\u2665", star: "\u2605" };
+
+function Pips({ field, maxField, color = "#f59e0b", look, size: sizeProp }: { field: AgField; maxField?: AgField; color?: string; look?: AgLook; size?: number }) {
   const { canEditField } = usePerms(field.noteId);
   const w = useFieldWriter();
+  const L = look ?? {};
   const cur = Math.round(asNumber(effOf(field) as any));
-  const max = Math.min(40, Math.max(1, Math.round(maxField ? asNumber(effOf(maxField) as any) : Math.max(cur, 5))));
+  const max = Math.min(60, Math.max(1, Math.round(maxField ? asNumber(effOf(maxField) as any) : Math.max(cur, 5))));
   const editable = canEditField(field);
+  const size = sizeProp ?? L.height ?? 14;
+  const on = L.color ?? color, off = L.track ?? "rgba(255,255,255,0.12)";
+  const shape = L.shape ?? "circle";
   return (
-    <div className="flex flex-wrap gap-1" title={`${field.label}: ${cur}/${max}`}>
-      {Array.from({ length: max }, (_, i) => (
-        <button
-          key={i}
-          type="button"
-          disabled={!editable}
-          onClick={() => w.set(field, i + 1 === cur ? i : i + 1)}
-          className="w-3.5 h-3.5 rounded-full border border-black/50 disabled:cursor-default"
-          style={{ background: i < cur ? color : "rgba(255,255,255,0.12)" }}
-          aria-label={`${field.label} ${i + 1}`}
-        />
-      ))}
+    <div className="flex flex-wrap" style={{ gap: Math.max(2, Math.round(size / 4)) }} title={`${field.label}: ${cur}/${max}`}>
+      {Array.from({ length: max }, (_, i) => {
+        const filled = i < cur;
+        const glyph = PIP_GLYPH[shape];
+        return (
+          <button
+            key={i}
+            type="button"
+            disabled={!editable}
+            onClick={() => w.set(field, i + 1 === cur ? i : i + 1)}
+            className={`disabled:cursor-default grid place-items-center leading-none ${glyph ? "" : "border border-black/50"}`}
+            style={glyph
+              ? { width: size, height: size, fontSize: size, color: filled ? on : off, textShadow: filled ? "0 0 1px #000" : undefined }
+              : { width: size, height: size, background: filled ? on : off, borderRadius: shape === "circle" ? "50%" : (L.radius ?? 2), transform: shape === "diamond" ? "rotate(45deg) scale(.8)" : undefined }}
+            aria-label={`${field.label} ${i + 1}`}
+          >{glyph ?? null}</button>
+        );
+      })}
     </div>
   );
 }
 
-function Dial({ field, maxField, color = "#38bdf8", size = 56 }: { field: AgField; maxField?: AgField; color?: string; size?: number }) {
+function Dial({ field, maxField, color = "#38bdf8", size = 56, look }: { field: AgField; maxField?: AgField; color?: string; size?: number; look?: AgLook }) {
   const { canEditField } = usePerms(field.noteId);
+  const L = look ?? {};
   const cur = asNumber(effOf(field) as any);
   const max = maxField ? asNumber(effOf(maxField) as any) : 0;
-  const r = size / 2 - 4, c = 2 * Math.PI * r, p = max > 0 ? pct(cur, max) / 100 : 1;
+  const stroke = Math.max(3, Math.round(size / 11));
+  const r = size / 2 - stroke / 2 - 1, c = 2 * Math.PI * r, p = max > 0 ? pct(cur, max) / 100 : 1;
+  const text = numbersText(L.numbers ?? "value", cur, maxField ? max : null);
   const dial = (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.12)" strokeWidth={5} fill="none" />
-        <circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={5} fill="none" strokeDasharray={c} strokeDashoffset={c * (1 - p)} style={{ transition: "stroke-dashoffset .5s" }} />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke={L.track ?? "rgba(255,255,255,0.12)"} strokeWidth={stroke} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke={L.color ?? color} strokeWidth={stroke} fill="none" strokeLinecap={L.radius ? "round" : undefined} strokeDasharray={c} strokeDashoffset={c * (1 - p)} style={{ transition: "stroke-dashoffset .5s" }} />
       </svg>
-      <span className="absolute text-xs font-mono text-stone-100">{formatValue(cur)}</span>
+      {text && <span className={`absolute ${L.bold ? "font-bold" : "font-mono"}`} style={{ fontSize: L.fontSize ?? Math.max(9, Math.round(size / 4.5)), color: L.textColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined }}>{text}</span>}
     </div>
   );
   return canEditField(field) ? <NumberEditor field={field} max={max || null}><button type="button">{dial}</button></NumberEditor> : dial;
@@ -229,45 +281,80 @@ export async function uploadImage(file: File): Promise<string> {
 }
 
 /** One field shown the way the GM picked. */
-export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabel = true, color, params, fontSize, align }: {
+export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabel = true, color, params, fontSize, align, look, box }: {
   noteId: string; refPath: string; maxRef?: string; display: AgFieldDisplay; label?: string; showLabel?: boolean; color?: string;
-  params?: Record<string, string>; fontSize?: number; align?: "left" | "center" | "right";
+  params?: Record<string, string>; fontSize?: number; align?: "left" | "center" | "right"; look?: AgLook;
+  /** Inside a canvas / card / component item: the item's size decides how big it draws. */
+  box?: { w: number; h: number };
 }) {
   const { state } = useAg();
+  const L = mergeLook({ color, fontSize }, look);
   const fields = resolveRef(state, noteId, refPath, params);
   const maxField = maxRef ? resolveRef(state, noteId, maxRef, params)[0] : undefined;
   const field = fields[0];
   if (!field) return <span className="text-stone-600 text-xs" title={`Nothing at "${refPath}" for this viewer`}>—</span>;
   const name = label || field.label;
-  const style: React.CSSProperties = { fontSize, textAlign: align };
+  let pos = showLabel === false ? "none" : (L.labelPos ?? defaultLabelPos(display));
+  if (pos === "inside" && display !== "bar") pos = "left";
+  const column = pos === "above" || pos === "below";
+  const labelSize = L.fontSize ? Math.max(8, Math.round(L.fontSize * 0.85)) : display === "bar" || display === "pips" || display === "dial" ? 11 : 13;
+  const labelH = column && pos !== "none" ? Math.round(labelSize * 1.25) + 2 : 0;
+  const labelEl = pos === "none" || pos === "inside" ? null : (
+    <span className="leading-tight shrink-0 truncate" style={{ fontSize: labelSize, color: L.labelColor ?? "#a8a29e", fontStyle: L.italic ? "italic" : undefined, maxWidth: "100%" }}>{name}</span>
+  );
+  const textStyle: React.CSSProperties = { fontSize: L.fontSize, color: L.textColor, fontWeight: L.bold ? 700 : undefined, fontStyle: L.italic ? "italic" : undefined };
+  const many = fields.length > 1 ? fields.map((f) => formatValue(effOf(f))).join(", ") : null;
+  let body: React.ReactNode;
   switch (display) {
-    case "bar": return <div className="w-full" style={style}>{showLabel && name ? <div className="text-[11px] text-stone-400 mb-0.5">{name}</div> : null}<ResourceBar field={field} maxField={maxField} color={color} /></div>;
-    case "pips": return <div style={style}>{showLabel && <div className="text-[11px] text-stone-400 mb-0.5">{name}</div>}<Pips field={field} maxField={maxField} color={color} /></div>;
-    case "dial": return <div className="inline-flex flex-col items-center" style={style}><Dial field={field} maxField={maxField} color={color} />{showLabel && <div className="text-[10px] text-stone-400">{name}</div>}</div>;
+    case "bar": {
+      const h = box ? Math.max(4, box.h - labelH) : (L.height ?? 14);
+      body = <ResourceBar field={field} maxField={maxField} look={L} label={name} height={L.direction === "up" && !box ? (L.height ?? 120) : h} compact />;
+      break;
+    }
+    case "pips": body = <Pips field={field} maxField={maxField} look={L} size={box ? Math.max(6, Math.min(48, box.h - labelH)) : undefined} />; break;
+    case "dial": body = <Dial field={field} maxField={maxField} look={L} size={box ? Math.max(20, Math.min(box.w, box.h - labelH)) : (L.height ?? 56)} />; break;
     case "badge":
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 border text-xs" style={{ borderColor: color ?? "#78350f", background: "rgba(0,0,0,.35)", ...style }}>
-          {showLabel && <span className="text-stone-400">{name}</span>}<span className="font-semibold text-stone-100">{fields.length > 1 ? fields.map((f) => formatValue(effOf(f))).join(", ") : formatValue(effOf(field), field.options.decimals)}</span>
+      body = (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 border" style={{ borderColor: L.border ?? L.color ?? "#78350f", background: "rgba(0,0,0,.35)", borderRadius: L.radius ?? 999, fontSize: L.fontSize ?? 12 }}>
+          {pos === "left" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
+          <span className="font-semibold" style={{ color: L.textColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span>
+          {pos === "right" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
         </span>
       );
-    case "label": return <span className="text-stone-400" style={style}>{name}</span>;
-    case "input":
-      return <span className="inline-flex items-center gap-1.5" style={style}>{showLabel && <span className="text-stone-400 text-sm">{name}</span>}<FieldInput field={field} /></span>;
+      return <span style={{ textAlign: align, minWidth: L.minWidth }}>{body}</span>;
+    case "label": return <span style={{ ...textStyle, color: L.labelColor ?? L.textColor ?? "#a8a29e", textAlign: align }}>{name}</span>;
+    case "input": {
+      const zoom = L.fontSize ? L.fontSize / 14 : undefined;
+      body = <span style={{ zoom, color: L.textColor, fontWeight: L.bold ? 700 : undefined } as React.CSSProperties}><FieldInput field={field} /></span>;
+      break;
+    }
     default:
-      return (
-        <span className="inline-flex items-baseline gap-1.5" style={{ color, ...style }}>
-          {showLabel && <span className="text-stone-400 text-sm">{name}</span>}
-          <span className={`font-semibold ${field.err ? "text-red-400" : "text-stone-100"}`} title={field.err ?? undefined}>
-            {field.err ? "⚠" : fields.length > 1 ? fields.map((f) => formatValue(effOf(f))).join(", ") : formatValue(effOf(field), field.options.decimals)}
-            {maxField ? <span className="text-stone-400 font-normal"> / {formatValue(effOf(maxField))}</span> : null}
-          </span>
+      body = (
+        <span className={`font-semibold ${field.err ? "text-red-400" : "text-stone-100"}`} style={{ ...textStyle, color: field.err ? undefined : (L.textColor ?? L.color) }} title={field.err ?? undefined}>
+          {field.err ? "\u26a0" : many ?? formatValue(effOf(field), field.options.decimals)}
+          {maxField ? <span className="text-stone-400 font-normal"> / {formatValue(effOf(maxField))}</span> : null}
         </span>
       );
   }
+  if (!labelEl) {
+    const fullWidth = display === "bar";
+    return <span className={fullWidth ? "block w-full" : "inline-flex items-center"} style={{ textAlign: align, minWidth: L.minWidth }}>{body}</span>;
+  }
+  const dir = pos === "above" ? "column" : pos === "below" ? "column-reverse" : pos === "right" ? "row-reverse" : "row";
+  const grows = display === "bar";
+  return (
+    <span
+      className={grows || column ? "flex w-full" : "inline-flex"}
+      style={{ flexDirection: dir, alignItems: column ? (align === "center" ? "center" : align === "right" ? "flex-end" : "stretch") : "center", gap: column ? 2 : 6, minWidth: L.minWidth, justifyContent: !column && pos === "right" ? "flex-end" : undefined }}
+    >
+      {labelEl}
+      <span className={grows ? "flex-1 min-w-0" : column && display !== "dial" && display !== "pips" ? "" : "inline-flex"}>{body}</span>
+    </span>
+  );
 }
 
 // --- actions -------------------------------------------------------------------------------
-export function ActionButton({ actionId, label, className = "" }: { actionId: string; label?: string; className?: string }) {
+export function ActionButton({ actionId, label, className = "", look }: { actionId: string; label?: string; className?: string; look?: AgLook }) {
   const { state, request, scope, realViewer, viewer } = useAg();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -303,11 +390,15 @@ export function ActionButton({ actionId, label, className = "" }: { actionId: st
       onClick={run}
       disabled={!allowed || busy}
       className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 h-8 text-sm font-medium border shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-      style={{ background: action.color ?? "#92400e", borderColor: "rgba(0,0,0,.4)", color: "#fff" }}
+      style={{
+        background: look?.color ?? action.color ?? "#92400e", borderColor: look?.border ?? "rgba(0,0,0,.4)", color: look?.textColor ?? "#fff",
+        height: look?.height, minWidth: look?.minWidth, fontSize: look?.fontSize, borderRadius: look?.radius,
+        fontWeight: look?.bold ? 700 : undefined, fontStyle: look?.italic ? "italic" : undefined,
+      }}
       title={allowed ? action.name : "You can't use this"}
       data-testid={`ag-action-${action.name}`}
     >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Dices className="h-3.5 w-3.5" />}
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : look?.icon === false ? null : <Dices className="h-3.5 w-3.5" />}
       {label || action.name}
     </button>
   );
@@ -335,13 +426,13 @@ export function NoteChip({ noteId }: { noteId: string }) {
 }
 
 /** A table of every sheet connected by `label`, with chosen columns. */
-export function LinksTable({ noteId, label, columns }: { noteId: string; label: string; columns: string[] }) {
+export function LinksTable({ noteId, label, columns, look }: { noteId: string; label: string; columns: string[]; look?: AgLook }) {
   const { state, openNote } = useAg();
   const ids = follow(state, noteId, label);
   return (
-    <div className="overflow-x-auto rounded border border-stone-700">
-      <table className="w-full text-sm">
-        <thead className="bg-stone-800/80 text-stone-300">
+    <div className={`overflow-auto ${look?.border ? "" : "border border-stone-700"}`} style={{ maxHeight: look?.height || undefined, borderRadius: look?.radius ?? 4, border: look?.border ? `1px solid ${look.border}` : undefined }}>
+      <table className="w-full text-sm" style={{ fontSize: look?.fontSize, color: look?.textColor, fontStyle: look?.italic ? "italic" : undefined }}>
+        <thead className={`${look?.color ? "" : "bg-stone-800/80"} text-stone-300 sticky top-0`} style={{ background: look?.color, color: look?.textColor, fontWeight: look?.bold ? 700 : undefined }}>
           <tr><th className="text-left px-2 py-1 font-medium">{label.replace(/_/g, " ") || "Connected"}</th>{columns.map((c) => <th key={c} className="text-left px-2 py-1 font-medium">{c.replace(/_/g, " ")}</th>)}</tr>
         </thead>
         <tbody>
@@ -363,8 +454,11 @@ export function LinksTable({ noteId, label, columns }: { noteId: string; label: 
 
 const CHART_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#a855f7", "#ec4899", "#14b8a6", "#eab308"];
 
-export function ChartWidget({ noteId, chart, refs, maxRef, params, height = 200 }: { noteId: string; chart: "bar" | "radar" | "line" | "pie"; refs: string[]; maxRef?: string; params?: Record<string, string>; height?: number }) {
+export function ChartWidget({ noteId, chart, refs, maxRef, params, height = 200, look }: { noteId: string; chart: "bar" | "radar" | "line" | "pie"; refs: string[]; maxRef?: string; params?: Record<string, string>; height?: number; look?: AgLook }) {
   const { state } = useAg();
+  const main = look?.color ?? "#f59e0b";
+  const ink = look?.textColor ?? "#a8a29e";
+  const palette = look?.color ? [main, ...CHART_COLORS.filter((c) => c !== main)] : CHART_COLORS;
   const data = refs.flatMap((r) => resolveRef(state, noteId, r, params).map((f) => ({ name: f.label, value: asNumber(effOf(f) as any) })));
   const max = maxRef ? asNumber(effOf(resolveRef(state, noteId, maxRef, params)[0]) as any) : undefined;
   if (!data.length) return <div className="text-xs text-stone-500 p-2">Pick values to chart.</div>;
@@ -374,16 +468,16 @@ export function ChartWidget({ noteId, chart, refs, maxRef, params, height = 200 
         {chart === "radar" ? (
           <RadarChart data={data} outerRadius="70%">
             <PolarGrid stroke="#57534e" />
-            <PolarAngleAxis dataKey="name" tick={{ fill: "#d6d3d1", fontSize: 11 }} />
+            <PolarAngleAxis dataKey="name" tick={{ fill: look?.textColor ?? "#d6d3d1", fontSize: look?.fontSize ?? 11 }} />
             <PolarRadiusAxis domain={[0, max ?? "auto"]} tick={false} axisLine={false} />
-            <Radar dataKey="value" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.35} isAnimationActive={false} />
+            <Radar dataKey="value" stroke={main} fill={main} fillOpacity={0.35} isAnimationActive={false} />
           </RadarChart>
         ) : chart === "line" ? (
-          <LineChart data={data}><XAxis dataKey="name" tick={{ fill: "#a8a29e", fontSize: 11 }} /><YAxis domain={[0, max ?? "auto"]} tick={{ fill: "#a8a29e", fontSize: 11 }} width={28} /><RTooltip /><Line dataKey="value" stroke="#f59e0b" isAnimationActive={false} /></LineChart>
+          <LineChart data={data}><XAxis dataKey="name" tick={{ fill: ink, fontSize: look?.fontSize ?? 11 }} /><YAxis domain={[0, max ?? "auto"]} tick={{ fill: ink, fontSize: look?.fontSize ?? 11 }} width={28} /><RTooltip /><Line dataKey="value" stroke={main} isAnimationActive={false} /></LineChart>
         ) : chart === "pie" ? (
-          <PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius="80%" label={{ fill: "#e7e5e4", fontSize: 11 }} isAnimationActive={false}>{data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Pie><RTooltip /></PieChart>
+          <PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius="80%" label={{ fill: look?.textColor ?? "#e7e5e4", fontSize: look?.fontSize ?? 11 }} isAnimationActive={false}>{data.map((_, i) => <Cell key={i} fill={palette[i % palette.length]} />)}</Pie><RTooltip /></PieChart>
         ) : (
-          <BarChart data={data}><XAxis dataKey="name" tick={{ fill: "#a8a29e", fontSize: 11 }} /><YAxis domain={[0, max ?? "auto"]} tick={{ fill: "#a8a29e", fontSize: 11 }} width={28} /><RTooltip /><Bar dataKey="value" isAnimationActive={false}>{data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}</Bar></BarChart>
+          <BarChart data={data}><XAxis dataKey="name" tick={{ fill: ink, fontSize: look?.fontSize ?? 11 }} /><YAxis domain={[0, max ?? "auto"]} tick={{ fill: ink, fontSize: look?.fontSize ?? 11 }} width={28} /><RTooltip /><Bar dataKey="value" isAnimationActive={false}>{data.map((_, i) => <Cell key={i} fill={look?.color ? main : palette[i % palette.length]} />)}</Bar></BarChart>
         )}
       </ResponsiveContainer>
     </div>
@@ -409,13 +503,8 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
   const note = state.notes.get(opts.noteId);
   switch (widget.kind) {
     case "field":
-      if (widget.display === "bar") {
-        const f = resolveRef(state, opts.noteId, widget.ref, opts.params)[0];
-        const mf = widget.maxRef ? resolveRef(state, opts.noteId, widget.maxRef, opts.params)[0] : undefined;
-        return f ? <div className="w-full h-full flex flex-col justify-center">{widget.showLabel && <div className="text-[10px] text-stone-300 leading-none mb-0.5">{widget.label || f.label}</div>}<ResourceBar field={f} maxField={mf} color={widget.color} height={Math.max(6, (widget.showLabel ? h - 12 : h))} compact /></div> : <div className="w-full h-full rounded-sm bg-black/30" />;
-      }
       return <div className="w-full h-full flex items-center overflow-hidden" style={{ justifyContent: widget.align === "center" ? "center" : widget.align === "right" ? "flex-end" : "flex-start" }}>
-        <FieldDisplay noteId={opts.noteId} refPath={widget.ref} maxRef={widget.maxRef} display={widget.display} label={widget.label} showLabel={widget.showLabel ?? false} color={widget.color} params={opts.params} fontSize={widget.fontSize} align={widget.align} />
+        <FieldDisplay noteId={opts.noteId} refPath={widget.ref} maxRef={widget.maxRef} display={widget.display} label={widget.label} showLabel={widget.showLabel ?? false} color={widget.color} params={opts.params} fontSize={widget.fontSize} align={widget.align} look={widget.look} box={{ w, h }} />
       </div>;
     case "text":
       return <div className="w-full h-full overflow-hidden whitespace-pre-wrap leading-tight" style={{ fontSize: widget.fontSize ?? 13, color: widget.color ?? "#e7e5e4", fontWeight: widget.bold ? 700 : 400, textAlign: widget.align }}>{widget.text}</div>;
@@ -428,9 +517,9 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
     }
     case "portrait": return <Portrait note={note} size="100%" radius={widget.radius ?? 8} className="w-full h-full" />;
     case "name": return <div className="w-full h-full truncate font-semibold leading-tight" style={{ fontSize: widget.fontSize ?? 14, color: widget.color ?? "#fde68a", textAlign: widget.align }}>{note?.name}</div>;
-    case "button": return <ActionButton actionId={widget.actionId} label={widget.label} className="w-full h-full" />;
-    case "chart": return <ChartWidget noteId={opts.noteId} chart={widget.chart} refs={widget.refs} maxRef={widget.maxRef} params={opts.params} height={h} />;
-    case "links": return <div className="w-full h-full overflow-auto"><LinksTable noteId={opts.noteId} label={widget.label} columns={widget.columns} /></div>;
+    case "button": return <ActionButton actionId={widget.actionId} label={widget.label} className="w-full h-full" look={widget.look ? { ...widget.look, height: undefined } : undefined} />;
+    case "chart": return <ChartWidget noteId={opts.noteId} chart={widget.chart} refs={widget.refs} maxRef={widget.maxRef} params={opts.params} height={h} look={widget.look} />;
+    case "links": return <div className="w-full h-full overflow-auto"><LinksTable noteId={opts.noteId} label={widget.label} columns={widget.columns} look={widget.look ? { ...widget.look, height: undefined } : undefined} /></div>;
     case "component": return <ComponentView componentId={widget.componentId} noteId={opts.noteId} bindings={widget.bindings} width={w} lastRoll={opts.lastRoll} />;
     case "shape":
       return <div className="w-full h-full" style={{
@@ -447,7 +536,7 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
 }
 
 /** Render a free layout scaled to fit the available width (keeps the GM's design on phones). */
-export function LayoutView({ layout, opts, maxWidth, fit = "width", className = "" }: { layout: AgLayout; opts: LayoutRenderOpts; maxWidth?: number; fit?: "width" | "none"; className?: string }) {
+export function LayoutView({ layout, opts, maxWidth, fit = "width", className = "", maxScale = 1.5 }: { layout: AgLayout; opts: LayoutRenderOpts; maxWidth?: number; fit?: "width" | "none"; className?: string; maxScale?: number }) {
   const { viewer, state } = useAg();
   const ref = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -456,13 +545,13 @@ export function LayoutView({ layout, opts, maxWidth, fit = "width", className = 
     const el = ref.current.parentElement!;
     const update = () => {
       const avail = Math.min(el.clientWidth, maxWidth ?? Infinity);
-      setScale(avail > 0 ? Math.min(1.5, avail / layout.width) : 1);
+      setScale(avail > 0 ? Math.min(maxScale, avail / layout.width) : 1);
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [layout.width, fit, maxWidth]);
+  }, [layout.width, fit, maxWidth, maxScale]);
   const owners = state.notes.get(opts.noteId)?.ownerIds ?? [];
   return (
     <div ref={ref} className={className} style={{ width: layout.width * scale, height: layout.height * scale }}>
@@ -480,11 +569,11 @@ export function LayoutView({ layout, opts, maxWidth, fit = "width", className = 
   );
 }
 
-export function ComponentView({ componentId, noteId, bindings, width, lastRoll }: { componentId: string; noteId: string; bindings: Record<string, string>; width?: number; lastRoll?: LayoutRenderOpts["lastRoll"] }) {
+export function ComponentView({ componentId, noteId, bindings, width, lastRoll, maxScale }: { componentId: string; noteId: string; bindings: Record<string, string>; width?: number; lastRoll?: LayoutRenderOpts["lastRoll"]; maxScale?: number }) {
   const { state } = useAg();
   const comp = state.components.get(componentId);
   if (!comp) return <div className="text-xs text-stone-500">[component removed]</div>;
-  return <LayoutView layout={comp.layout} opts={{ noteId, params: bindings, lastRoll }} maxWidth={width} />;
+  return <LayoutView layout={comp.layout} opts={{ noteId, params: bindings, lastRoll }} maxWidth={width} maxScale={maxScale} />;
 }
 
 /** Every field key on a note + connection paths, for pickers. */

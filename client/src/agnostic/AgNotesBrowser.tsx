@@ -14,6 +14,7 @@ import { Portrait } from "./widgets";
 import { agClient } from "./client";
 import { ComponentsManager } from "./ComponentsManager";
 import { ImportExportDialog } from "./ImportExport";
+import { GuideButton } from "./AgGuide";
 
 type Tab = "sheets" | "templates" | "components";
 
@@ -60,7 +61,8 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
           {([["sheets", "Sheets"], ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
-          <button type="button" onClick={() => setIo(true)} className="ml-auto h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
+          <GuideButton compact topic={tab === "components" ? "components" : tab === "templates" ? "templates" : "start"} className="ml-auto" />
+          <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
         </div>
       )}
       {tab === "components" ? <div className="flex-1 min-h-0 overflow-y-auto"><ComponentsManager /></div> : (
@@ -84,6 +86,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
             {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
             {!list.length && <div className="text-sm text-stone-500 p-3 text-center">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
+            {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
             {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
           </div>
         </>

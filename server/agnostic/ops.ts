@@ -4,7 +4,7 @@
 import { randomUUID } from "crypto";
 import type {
   AgAcl, AgAction, AgActionResult, AgActionStep, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
-  AgFieldType, AgLayout, AgLink, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
+  AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
 } from "@shared/agnostic/types";
 import { defaultCampaignSettings, isValidKey, slugifyKey } from "@shared/agnostic/types";
 import {
@@ -97,6 +97,19 @@ function cleanLabel(s: unknown, max = 120) {
 }
 const labelKey = (s: unknown) => slugifyKey(String(s ?? "")).slice(0, 40);
 
+/** Presentation only — but still bounded: short strings, finite numbers, known keys. */
+function cleanLook(raw: unknown): AgLook | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 40)) {
+    if (!/^[a-zA-Z]{1,20}$/.test(k)) continue;
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = Math.max(-5000, Math.min(5000, v));
+    else if (typeof v === "string") out[k] = v.slice(0, 60);
+    else if (typeof v === "boolean") out[k] = v;
+  }
+  return Object.keys(out).length ? (out as AgLook) : undefined;
+}
+
 function cleanTokenBars(raw: unknown): AgTokenBar[] | null {
   if (raw === null) return null;
   if (!Array.isArray(raw)) return null;
@@ -107,6 +120,7 @@ function cleanTokenBars(raw: unknown): AgTokenBar[] | null {
     color: typeof b?.color === "string" ? b.color.slice(0, 40) : "#16a34a",
     showNumbers: !!b?.showNumbers,
     label: b?.label ? String(b.label).slice(0, 40) : undefined,
+    look: cleanLook(b?.look),
   })).filter((b) => b.value);
 }
 
@@ -278,7 +292,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const s = await snap.takeSnapshot(srcStore, source.id);
       return store.run(async (cs) => {
         const isTemplate = body.asTemplate ?? source.isTemplate;
-        const copy = await snap.createFromSnapshot(store, { ...s, note: { ...s.note, isTemplate, templateMeta: isTemplate ? (s.note.templateMeta ?? { version: 1 }) : null, templateId: null, templateVersion: null, ownerIds: [] } }, {}, cs);
+        const componentIds = srcStore === store ? undefined : await snap.carryComponents(srcStore, store, s, cs);
+        const copy = await snap.createFromSnapshot(store, { ...s, note: { ...s.note, isTemplate, templateMeta: isTemplate ? (s.note.templateMeta ?? { version: 1 }) : null, templateId: null, templateVersion: null, ownerIds: [] } }, {}, cs, { componentIds });
         return { noteId: copy.id };
       });
     }

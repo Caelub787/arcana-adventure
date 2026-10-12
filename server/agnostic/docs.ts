@@ -145,7 +145,7 @@ export function discard(name: string) {
 // that point at them must follow. Works on raw state so it needs no editor
 // schema: walks every XML element's attributes and every canvas item.
 // ---------------------------------------------------------------------------
-const REMAP_ATTRS = ["regionId", "actionId", "noteId"];
+const REMAP_ATTRS = ["regionId", "actionId", "noteId", "componentId"];
 
 export function remapState(state: string | null, idMap: Map<string, string>): string | null {
   if (!state) return state;
@@ -172,7 +172,7 @@ export function remapState(state: string | null, idMap: Map<string, string>): st
         if (!w) return;
         let changed = false;
         const next = { ...item, widget: { ...w } };
-        for (const k of ["regionId", "actionId"] as const) {
+        for (const k of ["regionId", "actionId", "componentId"] as const) {
           if (typeof w[k] === "string" && idMap.has(w[k])) { (next.widget as any)[k] = idMap.get(w[k]); changed = true; }
         }
         if (changed) items.set(itemId, next);
@@ -184,18 +184,19 @@ export function remapState(state: string | null, idMap: Map<string, string>): st
   return out;
 }
 
-/** Ids of every region / action a document references (for templates' "what's used"). */
-export function referencedIds(state: string | null): { regions: Set<string>; actions: Set<string> } {
-  const regions = new Set<string>(), actions = new Set<string>();
-  if (!state) return { regions, actions };
+/** Ids of every region / action / component a document references (for templates' "what's used", copies). */
+export function referencedIds(state: string | null): { regions: Set<string>; actions: Set<string>; components: Set<string> } {
+  const regions = new Set<string>(), actions = new Set<string>(), components = new Set<string>();
+  if (!state) return { regions, actions, components };
   const doc = new Y.Doc();
   Y.applyUpdate(doc, fromB64(state));
   const walk = (node: Y.XmlFragment | Y.XmlElement) => {
     node.toArray().forEach((child) => {
       if (child instanceof Y.XmlElement) {
-        const r = child.getAttribute("regionId"), a = child.getAttribute("actionId");
+        const r = child.getAttribute("regionId"), a = child.getAttribute("actionId"), c = child.getAttribute("componentId");
         if (typeof r === "string") regions.add(r);
         if (typeof a === "string") actions.add(a);
+        if (typeof c === "string" && c) components.add(c);
         walk(child);
       }
     });
@@ -205,10 +206,11 @@ export function referencedIds(state: string | null): { regions: Set<string>; act
     if (items instanceof Y.Map) items.forEach((item: any) => {
       if (typeof item?.widget?.regionId === "string") regions.add(item.widget.regionId);
       if (typeof item?.widget?.actionId === "string") actions.add(item.widget.actionId);
+      if (typeof item?.widget?.componentId === "string" && item.widget.componentId) components.add(item.widget.componentId);
     });
   });
   doc.destroy();
-  return { regions, actions };
+  return { regions, actions, components };
 }
 
 /** Plain text of a doc (search, export previews). */

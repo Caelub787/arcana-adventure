@@ -26,11 +26,16 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
           {showName && (
             <div className="font-display text-white text-center leading-tight pointer-events-none" style={{ fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)), textShadow: "1px 1px 0 #000,-1px 1px 0 #000,1px -1px 0 #000,-1px -1px 0 #000", maxWidth: tokenSize * 1.2 }}>{note.name}</div>
           )}
-          {resolved.map(({ b, f, m }) => (
-            <div key={b.id} className="w-full" data-ag-token-bar data-testid={`ag-token-bar-${b.value}`}>
-              <ResourceBar field={f!} maxField={m} color={b.color} height={b.showNumbers ? Math.max(barH, 10) : barH} showNumbers={!!b.showNumbers} compact />
-            </div>
-          ))}
+          {resolved.map(({ b, f, m }) => {
+            // A bar's look is designed at a 64px token and scales with the token.
+            const h = b.look?.height ? Math.max(2, Math.round((b.look.height * tokenSize) / 64)) : b.showNumbers ? Math.max(barH, 10) : barH;
+            const look = b.look?.fontSize ? { ...b.look, fontSize: Math.max(6, Math.round((b.look.fontSize * tokenSize) / 64)) } : b.look;
+            return (
+              <div key={b.id} style={{ width: `${b.look?.width ?? 100}%` }} data-ag-token-bar data-testid={`ag-token-bar-${b.value}`}>
+                <ResourceBar field={f!} maxField={m} color={b.color} height={h} showNumbers={!!b.showNumbers} look={look} label={b.label || undefined} compact />
+              </div>
+            );
+          })}
         </div>
       )}
     </>

@@ -5,6 +5,7 @@ import { Settings2 } from "lucide-react";
 import { useAgMaybe } from "./hooks";
 import { AgNotesBrowser } from "./AgNotesBrowser";
 import { TrackerDesigner } from "./AgTracker";
+import { GuideButton } from "./AgGuide";
 
 export function AgCampaignPanel({ onPlaceOnMap }: { onPlaceOnMap?: (noteId: string) => void }) {
   const ag = useAgMaybe();
@@ -21,6 +22,7 @@ export function AgCampaignPanel({ onPlaceOnMap }: { onPlaceOnMap?: (noteId: stri
           {ag.state.members.filter((m) => m.role !== "gm").map((m) => <option key={m.userId} value={m.userId}>Preview as {m.name}</option>)}
         </select>
       )}
+      <GuideButton className="mx-2 mt-2 shrink-0" />
       {ag.viewer.isGM && (
         <button type="button" onClick={() => setTracker(true)} className="m-2 h-9 rounded bg-stone-800 hover:bg-stone-700 text-xs text-stone-200 inline-flex items-center justify-center gap-1.5 shrink-0" data-testid="ag-open-tracker-designer">
           <Settings2 className="h-3.5 w-3.5" /> Design the player tracker

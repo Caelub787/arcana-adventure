@@ -1,0 +1,502 @@
+// The Agnostic guide: how the system fits together and how to use every part
+// of it, with a deep dive on components. Opens from the campaign panel, the
+// libraries, every sheet and the Components tab (each at the relevant topic).
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  BookOpen, Rocket, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
+} from "lucide-react";
+import type { AgLayout } from "@shared/agnostic/types";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { useAgMaybe } from "./hooks";
+
+export type GuideTopic =
+  | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "privacy" | "tracker" | "libraries" | "formulas";
+
+// --------------------------------------------------------------------------- open from anywhere
+let openGuideFn: ((t?: GuideTopic) => void) | null = null;
+
+/** A "Guide" / "?" button that opens the guide at a topic. */
+export function GuideButton({ topic = "start", label, className = "", compact }: { topic?: GuideTopic; label?: string; className?: string; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => (openGuideFn ? openGuideFn(topic) : setOpen(true))}
+        className={compact
+          ? `h-7 w-7 grid place-items-center rounded text-stone-400 hover:text-amber-200 hover:bg-stone-800 shrink-0 ${className}`
+          : `h-9 rounded bg-stone-800 hover:bg-stone-700 text-xs text-amber-100 inline-flex items-center justify-center gap-1.5 px-3 ${className}`}
+        title="How Agnostic works"
+        data-testid={`ag-guide-open-${topic}`}
+      >
+        {compact ? <HelpCircle className="h-4 w-4" /> : <><BookOpen className="h-3.5 w-3.5" /> {label ?? "Guide: how Agnostic works"}</>}
+      </button>
+      {open && <AgGuideDialog initial={topic} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+// --------------------------------------------------------------------------- building blocks
+const P = ({ children }: { children: React.ReactNode }) => <p className="text-sm text-stone-300 leading-relaxed">{children}</p>;
+const H = ({ children }: { children: React.ReactNode }) => <h3 className="text-[13px] font-semibold text-amber-200 pt-3">{children}</h3>;
+const Ui = ({ children }: { children: React.ReactNode }) => <span className="inline-block rounded bg-stone-800 border border-stone-700 px-1.5 py-px text-[12px] text-amber-100 whitespace-nowrap">{children}</span>;
+const Code = ({ children }: { children: React.ReactNode }) => <code className="rounded bg-stone-950 border border-stone-800 px-1 py-px text-[12px] font-mono text-sky-300">{children}</code>;
+const Steps = ({ children }: { children: React.ReactNode }) => <ol className="list-decimal pl-5 space-y-1.5 text-sm text-stone-300 leading-relaxed marker:text-amber-500">{children}</ol>;
+const Bullets = ({ children }: { children: React.ReactNode }) => <ul className="list-disc pl-5 space-y-1 text-sm text-stone-300 leading-relaxed marker:text-stone-600">{children}</ul>;
+const Tip = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex gap-2 rounded-md border border-amber-900/60 bg-amber-950/30 px-2.5 py-2 text-[13px] text-amber-100/90 leading-relaxed"><Lightbulb className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" /><div>{children}</div></div>
+);
+function Table({ rows, head }: { rows: Array<[React.ReactNode, React.ReactNode]>; head?: [string, string] }) {
+  return (
+    <div className="overflow-x-auto rounded border border-stone-800">
+      <table className="w-full text-[13px]">
+        {head && <thead className="bg-stone-800/70 text-stone-300"><tr><th className="text-left px-2 py-1 font-medium">{head[0]}</th><th className="text-left px-2 py-1 font-medium">{head[1]}</th></tr></thead>}
+        <tbody>{rows.map(([a, b], i) => <tr key={i} className="border-t border-stone-800 align-top"><td className="px-2 py-1.5 text-stone-200 whitespace-nowrap">{a}</td><td className="px-2 py-1.5 text-stone-400">{b}</td></tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+function Go({ to, children }: { to: GuideTopic; children: React.ReactNode }) {
+  return <button type="button" onClick={() => openGuideFn?.(to)} className="text-amber-300 underline underline-offset-2 hover:text-amber-200">{children}</button>;
+}
+
+// --------------------------------------------------------------------------- example components
+const EXAMPLES: Array<{ name: string; params: string[]; layout: AgLayout; what: string }> = [
+  {
+    name: "Stat block", params: ["str", "dex", "con", "int", "wis", "cha"], what: "six scores side by side",
+    layout: { width: 300, height: 56, background: "rgba(28,25,23,0.6)", radius: 8, items: ["str", "dex", "con", "int", "wis", "cha"].map((k, i) => ({
+      id: k, x: 4 + i * 49, y: 3, w: 47, h: 50,
+      widget: { kind: "field" as const, ref: `$${k}`, display: "value" as const, label: k.toUpperCase(), showLabel: true, align: "center" as const, look: { labelPos: "above" as const, fontSize: 18, bold: true } },
+    })) },
+  },
+  {
+    name: "Mana bar", params: ["mp", "mp_max"], what: "a blue bar for any resource",
+    layout: { width: 160, height: 18, items: [
+      { id: "bar", x: 0, y: 0, w: 160, h: 18, widget: { kind: "field", ref: "$mp", maxRef: "$mp_max", display: "bar", label: "MP", showLabel: true, look: { color: "#2563eb", labelPos: "inside", numbers: "fraction", barStyle: "gradient", radius: 4, track: "#1c1917" } } },
+    ] },
+  },
+  {
+    name: "Name plate", params: ["hp", "hp_max"], what: "portrait, name and HP together",
+    layout: { width: 260, height: 64, background: "rgba(28,25,23,0.92)", border: "#78350f", radius: 10, items: [
+      { id: "p", x: 4, y: 4, w: 56, h: 56, widget: { kind: "portrait", radius: 8 } },
+      { id: "n", x: 68, y: 6, w: 186, h: 22, widget: { kind: "name", fontSize: 16, color: "#fde68a" } },
+      { id: "b", x: 68, y: 36, w: 186, h: 18, widget: { kind: "field", ref: "$hp", maxRef: "$hp_max", display: "bar", label: "HP", showLabel: true, look: { color: "#16a34a", labelPos: "inside", numbers: "fraction", radius: 4 } } },
+    ] },
+  },
+];
+
+function ExampleComponentsButton() {
+  const ag = useAgMaybe();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  if (!ag || !ag.viewer.isGM) return null;
+  const have = new Set(Array.from(ag.state.components.values()).map((c) => c.name.toLowerCase()));
+  const missing = EXAMPLES.filter((e) => !have.has(e.name.toLowerCase()));
+  if (!missing.length || done) return <div className="text-[12px] text-emerald-300 inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> The examples are in your Components tab.</div>;
+  return (
+    <button type="button" disabled={busy} onClick={async () => {
+      setBusy(true);
+      try {
+        for (const e of missing) await ag.request({ op: "component.upsert", component: { name: e.name, params: e.params, layout: e.layout } });
+        setDone(true);
+        toast({ title: "Examples added", description: `${missing.map((e) => e.name).join(", ")} — open the Components tab to see how they're built.` });
+      } catch (err: any) { toast({ title: "Couldn't add them", description: err.message, variant: "destructive" }); }
+      finally { setBusy(false); }
+    }} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1.5 disabled:opacity-60" data-testid="ag-guide-examples">
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Puzzle className="h-3.5 w-3.5" />} Add example components here ({missing.map((e) => e.name).join(", ")})
+    </button>
+  );
+}
+
+// --------------------------------------------------------------------------- the topics
+interface Topic { id: GuideTopic; title: string; icon: React.ReactNode; words: string; body: React.ReactNode }
+
+const TOPICS: Topic[] = [
+  {
+    id: "start", title: "Start here", icon: <Rocket className="h-4 w-4" />, words: "begin quick start overview first steps how",
+    body: (
+      <>
+        <P>Agnostic is a game system you build yourself. Nothing is fixed: you decide what a character, monster or item has, what it looks like and what its buttons do. Everything you build belongs to this campaign only.</P>
+        <H>The five ideas</H>
+        <Table rows={[
+          [<b>Sheets</b>, "A page for anything: a character, an NPC, an item, a place, a note. Every sheet has a portrait, a name and a free page underneath."],
+          [<b>Values</b>, "The numbers and text a sheet holds: HP, Strength, Gold, Class… They live in the sheet's Values tab and can be shown anywhere."],
+          [<b>Inserts</b>, "What you put on the page to show values: resource bars, numbers, pips, dials, buttons, charts, tables, images, columns, canvases. Every insert can be resized and restyled."],
+          [<b>Templates</b>, "A blueprint sheet. New sheets made from it start with its values, layout and buttons. Update the template and you can push the changes to every sheet."],
+          [<b>Components</b>, "A small design you make once (an HP bar, a stat block, an attack row) and place on many sheets, tracker cards and other components. Change it once, it changes everywhere."],
+        ]} />
+        <H>Build your first character in 10 steps</H>
+        <Steps>
+          <li>In the campaign panel open <Ui>Templates</Ui> → <Ui>New</Ui>, pick <Ui>Character</Ui> and call it “Hero”.</li>
+          <li>On the template, open the <Ui>Values</Ui> tab. It already has <Code>hp</Code> and <Code>hp_max</Code>. Press <Ui>Add value</Ui> to add more: “Strength” (Number), “Class” (Text)…</li>
+          <li>Go back to the <Ui>Sheet</Ui> tab. Press <Ui>+ Insert</Ui> → <Ui>Component</Ui> → <Ui>HP bar</Ui> → <Ui>Insert</Ui>. Leave its parameters empty — it shows the sheet's own HP.</li>
+          <li>Hover the bar and drag its right edge to make it wider, or its bottom edge to make it thicker. Press ⚙ → <Ui>Look & size</Ui> for colours, text and style.</li>
+          <li><Ui>+ Insert</Ui> → <Ui>Value block</Ui> → pick <Ui>Strength</Ui>. Type text around it like any document — headings, lists, tables.</li>
+          <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>New action…</Ui>: add a <Ui>Roll</Ui> step with <Code>1d20 + str</Code>, call it “Attack”, save, insert.</li>
+          <li>Back in the campaign panel, <Ui>Sheets</Ui> → <Ui>New</Ui> → Character, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
+          <li>Press the pin icon on the new sheet to show it in the player tracker. Its card already has the HP bar.</li>
+          <li>Press the map-pin icon (or drag the sheet onto the map) to place it as a token with a live HP bar.</li>
+          <li>Use the <Ui>View as</Ui> picker at the top of a sheet to check exactly what the player sees.</li>
+        </Steps>
+        <Tip>Everything is live. When anyone changes HP (on the sheet, the tracker card or the token) every screen updates at once.</Tip>
+        <H>Where things are</H>
+        <Bullets>
+          <li><b>Campaign panel</b>: <Ui>Sheets</Ui>, <Ui>Templates</Ui> and <Ui>Components</Ui> tabs, the import/export button, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>.</li>
+          <li><b>A sheet</b>: the <Ui>Sheet</Ui> page, the <Ui>Values</Ui> tab and, for the GM, <Ui>Links</Ui> (connections) and <Ui>Settings</Ui> (who sees it, owners, token bars, buttons, template, history).</li>
+          <li><b>Admin → Agnostic</b> and <b>My Library → Agnostic</b>: your own Characters, Items and Species, kept apart from every other system.</li>
+        </Bullets>
+      </>
+    ),
+  },
+  {
+    id: "sheets", title: "Sheets & the page editor", icon: <FileText className="h-4 w-4" />, words: "editor document insert toolbar text heading table image columns canvas undo",
+    body: (
+      <>
+        <P>The <Ui>Sheet</Ui> tab is a document, like a word processor that several people can edit at once. Write normally, and use the toolbar for headings, bold, lists, checklists, quotes, colours and alignment.</P>
+        <H>The Insert menu</H>
+        <Table head={["Insert", "What it does"]} rows={[
+          ["Value (in text)", "A live value inside a sentence: “Gold: 120”. Can be editable, plain or a badge."],
+          ["Value block", "A value on its own line, editable by whoever's allowed."],
+          ["Resource bar", "Current/max as a bar (HP, mana, ammo…). Click it to change the value."],
+          ["Button / roll", "Runs an action: rolls dice, changes values, posts a message. See Buttons & rolls."],
+          ["Hidden section", "A block with its own who-can-see / who-can-edit."],
+          ["Secret words", "Hidden words inside a sentence (select text first)."],
+          ["2 / 3 columns", "Side-by-side columns. Use + / − on the columns' toolbar for up to 4."],
+          ["Free canvas", "A drag-and-drop area: put anything anywhere, at any size, layered."],
+          ["Image", "Upload or pick from the image library; drag its sides to resize."],
+          ["Table", "A normal table; drag column borders to resize."],
+          ["Chart", "Radar, bar, line or pie chart of several values (e.g. stats)."],
+          ["Connections table", "Lists every connected sheet (e.g. items) with chosen value columns."],
+          ["Link to a sheet", "A clickable chip that opens another sheet."],
+          ["Component", "One of your reusable components. See Components."],
+          ["Divider", "A horizontal line."],
+        ]} />
+        <H>Moving and editing inserts</H>
+        <Bullets>
+          <li>Hover an insert (on phones it's always shown) to see its little toolbar: <b>⠿</b> drag to move, <b>⚙</b> settings & look, <b>🗑</b> remove.</li>
+          <li>Drag its edges to resize it. <Go to="look">Resizing & styling</Go> explains every option.</li>
+          <li>Canvases: press the grid button (or double-click) to arrange items; press ✓ when done.</li>
+        </Bullets>
+        <H>Undo</H>
+        <P><Ui>Ctrl+Z</Ui> / <Ui>Ctrl+Shift+Z</Ui> undo and redo in the page. Outside the text (value changes, template switches) <Ui>Ctrl+Z</Ui> or the ↶ button at the top of the sheet undoes the last change.</P>
+      </>
+    ),
+  },
+  {
+    id: "values", title: "Values", icon: <Hash className="h-4 w-4" />, words: "fields values number text formula dice select checkbox image key resource min max step",
+    body: (
+      <>
+        <P>Values are the data. The page only <i>shows</i> them, so the same HP can appear on the sheet, a tracker card and a token and is always the same number.</P>
+        <H>Adding values</H>
+        <Steps>
+          <li>Open a sheet's (or template's) <Ui>Values</Ui> tab.</li>
+          <li><Ui>Add value</Ui>: give it a name (“Strength”) and a type. Its <b>key</b> (<Code>strength</Code>) is how formulas and components refer to it.</li>
+          <li><Ui>Add resource (current + max)</Ui> makes a pair like <Code>mana</Code> + <Code>mana_max</Code>, ready for a resource bar.</li>
+        </Steps>
+        <Table head={["Type", "Use it for"]} rows={[
+          ["Number", "Scores, HP, gold. Can have min / max / step."],
+          ["Text", "Class, notes, anything written."],
+          ["Yes / No", "A tickbox: Equipped, Stunned, Inspired."],
+          ["Choice", "A dropdown of options you list."],
+          ["Calculated", <>Worked out from other values: <Code>10 + con * 2</Code>, <Code>floor((str - 10) / 2)</Code>. Updates by itself.</>],
+          ["Dice", <>A dice expression stored on the sheet, e.g. <Code>1d8 + str</Code>, for buttons to roll.</>],
+          ["Image", "A picture that's part of the data (a weapon's art, a map)."],
+        ]} />
+        <P>Click a value in the Values tab to change its settings and <b>who can see / change it</b>. That permission protects the value everywhere it appears.</P>
+        <Tip>New Character and NPC sheets start with <Code>hp</Code> and <Code>hp_max</Code>, which is what the built-in <b>HP bar</b>, <b>HP</b> and <b>Max HP</b> components and the default token bar use. Rename or delete them if your game doesn't use HP.</Tip>
+        <P>Formulas are explained in <Go to="formulas">Formula cheat sheet</Go>.</P>
+      </>
+    ),
+  },
+  {
+    id: "look", title: "Resizing & styling (Look)", icon: <Paintbrush className="h-4 w-4" />, words: "resize size scale width height colour color style font bar thickness drag look align label numbers segments striped pips shape dial",
+    body: (
+      <>
+        <P>Every insert can be resized and restyled without touching the data underneath. There are three ways to do it.</P>
+        <H>1. Drag</H>
+        <Bullets>
+          <li><b>Side edge</b> (amber pill on the right of a block): drag to set its width, from 10% to 100% of the line.</li>
+          <li><b>Bottom edge</b>: drag to make a bar thicker, pips or a dial bigger, or a chart or table taller.</li>
+          <li><b>Corner square</b>: both at once. A label shows the size while you drag.</li>
+          <li><b>Images</b>: drag their sides or bottom corners. The toolbar also shows S / M / L / Full and alignment when an image is selected.</li>
+          <li><b>Canvas, tracker card and component items</b>: drag the 8 handles around the selected item; arrow keys nudge it.</li>
+        </Bullets>
+        <H>2. ⚙ → Look & size</H>
+        <Table head={["Option", "What it changes"]} rows={[
+          ["Width / Align", "How much of the line it takes and whether it sits left, centre or right."],
+          ["Thickness / size / height", "Bar thickness, pip size, dial size, chart or table height, button height."],
+          ["Colours", "Fill, the empty part of bars, text, label, border, and a background and outline around the whole block."],
+          ["Text", "Size (6–72px), bold, italic."],
+          ["Label", "Above, left, right, below, inside the bar, or hidden."],
+          ["Numbers", "Current / max, current only, percent, or none."],
+          ["Bar style", "Solid, shaded, striped, segments (one notch per point), glowing."],
+          ["Fills", "Left → right, right → left, or bottom → top for a tall vertical bar."],
+          ["Pip shape", "Circles, squares, diamonds, hearts or stars."],
+          ["Corners / padding", "Rounded corners and space inside the block."],
+          ["Columns", "Gap between columns and their widths (Equal, Wide left, or your own like 2:1:1)."],
+          ["Buttons", "Colour, text colour, size, minimum width, corners, dice icon on/off."],
+        ]} />
+        <P><Ui>Reset look</Ui> puts everything back to the defaults.</P>
+        <H>3. When inserting</H>
+        <P>The insert window shows a live preview and has the same <Ui>Look & size</Ui> panel, so you can style something before it goes on the page.</P>
+        <H>Tracker cards, components and tokens</H>
+        <Bullets>
+          <li>In the layout editor (canvas, tracker card, component), select an item and open <Ui>Look — colours, text, label, style</Ui>. The item's box sets its size.</li>
+          <li>Token bars: in <Ui>Design the player tracker</Ui> (defaults per kind) or a sheet's <Ui>Settings → Bars on the battlemap</Ui>, press the 🖌 next to a bar for thickness, width, colours, style and numbers.</li>
+        </Bullets>
+        <Tip>Want the same look in many places? Make it a <Go to="components">component</Go>, style it once, and every copy follows.</Tip>
+      </>
+    ),
+  },
+  {
+    id: "components", title: "Components: the full guide", icon: <Puzzle className="h-4 w-4" />, words: "component reusable parameter param bind connect hp bar stat block design once everywhere",
+    body: (
+      <>
+        <P>A <b>component</b> is a small design you make once and reuse anywhere: an HP bar, a stat block, an attack row with a button, a name plate. Every placed copy is live. <b>Edit the component and every copy, on every sheet, tracker card and other component, changes instantly.</b></P>
+        <H>Built-in components</H>
+        <Table rows={[
+          [<b>HP bar</b>, <>A bar of <Code>$hp</Code> out of <Code>$hp_max</Code>. The default tracker card uses it.</>],
+          [<b>HP</b>, <>An editable <Code>$hp</Code> number with a label.</>],
+          [<b>Max HP</b>, <>An editable <Code>$hp_max</Code> number with a label.</>],
+        ]} />
+        <P>They're ordinary components. Open <Ui>Components</Ui> in the campaign panel and click one to restyle it, rename it, change what it shows, or delete it. Restyle <b>HP bar</b> and the player tracker changes with it.</P>
+
+        <H>Parameters: the one idea to understand</H>
+        <P>A component doesn't hold values; it has <b>parameters</b>: named slots written with a <Code>$</Code>, like <Code>$hp</Code>. Where you place the component, each parameter is connected to a real value.</P>
+        <Bullets>
+          <li><b>Leave a parameter empty</b> and it uses the sheet's own value with the same key. <Code>$hp</Code> → the sheet's <Code>hp</Code>. That's why the HP bar just works on any sheet with HP.</li>
+          <li><b>Connect it</b> to something else to reuse the design for other values. Put the HP bar on a sheet, set <Code>$hp</Code> → <Code>mana</Code> and <Code>$hp_max</Code> → <Code>mana_max</Code>, and it becomes a mana bar.</li>
+          <li>Parameters can point through connections or at another sheet: <Code>@owner.hp</Code> (the owner's HP, on an item or familiar) or a value picked from any sheet.</li>
+        </Bullets>
+
+        <H>Make your own, step by step</H>
+        <Steps>
+          <li>Campaign panel → <Ui>Components</Ui> → <Ui>New component</Ui>. You get a label and a bar to start from.</li>
+          <li>Name it (e.g. “Stamina bar”).</li>
+          <li>Type the <b>Parameters</b> it needs, separated by commas: <Code>stamina, stamina_max</Code>. Naming them after the values your sheets use means they connect themselves.</li>
+          <li>Pick a sheet in <Ui>Preview with</Ui> to see real numbers while you design.</li>
+          <li><Ui>+ Add</Ui> items: values, editable values, bars, pips, dials, badges, labels, portrait, name, images, buttons, charts, connection tables, shapes, even other components.</li>
+          <li>Select an item to set what it shows. In the value picker choose a <span className="text-sky-300">$parameter</span> (listed first) so it stays reusable, and set Show as, Label and <Ui>Look</Ui>.</li>
+          <li>Drag items to move them, drag the handles to resize, and set the component's overall W / H and background in the bar at the top.</li>
+          <li>It saves as you go. Press ← to go back to the list.</li>
+        </Steps>
+
+        <H>Where you can use a component</H>
+        <Table head={["Place", "How"]} rows={[
+          ["On a sheet or template page", <><Ui>+ Insert</Ui> → <Ui>Component</Ui>. Choose it, connect parameters (or leave them empty), then resize it like any block.</>],
+          ["Inside a free canvas", <>Arrange the canvas → <Ui>+ Add</Ui> → <Ui>Component</Ui>, then select it to connect parameters. Its box sets its size.</>],
+          ["On player tracker cards", <><Ui>Design the player tracker</Ui> → a card → <Ui>+ Add</Ui> → <Ui>Component</Ui>. One card design then works for every pinned sheet.</>],
+          ["Inside another component", <>Build a big “Character card” out of smaller ones like “HP bar” and “Stat block”. Change the small one and the big one updates.</>],
+          ["In other campaigns", <>Export it (import/export button) and import it elsewhere, or copy a sheet that uses it from My Library and the component comes along.</>],
+        ]} />
+
+        <H>Ideas</H>
+        <Bullets>
+          <li><b>Stat block</b>: six values (<Code>$str $dex $con $int $wis $cha</Code>) shown big with small labels above.</li>
+          <li><b>Attack row</b>: weapon name, damage dice and an Attack button, connected per weapon.</li>
+          <li><b>Resource bar</b>: one bar design reused for HP, mana, stamina and ammo with different connections.</li>
+          <li><b>Name plate</b>: portrait + name + HP bar for tracker cards and NPC sheets.</li>
+          <li><b>Condition pips</b>: pips with heart or star shapes for exhaustion, death saves or luck.</li>
+        </Bullets>
+        <ExampleComponentsButton />
+
+        <H>Good to know</H>
+        <Bullets>
+          <li>Players see a component only as far as each value's permissions allow; a hidden value stays hidden inside a component too.</li>
+          <li>A design is drawn to fit the space it's given, so it looks the same on a phone, just smaller.</li>
+          <li>Deleting a component leaves “[component removed]” wherever it was used.</li>
+          <li>Components belong to this campaign (or to your library). Changing one never affects another campaign.</li>
+        </Bullets>
+      </>
+    ),
+  },
+  {
+    id: "templates", title: "Templates & versions", icon: <Copy className="h-4 w-4" />, words: "template blueprint version history restore switch lock apply update existing sheets",
+    body: (
+      <>
+        <P>A template is a sheet used as a blueprint. Design it like a normal sheet (values, page, buttons) and every new sheet made from it starts as a copy.</P>
+        <Steps>
+          <li><Ui>Templates</Ui> → <Ui>New</Ui> (or <Ui>Add blank templates</Ui> for Character, NPC and Item at once).</li>
+          <li>Design it. The values' starting numbers become each new sheet's starting numbers.</li>
+          <li><Ui>Sheets</Ui> → <Ui>New</Ui> → choose the template. It's locked to that sheet from then on.</li>
+        </Steps>
+        <H>Updating sheets that already exist</H>
+        <P>On the template, open <Ui>Settings</Ui>. In the <Ui>Template · vN</Ui> section press <Ui>Save as new version</Ui>, then apply it to the sheets that use it in one of two ways.</P>
+        <Bullets>
+          <li><b>Values, formulas & buttons only</b>: each sheet keeps its own page and text.</li>
+          <li><b>Everything, including the layout</b>: the page is replaced, but text players wrote in template sections is kept.</li>
+        </Bullets>
+        <P>Either way, values players have entered are kept, and every sheet is snapshotted first so it can be restored. Tick <Ui>Remove values the template no longer has</Ui> to tidy up old ones.</P>
+        <H>Switching a sheet's template</H>
+        <P><Ui>Settings → Template → Change template…</Ui> asks first, clears the sheet and rebuilds it from the new template. You can undo it (the ↶ button or <Ui>Ctrl+Z</Ui>) or restore from <Ui>Version history</Ui>.</P>
+        <H>Version history</H>
+        <P>Every sheet keeps its past versions (template switches, template updates, restores, and any you make with <Ui>Save a version now</Ui>). Open <Ui>Settings → Version history</Ui> to restore one.</P>
+      </>
+    ),
+  },
+  {
+    id: "buttons", title: "Buttons, rolls & actions", icon: <Dices className="h-4 w-4" />, words: "button action roll dice damage heal message target adventure log",
+    body: (
+      <>
+        <P>A button runs an <b>action</b>: a short list of steps, no code needed. Rolls appear in the Adventure Log like any other roll.</P>
+        <Table head={["Step", "Does"]} rows={[
+          ["Roll", <>Rolls a formula with dice, e.g. <Code>1d20 + str</Code>, <Code>2d6 + @owner.str</Code>, <Code>4d6kh3</Code>. The result is saved as <Code>$r</Code> (rename it) for later steps.</>],
+          ["Change a value", <>Add to, subtract from or set a value: subtract <Code>$dmg</Code> from <Code>@target.hp</Code>, add 1 to <Code>uses</Code>.</>],
+          ["Message", <>Posts text; anything in {"{ }"} is worked out: <Code>{"{name} hits for {$dmg}!"}</Code></>],
+        ]} />
+        <Steps>
+          <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>Choose what it does…</Ui> → <Ui>New action…</Ui> (or a sheet's <Ui>Settings → Buttons</Ui>).</li>
+          <li>Name it, add steps, choose its colour and who can see and press it.</li>
+          <li>Save and insert. Buttons also go on canvases, tracker cards and components.</li>
+        </Steps>
+        <Tip><Code>@target</Code> means the token(s) currently targeted on the battlemap, so one “Attack” button can roll and take HP off whatever is targeted.</Tip>
+      </>
+    ),
+  },
+  {
+    id: "connections", title: "Connections & modifiers", icon: <Link2 className="h-4 w-4" />, words: "connect link owner items inventory modifier equipped bonus relation",
+    body: (
+      <>
+        <P>Connections tie sheets together: a sword to its owner, a familiar to its master, members to a party. Each side gets a name: the sword calls the character <Code>owner</Code>; the character calls its swords <Code>items</Code>.</P>
+        <Steps>
+          <li>Open a sheet's <Ui>Links</Ui> tab, choose a kind (Owned by, Owns, Is at, Ally of, Species, Part of, or <Ui>Custom…</Ui>) and pick the other sheet.</li>
+          <li>Formulas can now reach through: <Code>@owner.str</Code>, <Code>sum(@items.weight)</Code>, <Code>count(@items)</Code>.</li>
+          <li><Ui>+ Insert</Ui> → <Ui>Connections table</Ui> lists connected sheets with value columns (e.g. weight, qty).</li>
+        </Steps>
+        <H>Modifiers</H>
+        <P>Also in the Links tab: a sheet can change values on what it's connected to. E.g. a sword adds <Code>2</Code> to its owner's <Code>str</Code>, only while <Code>equipped</Code>. Remove the connection or untick equipped and the bonus goes away by itself.</P>
+      </>
+    ),
+  },
+  {
+    id: "privacy", title: "Who sees what", icon: <EyeOff className="h-4 w-4" />, words: "permission hidden secret gm only owners players visibility preview view as",
+    body: (
+      <>
+        <P>Hidden things are never sent to players who aren't allowed to see them. It isn't just hidden on screen.</P>
+        <Table head={["Level", "Where"]} rows={[
+          ["Whole sheet", <><Ui>Settings → Who can see this sheet</Ui>: name & portrait, and the rest of the sheet, separately.</>],
+          ["Owners", <><Ui>Settings → Owners</Ui>: players who own the sheet (they can edit what owners may edit).</>],
+          ["A section", <><Ui>+ Insert</Ui> → <Ui>Hidden section</Ui>, then ⚙ to choose who can see and edit it.</>],
+          ["Words in a sentence", <>Select words → <Ui>+ Insert</Ui> → <Ui>Secret words</Ui>, then 🔒.</>],
+          ["A single value", <>The <Ui>Values</Ui> tab → the value → <Ui>Who can see / change this value</Ui>.</>],
+          ["A button", "Who sees it / who can press it, in the action editor."],
+          ["A canvas / card item", <><Ui>Shown to</Ui> in the item's settings.</>],
+        ]} />
+        <P>Audiences are <b>Everyone</b>, <b>Owners + GM</b>, <b>GM only</b>, or <b>specific people</b>.</P>
+        <Tip>Use <Ui>View as …</Ui> at the top of a sheet (or <Ui>Preview as …</Ui> in the campaign panel) to see the sheets, tracker and tokens exactly as a player does.</Tip>
+      </>
+    ),
+  },
+  {
+    id: "tracker", title: "Player tracker & tokens", icon: <LayoutPanelTop className="h-4 w-4" />, words: "tracker card pin token battlemap map bars place drag",
+    body: (
+      <>
+        <H>The player tracker</H>
+        <Steps>
+          <li>Pin a sheet (the pin icon in the Sheets list) to show it in the tracker.</li>
+          <li><Ui>Design the player tracker</Ui> (or the ⚙ at the end of the tracker): choose where it sits (top, left, right, bottom) and its size.</li>
+          <li>Edit the card design with the layout editor: portrait, name, bars, values, buttons, last roll, components. Make several cards and choose which kind of sheet (or which sheet) uses which.</li>
+        </Steps>
+        <P>Clicking a card opens the sheet; bars and buttons on the card work directly.</P>
+        <H>Tokens</H>
+        <Bullets>
+          <li>Drag a sheet from the list onto the map, or press its map-pin icon. Any sheet can be a token.</li>
+          <li>Tokens show the sheet's portrait and live bars. Set the default bars per kind in the tracker designer, or per sheet in <Ui>Settings → Bars on the battlemap</Ui>. Use 🖌 to style them.</li>
+          <li>Click a token's bar to change the value. The sheet and tracker follow.</li>
+        </Bullets>
+      </>
+    ),
+  },
+  {
+    id: "libraries", title: "Libraries, copies & sharing", icon: <Library className="h-4 w-4" />, words: "library admin my library import export copy share campaign separate",
+    body: (
+      <>
+        <Bullets>
+          <li><b>My Library → Agnostic</b>: your own Characters, Items and Species to reuse in any of your Agnostic campaigns. <b>Admin → Agnostic</b> is the site-wide one.</li>
+          <li>In a campaign, <Ui>Bring in from My Library / Admin</Ui> copies a sheet or template in, along with the components it uses. The copy is independent: editing it never changes the library or other campaigns.</li>
+          <li>The import/export button (⬇ next to the tabs) shares templates, components and tracker cards as a file between campaigns or with friends.</li>
+          <li>Agnostic content is completely separate from the other systems, and everything the GM edits stays in the campaign it was made in.</li>
+        </Bullets>
+      </>
+    ),
+  },
+  {
+    id: "formulas", title: "Formula cheat sheet", icon: <Sigma className="h-4 w-4" />, words: "formula math function reference dice syntax if sum min max floor",
+    body: (
+      <>
+        <P>You rarely need to type these, because the formula builder inserts values for you, but here is everything it understands.</P>
+        <Table head={["Write", "Means"]} rows={[
+          [<Code>str</Code>, "The value with key str on this sheet (also @str)."],
+          [<Code>@owner.str</Code>, "str on the sheet connected as owner."],
+          [<Code>sum(@items.weight)</Code>, "All connected items' weights, added."],
+          [<Code>$dmg</Code>, "A result from an earlier action step (or a component parameter)."],
+          [<Code>1d20 + 5</Code>, "Dice (buttons only): 2d6, d%, 4d6kh3 (keep highest 3), 2d20kl1 (keep lowest)."],
+          [<Code>+ - * / % ^</Code>, "Maths; ( ) for grouping."],
+          [<Code>{"== != < <= > >="}</Code>, "Comparisons; && || ! for and / or / not."],
+          [<Code>a ? b : c</Code>, "If a then b else c."],
+        ]} />
+        <H>Functions</H>
+        <Table rows={[
+          [<Code>floor ceil round(x, d) abs</Code>, "Rounding and absolute value."],
+          [<Code>min max clamp(x, lo, hi)</Code>, "Limits."],
+          [<Code>sum count avg</Code>, "Lists (several connected sheets)."],
+          [<Code>sqrt pow</Code>, "Roots and powers."],
+          [<Code>if(cond, yes, no)</Code>, "Choice."],
+          [<Code>concat(a, b, …)</Code>, "Join text."],
+        ]} />
+        <P>Examples: <Code>floor((str - 10) / 2)</Code> (a modifier), <Code>10 + con * 2</Code> (max HP), <Code>{'if(hp <= 0, "Down", "Up")'}</Code>.</P>
+      </>
+    ),
+  },
+];
+
+// --------------------------------------------------------------------------- dialog
+export function AgGuideDialog({ initial = "start", onClose }: { initial?: GuideTopic; onClose: () => void }) {
+  const [topic, setTopic] = useState<GuideTopic>(initial);
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    openGuideFn = (t) => { if (t) setTopic(t); setQ(""); };
+    return () => { openGuideFn = null; };
+  }, []);
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? TOPICS.filter((t) => `${t.title} ${t.words}`.toLowerCase().includes(s)) : TOPICS;
+  }, [q]);
+  const current = TOPICS.find((t) => t.id === topic) ?? TOPICS[0];
+  const idx = TOPICS.indexOf(current);
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="bg-stone-900 border-stone-700 p-0 max-w-4xl w-[calc(100vw-12px)] h-[min(88vh,820px)] flex flex-col overflow-hidden gap-0" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-guide">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-stone-800 shrink-0 pr-10">
+          <BookOpen className="h-4 w-4 text-amber-400" />
+          <DialogTitle className="text-stone-100 text-base">Agnostic guide</DialogTitle>
+          <div className="relative ml-auto w-40 sm:w-56">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the guide…" className="w-full h-8 pl-7 pr-6 rounded bg-stone-950 border border-stone-700 text-sm text-stone-100" data-testid="ag-guide-search" />
+            {q && <button type="button" onClick={() => setQ("")} className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 grid place-items-center text-stone-500"><X className="h-3 w-3" /></button>}
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
+          <nav className="shrink-0 sm:w-56 border-b sm:border-b-0 sm:border-r border-stone-800 flex sm:flex-col gap-0.5 p-1.5 overflow-x-auto sm:overflow-y-auto no-scrollbar">
+            {shown.map((t) => (
+              <button key={t.id} type="button" onClick={() => setTopic(t.id)} className={`shrink-0 h-9 px-2.5 rounded text-left text-[13px] inline-flex items-center gap-2 ${t.id === topic ? "bg-amber-600/25 text-amber-100" : "text-stone-300 hover:bg-stone-800"}`} data-testid={`ag-guide-topic-${t.id}`}>
+                <span className={t.id === topic ? "text-amber-400" : "text-stone-500"}>{t.icon}</span><span className="whitespace-nowrap">{t.title}</span>
+              </button>
+            ))}
+            {!shown.length && <div className="text-xs text-stone-500 p-2">Nothing matches.</div>}
+          </nav>
+          <article className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5" key={current.id} data-testid={`ag-guide-body-${current.id}`}>
+            <h2 className="text-lg font-semibold text-stone-100 flex items-center gap-2"><span className="text-amber-400">{current.icon}</span>{current.title}</h2>
+            {current.body}
+            <div className="flex justify-between pt-4 pb-2 border-t border-stone-800 mt-4">
+              {idx > 0 ? <button type="button" onClick={() => setTopic(TOPICS[idx - 1].id)} className="text-xs text-stone-400 hover:text-stone-100">← {TOPICS[idx - 1].title}</button> : <span />}
+              {idx < TOPICS.length - 1 && <button type="button" onClick={() => setTopic(TOPICS[idx + 1].id)} className="text-xs text-amber-300 hover:text-amber-200" data-testid="ag-guide-next">{TOPICS[idx + 1].title} →</button>}
+            </div>
+          </article>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

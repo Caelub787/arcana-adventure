@@ -114,6 +114,13 @@ export const agnosticSettings = pgTable("agnostic_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+/** Per-scope bookkeeping (e.g. which built-in components were already added, so deleting one sticks). */
+export const agnosticScopeMeta = pgTable("agnostic_scope_meta", {
+  scopeKey: text("scope_key").primaryKey(),
+  seedLevel: integer("seed_level").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 /** Boot schema guard statements (server/app.ts runs these idempotently). */
 export const AGNOSTIC_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS agnostic_notes (
@@ -222,6 +229,11 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS agnostic_settings (
     campaign_id varchar PRIMARY KEY,
     settings jsonb NOT NULL,
+    updated_at timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS agnostic_scope_meta (
+    scope_key text PRIMARY KEY,
+    seed_level integer NOT NULL DEFAULT 0,
     updated_at timestamp NOT NULL DEFAULT now()
   )`,
   // Battlemap: a token can stand for any Agnostic note (portrait + live bars).

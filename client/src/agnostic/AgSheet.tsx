@@ -14,6 +14,7 @@ import { ConnectionsPanel } from "./ConnectionsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { Portrait, CommitInput, uploadImage } from "./widgets";
 import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
+import { GuideButton } from "./AgGuide";
 
 type Tab = "sheet" | "fields" | "links" | "settings";
 
@@ -65,6 +66,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
             {!connected && <span className="text-[10px] text-red-300 inline-flex items-center gap-1" title="Reconnecting — your edits will sync when it's back"><WifiOff className="h-3 w-3" /> offline</span>}
             {lastUndo && <button type="button" onClick={() => undoLast(scopeKeyStr)} className="h-7 px-1.5 rounded text-[11px] text-stone-400 hover:text-stone-100 hover:bg-stone-800 inline-flex items-center gap-1" title={`Undo ${lastUndo.label} (Ctrl+Z)`}><Undo2 className="h-3.5 w-3.5" /></button>}
             {realViewer.isGM && <PreviewSelect />}
+            <GuideButton compact topic={tab === "fields" ? "values" : tab === "links" ? "connections" : tab === "settings" ? "templates" : "sheets"} />
           </div>
         </div>
         {previewUserId && <div className="px-3 py-1 text-[11px] bg-sky-950/60 text-sky-200 border-b border-sky-900 shrink-0">Previewing as {state.members.find((m) => m.userId === previewUserId)?.name ?? "player"} — exactly what they can see and change.</div>}

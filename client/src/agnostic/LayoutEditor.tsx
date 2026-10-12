@@ -6,12 +6,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Trash2, Copy, ArrowUp, ArrowDown, Type, Image as ImageIcon, User, Hash, BarChart3, Square, Link2, Dices, Puzzle, SlidersHorizontal, Gauge, X, AlignLeft, FileText,
 } from "lucide-react";
-import type { AgAudience, AgLayout, AgLayoutItem, AgWidget } from "@shared/agnostic/types";
+import type { AgAudience, AgLayout, AgLayoutItem, AgLook, AgWidget } from "@shared/agnostic/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAg } from "./hooks";
 import { WidgetView, type LayoutRenderOpts } from "./widgets";
 import { AudienceSelect, ColorInput, RefPicker } from "./pickers";
 import { ActionPicker } from "./ActionEditor";
+import { LookEditor, type LookKind } from "./look";
+import { mergeLook } from "./lookUtil";
+
+const lookKindFor = (display: string, _inline: boolean): LookKind =>
+  (["bar", "pips", "dial", "value", "input", "badge", "label"].includes(display) ? display : "value") as LookKind;
 
 const SNAP = 4;
 const snap = (v: number) => Math.round(v / SNAP) * SNAP;
@@ -270,10 +275,10 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
               {DISPLAYS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
             </select>
             <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!w.showLabel} onChange={(e) => onWidget({ showLabel: e.target.checked } as any)} /> Label</label>
-            <ColorInput value={w.color} onChange={(color) => onWidget({ color } as any)} />
+            <select value={w.align ?? "left"} onChange={(e) => onWidget({ align: e.target.value } as any)} className="h-7 bg-stone-900 border border-stone-700 rounded text-xs px-1" title="Position in its box"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>
           </div>
           <div className={row}><span className={lbl}>Label</span><input value={w.label ?? ""} placeholder="(field name)" onChange={(e) => onWidget({ label: e.target.value } as any)} className="h-7 flex-1 min-w-[100px] bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
-          <TextStyle w={w} onWidget={onWidget} />
+          <LookSection look={mergeLook({ color: w.color, fontSize: w.fontSize }, w.look)} kind={lookKindFor(w.display, false)} onChange={(look) => onWidget({ look, color: undefined, fontSize: undefined } as any)} />
         </>
       )}
       {w.kind === "text" && (
@@ -299,6 +304,7 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
         <>
           <div className={row}><span className={lbl}>Action</span><div className="flex-1 min-w-[140px]"><ActionPicker noteId={noteId} value={w.actionId} onChange={(actionId) => onWidget({ actionId } as any)} /></div></div>
           <div className={row}><span className={lbl}>Text</span><input value={w.label ?? ""} placeholder="(action name)" onChange={(e) => onWidget({ label: e.target.value } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
+          <LookSection look={w.look} kind="button" onChange={(look) => onWidget({ look } as any)} />
         </>
       )}
       {w.kind === "chart" && (
@@ -310,12 +316,14 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
           </div>
           <RefList noteId={noteId} params={params} refs={w.refs} onChange={(refs) => onWidget({ refs } as any)} />
           <div className={row}><span className={lbl}>Scale max</span><div className="flex-1 min-w-[140px]"><RefPicker noteId={noteId} value={w.maxRef} params={params} placeholder="(auto)" onChange={(maxRef) => onWidget({ maxRef } as any)} /></div></div>
+          <LookSection look={w.look} kind="chart" onChange={(look) => onWidget({ look } as any)} />
         </>
       )}
       {w.kind === "links" && (
         <>
           <div className={row}><span className={lbl}>Connection</span><input value={w.label} placeholder="e.g. items" onChange={(e) => onWidget({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
           <div className={row}><span className={lbl}>Columns</span><input value={(w.columns ?? []).join(", ")} placeholder="weight, qty" onChange={(e) => onWidget({ columns: e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
+          <LookSection look={w.look} kind="links" onChange={(look) => onWidget({ look } as any)} />
         </>
       )}
       {w.kind === "shape" && (
@@ -335,7 +343,7 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
             </select>
           </div>
           {(state.components.get(w.componentId)?.params ?? []).map((p) => (
-            <div key={p} className={row}><span className={`${lbl} font-mono text-sky-300`}>${p}</span><div className="flex-1 min-w-[140px]"><RefPicker noteId={noteId} params={params} value={w.bindings?.[p]} onChange={(ref) => onWidget({ bindings: { ...(w.bindings ?? {}), [p]: ref } } as any)} /></div></div>
+            <div key={p} className={row}><span className={`${lbl} font-mono text-sky-300`}>${p}</span><div className="flex-1 min-w-[140px]"><RefPicker noteId={noteId} params={params} value={w.bindings?.[p]} placeholder={`(the sheet's ${p})`} onChange={(ref) => onWidget({ bindings: { ...(w.bindings ?? {}), [p]: ref } } as any)} /></div></div>
           ))}
         </>
       )}
@@ -344,6 +352,16 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
         <span className="text-[10px] text-stone-500">Values stay protected by their own permissions either way.</span>
       </div>
     </div>
+  );
+}
+
+/** The full look panel for an item; its size is the item's box, so no width/height here. */
+function LookSection({ look, kind, onChange }: { look: AgLook | undefined; kind: LookKind; onChange: (l: AgLook) => void }) {
+  return (
+    <details className="rounded border border-stone-800 px-1.5" data-testid="ag-layout-look">
+      <summary className="text-[11px] text-stone-300 cursor-pointer select-none py-1">Look — colours, text, label, style</summary>
+      <LookEditor look={look} onChange={onChange} kind={kind} inCanvas />
+    </details>
   );
 }
 

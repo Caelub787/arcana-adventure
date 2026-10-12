@@ -12,6 +12,8 @@ import { useAg, useAgMaybe } from "./hooks";
 import { LayoutView } from "./widgets";
 import { LayoutEditor } from "./LayoutEditor";
 import { ColorInput, RefPicker } from "./pickers";
+import { LookButton } from "./look";
+import { GuideButton } from "./AgGuide";
 import type { AgTokenBar } from "@shared/agnostic/types";
 
 export interface RollFeedLike { characterName?: string; label?: string; total?: number; ts?: number; timestamp?: number }
@@ -109,7 +111,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl w-[calc(100vw-16px)] max-h-[92vh] overflow-y-auto" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-tracker-designer">
-        <DialogHeader><DialogTitle className="text-stone-100">Player tracker</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="text-stone-100 flex items-center gap-1">Player tracker <GuideButton compact topic="tracker" /></DialogTitle></DialogHeader>
         <div className="space-y-4 text-stone-200 text-sm">
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1.5 text-xs">Where
@@ -169,10 +171,9 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
                     {sheets.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
                   </select>
                 </div>
-                {previewId ? (
-                  <LayoutEditor key={card.id} layout={card.layout} allowLastRoll opts={{ noteId: previewId, lastRoll: { label: "Attack", total: 17, ts: Date.now() } }} maxWidth={560}
-                    onChange={(layout, final) => { if (final) updateCard({ layout }); }} />
-                ) : <div className="text-xs text-stone-500">Create a sheet to design against.</div>}
+                {!previewId && <div className="text-[11px] text-stone-500">No sheets yet, so values show as “—”. You can still design the card.</div>}
+                <LayoutEditor key={card.id} layout={card.layout} allowLastRoll opts={{ noteId: previewId, lastRoll: { label: "Attack", total: 17, ts: Date.now() } }} maxWidth={560}
+                  onChange={(layout, final) => { if (final) updateCard({ layout }); }} />
                 <div className="text-[10px] text-stone-500">Bars and values pick fields by key (e.g. <span className="font-mono">hp</span>), so one card works for every sheet that has them. Players only ever see values their permissions allow.</div>
               </div>
             )}
@@ -208,6 +209,8 @@ function TokenBarDefaults({ previewId, types }: { previewId: string; types: stri
                 {previewId ? <div className="w-32"><RefPicker noteId={previewId} value={b.max} placeholder="(no max)" onChange={(max) => save(ty, bars.map((x, j) => (j === i ? { ...x, max } : x)))} /></div>
                   : <input defaultValue={b.max ?? ""} onBlur={(e) => save(ty, bars.map((x, j) => (j === i ? { ...x, max: e.target.value || undefined } : x)))} className="h-7 w-28 bg-stone-950 border border-stone-700 rounded px-1 text-xs" />}
                 <ColorInput value={b.color} onChange={(color) => save(ty, bars.map((x, j) => (j === i ? { ...x, color } : x)))} />
+                <label className="text-[11px] inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!b.showNumbers} onChange={(e) => save(ty, bars.map((x, j) => (j === i ? { ...x, showNumbers: e.target.checked } : x)))} />numbers</label>
+                <LookButton look={b.look} onChange={(look) => save(ty, bars.map((x, j) => (j === i ? { ...x, look } : x)))} kind="tokenBar" title="Bar look: thickness, width, colours, style" />
                 <button type="button" onClick={() => save(ty, bars.filter((_, j) => j !== i))} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
               </div>
             ))}

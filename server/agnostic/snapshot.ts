@@ -36,8 +36,9 @@ export async function recordVersion(store: ScopeStore, noteId: string, reason: s
 }
 
 /** Give every region/action/field/modifier a new id; return the remapped content + id map. */
-export function reid(snap: AgSnapshot, newNoteId: string, fromTemplate: boolean) {
-  const idMap = new Map<string, string>();
+export function reid(snap: AgSnapshot, newNoteId: string, fromTemplate: boolean, extraIds?: Map<string, string>) {
+  // extraIds: ids that already have a home in the target scope (copied components).
+  const idMap = new Map<string, string>(extraIds ?? []);
   const fresh = (old: string) => { const n = randomUUID(); idMap.set(old, n); return n; };
   const fields: AgField[] = snap.fields.map((f) => ({
     ...f, id: fresh(f.id), noteId: newNoteId,
@@ -112,11 +113,11 @@ export async function writeContent(
 /** Create a brand-new note in `store` from a snapshot (template, copy, import). */
 export async function createFromSnapshot(
   store: ScopeStore, snap: AgSnapshot, overrides: Partial<AgNote>, cs: ChangeSet,
-  opts: { fromTemplateId?: string | null } = {},
+  opts: { fromTemplateId?: string | null; componentIds?: Map<string, string> } = {},
 ): Promise<AgNote> {
   const id = randomUUID();
   const fromTemplate = !!opts.fromTemplateId;
-  const content = reid(snap, id, fromTemplate || snap.note.isTemplate);
+  const content = reid(snap, id, fromTemplate || snap.note.isTemplate, opts.componentIds);
   const now = Date.now();
   const note: AgNote = {
     ...snap.note,
@@ -129,6 +130,40 @@ export async function createFromSnapshot(
   await store.putNote(note, cs);
   await writeContent(store, id, content, cs);
   return store.notes.get(id)!;
+}
+
+/**
+ * A sheet is being copied in from another scope (My Library → campaign…):
+ * bring the components it uses along. One with the same name already here is
+ * reused (every scope has its own "HP bar"); otherwise a copy is made.
+ * Returns old id → id in `store`.
+ */
+export async function carryComponents(source: ScopeStore, store: ScopeStore, snap: AgSnapshot, cs: ChangeSet): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const pending: string[] = [];
+  for (const state of Object.values(snap.docs)) pending.push(...Array.from(docs.referencedIds(state).components));
+  const byName = new Map(Array.from(store.components.values()).map((c) => [c.name.toLowerCase(), c.id]));
+  while (pending.length) {
+    const oldId = pending.shift()!;
+    if (map.has(oldId) || store.components.has(oldId)) continue;
+    const src = source.components.get(oldId);
+    if (!src) continue;
+    const existing = byName.get(src.name.toLowerCase());
+    if (existing) { map.set(oldId, existing); continue; }
+    const newId = randomUUID();
+    map.set(oldId, newId);
+    // Components can hold components: carry those too, then point at the copies.
+    for (const it of src.layout.items) if (it.widget.kind === "component" && it.widget.componentId) pending.push(it.widget.componentId);
+    await store.putComponent({ ...JSON.parse(JSON.stringify(src)), id: newId, scope: store.scope.kind, scopeId: store.scope.id }, cs);
+    byName.set(src.name.toLowerCase(), newId);
+  }
+  for (const newId of Array.from(new Set(map.values()))) {
+    const c = store.components.get(newId);
+    if (!c || !c.layout.items.some((it) => it.widget.kind === "component" && map.has(it.widget.componentId))) continue;
+    const layout = { ...c.layout, items: c.layout.items.map((it) => it.widget.kind === "component" && map.has(it.widget.componentId) ? { ...it, widget: { ...it.widget, componentId: map.get(it.widget.componentId)! } } : it) };
+    await store.putComponent({ ...c, layout }, cs);
+  }
+  return map;
 }
 
 export async function restoreSnapshot(store: ScopeStore, noteId: string, snap: AgSnapshot, cs: ChangeSet) {

@@ -6,6 +6,7 @@ import type { AgScope } from "@shared/agnostic/types";
 import { AgScopeProvider } from "./hooks";
 import { AgWindowsProvider, AgWindowStack, useAgWindows } from "./AgWindows";
 import { AgNotesBrowser } from "./AgNotesBrowser";
+import { GuideButton } from "./AgGuide";
 
 export const AG_LIBRARY_TYPES = ["character", "npc", "item", "species"];
 
@@ -25,9 +26,12 @@ export function AgLibrary({ scope }: { scope: AgScope }) {
   return (
     <AgWindowsProvider>
       <div className="space-y-2 flex-1 min-h-0 flex flex-col">
-        <p className="text-xs text-stone-400 shrink-0">
-          {scope.kind === "admin" ? "Agnostic admin library" : "Your Agnostic library"} — separate from every other system. Make templates for Characters, NPCs, Items and Species, then bring them into any Agnostic campaign.
-        </p>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <p className="text-xs text-stone-400 flex-1 min-w-[220px]">
+            {scope.kind === "admin" ? "Agnostic admin library" : "Your Agnostic library"} — separate from every other system. Make templates for Characters, NPCs, Items and Species, then bring them into any Agnostic campaign.
+          </p>
+          <GuideButton topic="libraries" label="How Agnostic works" />
+        </div>
         <div className="flex-1 min-h-0"><Inner scope={scope} /></div>
       </div>
     </AgWindowsProvider>

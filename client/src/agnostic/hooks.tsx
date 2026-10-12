@@ -136,10 +136,10 @@ export function connectionLabels(state: ScopeState, noteId: string): string[] {
 export function resolveRef(state: ScopeState, noteId: string, ref: string | undefined | null, params?: Record<string, string>): AgField[] {
   if (!ref) return [];
   let r = ref.trim();
-  if (r.startsWith("$") && params) {
-    const p = params[r.slice(1).toLowerCase()];
-    if (!p) return [];
-    r = p.trim();
+  if (r.startsWith("$")) {
+    // A parameter left unconnected uses this sheet's value with the same key.
+    const name = r.slice(1).toLowerCase();
+    r = (params?.[name] || name).trim();
   }
   let start = noteId;
   const abs = /^@\{([^}]+)\}\.(.+)$/.exec(r);

@@ -11,6 +11,7 @@ import type {
 import { scopeKey } from "@shared/agnostic/types";
 import { AgComputer, type Computed } from "@shared/agnostic/compute";
 import * as repo from "./repo";
+import { seedBuiltins } from "./builtins";
 
 export interface ChangeSet {
   notes: Set<string>;
@@ -65,6 +66,8 @@ export class ScopeStore {
     rows.actions.forEach((a) => s.actions.set(a.id, a));
     rows.components.forEach((c) => s.components.set(c.id, c));
     s.settings = rows.settings;
+    // Built-in components (HP bar, HP, Max HP). Never let this block a scope from opening.
+    await seedBuiltins(s).catch((e) => console.error("[agnostic] couldn't add built-in components", e));
     s.recompute();
     return s;
   }

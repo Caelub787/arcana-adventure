@@ -32,7 +32,7 @@
 
 /* Columns stack when the sheet is narrow (phones, small panels). */
 .ag-columns-wrap { container-type: inline-size; }
-.ag-columns > div { display: grid; grid-template-columns: repeat(var(--ag-cols, 2), minmax(0, 1fr)); gap: 14px; }
+.ag-columns > div { display: grid; grid-template-columns: var(--ag-cols-tpl, repeat(var(--ag-cols, 2), minmax(0, 1fr))); gap: var(--ag-gap, 14px); }
 .ag-column { min-width: 0; border-left: 1px dashed transparent; padding-left: 2px; }
 .ProseMirror-focused .ag-column, .ag-columns-wrap:hover .ag-column { border-left-color: rgba(120,113,108,.35); }
 @container (max-width: 520px) { .ag-columns > div { grid-template-columns: minmax(0, 1fr); } }
@@ -44,10 +44,32 @@
 .ag-prose .ProseMirror-selectednode { outline: 2px solid rgba(245,158,11,.7); border-radius: 4px; }
 .ag-prose [data-node-view-wrapper] { white-space: normal; }
 
+/* Resize handles on sheet blocks: shown on hover (always on touch screens). */
+.ag-resize { opacity: 0; transition: opacity .15s; z-index: 5; }
+/* A block's toolbar always sits above the resize handles of the block before it. */
+.ag-node-tools { z-index: 20 !important; }
+.group:hover .ag-resize, .ag-resize:active { opacity: 1; }
+
+/* Images: resizable (drag the sides / corners) and alignable. */
+.ag-prose [data-resize-container] { max-width: 100%; }
+.ag-prose [data-resize-container]:has(img[data-align="center"]) { justify-content: center; }
+.ag-prose [data-resize-container]:has(img[data-align="right"]) { justify-content: flex-end; }
+.ag-prose [data-resize-wrapper] { max-width: 100%; }
+.ag-prose img { max-width: 100%; height: auto; border-radius: 6px; }
+.ag-prose img[data-align="center"] { margin-left: auto; margin-right: auto; }
+.ag-prose [data-resize-handle] { z-index: 5; opacity: 0; transition: opacity .15s; }
+.ag-prose [data-resize-wrapper]:hover [data-resize-handle], .ag-prose [data-resize-state="true"] [data-resize-handle] { opacity: 1; }
+.ag-prose [data-resize-handle="left"], .ag-prose [data-resize-handle="right"] { width: 8px; cursor: ew-resize; }
+.ag-prose [data-resize-handle="left"]::after, .ag-prose [data-resize-handle="right"]::after { content: ""; position: absolute; top: 50%; left: 2px; width: 4px; height: 28px; margin-top: -14px; border-radius: 9px; background: rgba(245,158,11,.9); }
+.ag-prose [data-resize-handle="bottom-right"], .ag-prose [data-resize-handle="bottom-left"] { width: 12px; height: 12px; background: #f59e0b; border: 1px solid #1c1917; border-radius: 2px; }
+.ag-prose [data-resize-handle="bottom-right"] { cursor: nwse-resize; }
+.ag-prose [data-resize-handle="bottom-left"] { cursor: nesw-resize; }
+
 /* Touch screens have no hover: keep block tools reachable. */
 .ag-touch-only { display: none; }
 @media (hover: none) {
   .ag-node-tools { opacity: 1 !important; }
+  .ag-resize, .ag-prose [data-resize-handle] { opacity: .85 !important; }
   .ag-node-body { padding-top: 22px; }
   .ag-touch-only { display: inline; }
 }

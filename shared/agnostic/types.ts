@@ -71,6 +71,52 @@ export const agTypeLabel = (type: string) =>
 // ---------------------------------------------------------------------------
 // Entities
 // ---------------------------------------------------------------------------
+/**
+ * How something looks: size, colours, text, style. Every insert on a sheet,
+ * every canvas / tracker / component item and every token bar carries one,
+ * so anything can be resized and restyled without touching the data.
+ * All optional — missing keys fall back to each widget's defaults.
+ */
+export interface AgLook {
+  /** Blocks on a sheet: width as % of the line (10–100). */
+  width?: number;
+  align?: "left" | "center" | "right";
+  /** Bar thickness / pip size / dial size / chart & table height / button height (px). */
+  height?: number;
+  /** Buttons & inline values: minimum width (px). */
+  minWidth?: number;
+  /** Main colour: bar fill, pips, dial ring, chart, button, badge border. */
+  color?: string;
+  /** The empty part of bars / pips / dials. */
+  track?: string;
+  textColor?: string;
+  labelColor?: string;
+  /** Background and outline around the whole block. */
+  bg?: string;
+  outline?: string;
+  /** The widget's own border (bar, badge, button, table). */
+  border?: string;
+  radius?: number;
+  padding?: number;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  labelPos?: "above" | "left" | "right" | "below" | "inside" | "none";
+  /** What numbers a bar / dial shows. */
+  numbers?: "fraction" | "value" | "percent" | "none";
+  barStyle?: "solid" | "gradient" | "striped" | "segments" | "glow";
+  /** Bars can grow from the right or vertically. */
+  direction?: "right" | "left" | "up";
+  shape?: "circle" | "square" | "diamond" | "heart" | "star";
+  /** Columns: gap between columns (px) and relative widths ("1:2"). */
+  gap?: number;
+  ratio?: string;
+  /** Buttons: show the dice icon. */
+  icon?: boolean;
+  /** Overall zoom for components / canvases placed on a sheet (0.25–4). */
+  scale?: number;
+}
+
 export interface AgTokenBar {
   id: string;
   /** FieldRef of the current value (e.g. "hp"). */
@@ -80,6 +126,7 @@ export interface AgTokenBar {
   color: string;
   showNumbers?: boolean;
   label?: string;
+  look?: AgLook;
 }
 
 export interface AgTemplateMeta {
@@ -227,16 +274,16 @@ export interface AgActionResult {
 export type AgFieldDisplay = "value" | "input" | "bar" | "pips" | "badge" | "dial" | "label";
 
 export type AgWidget =
-  | { kind: "field"; ref: string; maxRef?: string; display: AgFieldDisplay; label?: string; showLabel?: boolean; color?: string; fontSize?: number; align?: "left" | "center" | "right" }
-  | { kind: "text"; text: string; fontSize?: number; color?: string; bold?: boolean; align?: "left" | "center" | "right" }
-  | { kind: "richtext"; regionId: string }
-  | { kind: "image"; src?: string | null; ref?: string; fit?: "cover" | "contain"; radius?: number }
-  | { kind: "portrait"; radius?: number }
-  | { kind: "name"; fontSize?: number; color?: string; align?: "left" | "center" | "right" }
-  | { kind: "button"; actionId: string; label?: string }
-  | { kind: "chart"; chart: "bar" | "radar" | "line" | "pie"; refs: string[]; maxRef?: string }
-  | { kind: "links"; label: string; columns: string[] }
-  | { kind: "component"; componentId: string; bindings: Record<string, string> }
+  | { kind: "field"; ref: string; maxRef?: string; display: AgFieldDisplay; label?: string; showLabel?: boolean; color?: string; fontSize?: number; align?: "left" | "center" | "right"; look?: AgLook }
+  | { kind: "text"; text: string; fontSize?: number; color?: string; bold?: boolean; align?: "left" | "center" | "right"; look?: AgLook }
+  | { kind: "richtext"; regionId: string; look?: AgLook }
+  | { kind: "image"; src?: string | null; ref?: string; fit?: "cover" | "contain"; radius?: number; look?: AgLook }
+  | { kind: "portrait"; radius?: number; look?: AgLook }
+  | { kind: "name"; fontSize?: number; color?: string; align?: "left" | "center" | "right"; look?: AgLook }
+  | { kind: "button"; actionId: string; label?: string; look?: AgLook }
+  | { kind: "chart"; chart: "bar" | "radar" | "line" | "pie"; refs: string[]; maxRef?: string; look?: AgLook }
+  | { kind: "links"; label: string; columns: string[]; look?: AgLook }
+  | { kind: "component"; componentId: string; bindings: Record<string, string>; look?: AgLook }
   | { kind: "shape"; shape: "rect" | "circle" | "line"; color: string; border?: string; radius?: number; opacity?: number }
   | { kind: "lastRoll" };
 
@@ -261,7 +308,12 @@ export interface AgLayout {
   items: AgLayoutItem[];
 }
 
-/** A reusable component: a small layout with named parameters ($hp, $max…). */
+/**
+ * A reusable component: a small layout with named parameters ($hp, $max…).
+ * A parameter left unconnected where the component is placed uses the
+ * sheet's own value with the same key — so "$hp" just works on any sheet
+ * that has an "hp" value.
+ */
 export interface AgComponentDef {
   id: string;
   scope: AgScopeKind;

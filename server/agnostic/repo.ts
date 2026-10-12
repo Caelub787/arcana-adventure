@@ -5,7 +5,7 @@ import { and, eq, inArray, or, desc } from "drizzle-orm";
 import { db } from "../db";
 import {
   agnosticNotes, agnosticFields, agnosticRegions, agnosticLinks, agnosticModifiers, agnosticActions,
-  agnosticComponents, agnosticSettings, agnosticDocs, agnosticVersions,
+  agnosticComponents, agnosticSettings, agnosticDocs, agnosticVersions, agnosticScopeMeta,
 } from "@shared/agnostic-schema";
 import type {
   AgAction, AgCampaignSettings, AgComponentDef, AgField, AgLink, AgModifier, AgNote, AgRegion, AgScope, AgSnapshot, AgVersionMeta,
@@ -144,6 +144,16 @@ export async function saveSettings(campaignId: string, settings: AgCampaignSetti
     .onConflictDoUpdate({ target: agnosticSettings.campaignId, set: { settings, updatedAt: new Date() } });
 }
 
+/** How many rounds of built-in content a scope has already received (deleting a built-in then sticks). */
+export async function getSeedLevel(scopeKey: string): Promise<number> {
+  const [row] = await db.select({ seedLevel: agnosticScopeMeta.seedLevel }).from(agnosticScopeMeta).where(eq(agnosticScopeMeta.scopeKey, scopeKey));
+  return row?.seedLevel ?? 0;
+}
+export async function setSeedLevel(scopeKey: string, seedLevel: number) {
+  await db.insert(agnosticScopeMeta).values({ scopeKey, seedLevel, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: agnosticScopeMeta.scopeKey, set: { seedLevel, updatedAt: new Date() } });
+}
+
 // --- documents -----------------------------------------------------------------
 export async function loadDoc(name: string): Promise<string | null> {
   const [row] = await db.select({ state: agnosticDocs.state }).from(agnosticDocs).where(eq(agnosticDocs.name, name));
@@ -192,4 +202,5 @@ export async function deleteAgnosticCampaignData(campaignId: string) {
   await db.delete(agnosticNotes).where(and(eq(agnosticNotes.scope, "campaign"), eq(agnosticNotes.scopeId, campaignId)));
   await db.delete(agnosticComponents).where(and(eq(agnosticComponents.scope, "campaign"), eq(agnosticComponents.scopeId, campaignId)));
   await db.delete(agnosticSettings).where(eq(agnosticSettings.campaignId, campaignId));
+  await db.delete(agnosticScopeMeta).where(eq(agnosticScopeMeta.scopeKey, `campaign:${campaignId}`));
 }
