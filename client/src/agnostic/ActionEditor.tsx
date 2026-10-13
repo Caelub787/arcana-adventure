@@ -3,10 +3,9 @@
 //   Change      @target.hp  subtract  $dmg
 //   Message     "{name} hits for {$dmg}!"
 import React, { useState } from "react";
-import { Plus, Trash2, Dices, ArrowDownUp, MessageSquare, ChevronDown, Pencil } from "lucide-react";
+import { Plus, Trash2, Dices, ArrowDownUp, MessageSquare, Pencil } from "lucide-react";
 import type { AgActionStep, AgAcl } from "@shared/agnostic/types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel, PickField, type SelItem } from "./float";
 import { useToast } from "@/hooks/use-toast";
 import { useAg } from "./hooks";
 import { FormulaInput } from "./FormulaBuilder";
@@ -14,30 +13,22 @@ import { AclEditor, ColorInput, RefPicker } from "./pickers";
 
 export function ActionPicker({ noteId, value, onChange }: { noteId: string; value: string; onChange: (id: string) => void }) {
   const { state } = useAg();
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string | null | "new">(null);
-  const actions = [...Array.from(state.actions.values())].filter((a) => a.noteId === noteId);
+  const actions = Array.from(state.actions.values()).filter((a) => a.noteId === noteId);
   const current = value ? state.actions.get(value) : undefined;
+  const items: SelItem[] = actions.sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({
+    id: a.id, name: a.name, icon: <span className="h-4 w-4 rounded-sm" style={{ background: a.color ?? "#92400e" }} />,
+    sub: (a.steps ?? []).map((st) => (st.type === "roll" ? `Roll ${st.expr}` : st.type === "modify" ? `${st.op} ${st.target}` : "Message")).join(" · ") || "No steps",
+  }));
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button type="button" className="h-8 sm:h-7 w-full px-2 rounded border border-stone-700 bg-stone-900 text-xs text-left text-stone-200 inline-flex items-center justify-between gap-1" data-testid="ag-action-picker">
-            <span className="truncate">{current?.name ?? <span className="text-stone-500">Choose what it does…</span>}</span>
-            <ChevronDown className="h-3 w-3 text-stone-500" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-60 p-1.5 bg-stone-900 border-stone-700" align="start">
-          {actions.map((a) => (
-            <div key={a.id} className="flex items-center gap-1">
-              <button type="button" onClick={() => { onChange(a.id); setOpen(false); }} className="flex-1 text-left px-2 h-8 rounded hover:bg-stone-800 text-sm text-stone-200 truncate">{a.name}</button>
-              <button type="button" onClick={() => { setOpen(false); setEditing(a.id); }} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-stone-200"><Pencil className="h-3 w-3" /></button>
-            </div>
-          ))}
-          <button type="button" onClick={() => { setOpen(false); setEditing("new"); }} className="w-full text-left px-2 h-8 rounded hover:bg-stone-800 text-sm text-amber-300 inline-flex items-center gap-1" data-testid="ag-action-new"><Plus className="h-3.5 w-3.5" /> New action…</button>
-        </PopoverContent>
-      </Popover>
-      {current && <button type="button" onClick={() => setEditing(current.id)} className="mt-1 text-[11px] text-amber-300 hover:underline">Edit “{current.name}”</button>}
+      <PickField
+        value={value} items={items} onChange={onChange} title="Choose what the button does" placeholder="Choose what it does…"
+        emptyText="This sheet has no actions yet." testId="ag-action-picker"
+        actions={(close) => <button type="button" onClick={() => { close(); setEditing("new"); }} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-action-new"><Plus className="h-4 w-4" /> New action…</button>}
+      />
+      {current && <button type="button" onClick={() => setEditing(current.id)} className="mt-1 text-[11px] text-amber-300 hover:underline inline-flex items-center gap-1"><Pencil className="h-3 w-3" /> Edit “{current.name}”</button>}
+      {!current && <button type="button" onClick={() => setEditing("new")} className="mt-1 text-[11px] text-amber-300 hover:underline inline-flex items-center gap-1"><Plus className="h-3 w-3" /> New action…</button>}
       {editing && (
         <ActionEditorDialog
           noteId={noteId}
@@ -80,9 +71,12 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
   };
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto" onKeyDown={(e) => e.stopPropagation()}>
-        <DialogHeader><DialogTitle className="text-stone-100">{actionId ? "Edit action" : "New action"}</DialogTitle></DialogHeader>
+    <AgPanel title={actionId ? `Edit action — ${existing?.name ?? ""}` : "New action"} onClose={onClose} width={520} height={640} testId="ag-action-editor"
+      footer={<>
+        {actionId && <button type="button" onClick={remove} className="h-9 px-3 rounded text-sm text-red-300 hover:bg-red-950 mr-auto">Delete</button>}
+        <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
+        <button type="button" onClick={save} disabled={saving || !name.trim()} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm disabled:opacity-50" data-testid="ag-action-save">Save</button>
+      </>}>
         <div className="space-y-3 text-stone-200">
           <div className="flex items-center gap-2">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Button name" className="h-9 flex-1 bg-stone-950 border border-stone-700 rounded px-2 text-sm" data-testid="ag-action-name" />
@@ -138,13 +132,7 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
               <button type="button" onClick={() => setSteps([...steps, { type: "message", text: "" }])} className="h-8 px-2 rounded bg-stone-800 text-xs inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" /> Message</button>
             </div>
           </div>
-          <div className="flex items-center gap-2 pt-1">
-            {actionId && <button type="button" onClick={remove} className="h-9 px-3 rounded text-sm text-red-300 hover:bg-red-950">Delete</button>}
-            <button type="button" onClick={onClose} className="ml-auto h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
-            <button type="button" onClick={save} disabled={saving || !name.trim()} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm disabled:opacity-50" data-testid="ag-action-save">Save</button>
-          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </AgPanel>
   );
 }

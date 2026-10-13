@@ -1,12 +1,13 @@
 // Small shared controls for the GM: who-can-see / who-can-edit pickers,
 // field reference pickers, colour inputs.
 import React, { useMemo, useState } from "react";
-import { Check, ChevronDown, Eye, Pencil, Users } from "lucide-react";
-import type { AgAcl, AgAudience, AgAudienceOrInherit } from "@shared/agnostic/types";
+import { Check, ChevronDown, Eye, Pencil, Users, Puzzle, Hash } from "lucide-react";
+import type { AgAcl, AgAudience, AgAudienceOrInherit, AgNote } from "@shared/agnostic/types";
+import { agTypeLabel } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAg, useMemberName } from "./hooks";
 import { useRefOptions } from "./widgets";
+import { AgPanel, PickField, type SelItem } from "./float";
 
 export function AudienceSelect({ value, onChange, allowInherit = true, label, icon }: {
   value: AgAudienceOrInherit; onChange: (v: AgAudienceOrInherit) => void; allowInherit?: boolean; label?: string; icon?: React.ReactNode;
@@ -22,41 +23,42 @@ export function AudienceSelect({ value, onChange, allowInherit = true, label, ic
     const users = cur.users.includes(id) ? cur.users.filter((u) => u !== id) : [...cur.users, id];
     onChange({ ...cur, users });
   };
-  const opts: Array<[AgAudienceOrInherit, string]> = [
-    ...(allowInherit ? [["inherit", "Same as sheet"] as [AgAudienceOrInherit, string]] : []),
-    ["everyone", "Everyone"], ["owners", "Owners + GM"], ["gm", "GM only"],
+  const opts: Array<[AgAudienceOrInherit, string, string]> = [
+    ...(allowInherit ? [["inherit", "Same as sheet", "Follow the sheet's own setting"] as [AgAudienceOrInherit, string, string]] : []),
+    ["everyone", "Everyone", "Every player in the campaign"], ["owners", "Owners + GM", "The sheet's owners"], ["gm", "GM only", "Only you"],
   ];
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button" className="h-8 sm:h-7 px-2 rounded border border-stone-700 bg-stone-900 text-xs text-stone-200 inline-flex items-center gap-1.5 max-w-full" data-testid={`ag-audience-${label ?? "x"}`}>
-          {icon}{label && <span className="text-stone-400">{label}</span>}
-          <span className="truncate">{describeAudience(value, memberName)}</span>
-          <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-60 p-1.5 bg-stone-900 border-stone-700" align="start">
-        {opts.map(([v, text]) => (
-          <button key={String(v)} type="button" onClick={() => choose(v)} className="w-full flex items-center gap-2 px-2 h-8 rounded hover:bg-stone-800 text-sm text-stone-200">
-            <span className="w-4">{value === v && <Check className="h-3.5 w-3.5 text-amber-400" />}</span>{text}
-          </button>
-        ))}
-        <div className="border-t border-stone-800 mt-1 pt-1">
-          <button type="button" onClick={() => onChange(custom ?? { owners: true, users: [] })} className="w-full flex items-center gap-2 px-2 h-8 rounded hover:bg-stone-800 text-sm text-stone-200">
-            <span className="w-4">{custom && <Check className="h-3.5 w-3.5 text-amber-400" />}</span><Users className="h-3.5 w-3.5" /> Specific people…
-          </button>
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="h-8 sm:h-7 px-2 rounded border border-stone-700 bg-stone-900 text-xs text-stone-200 inline-flex items-center gap-1.5 max-w-full" data-testid={`ag-audience-${label ?? "x"}`}>
+        {icon}{label && <span className="text-stone-400">{label}</span>}
+        <span className="truncate">{describeAudience(value, memberName)}</span>
+        <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" />
+      </button>
+      {open && (
+        <AgPanel title={label === "See" ? "Who can see it" : label ? `Who can ${label.toLowerCase()} it` : "Who"} onClose={() => setOpen(false)} width={340} height={460} testId="ag-audience-panel">
+          <div className="space-y-1">
+            {opts.map(([v, text, sub]) => (
+              <button key={String(v)} type="button" onClick={() => choose(v)} className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left ${value === v ? "bg-amber-900/25 border-amber-600" : "bg-stone-800 border-stone-700 hover:border-amber-700"}`}>
+                <span className="w-4">{value === v && <Check className="h-3.5 w-3.5 text-amber-400" />}</span>
+                <span><span className="block text-sm text-stone-100">{text}</span><span className="block text-[11px] text-stone-400">{sub}</span></span>
+              </button>
+            ))}
+            <button type="button" onClick={() => onChange(custom ?? { owners: true, users: [] })} className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left ${custom ? "bg-amber-900/25 border-amber-600" : "bg-stone-800 border-stone-700 hover:border-amber-700"}`}>
+              <span className="w-4">{custom && <Check className="h-3.5 w-3.5 text-amber-400" />}</span><Users className="h-3.5 w-3.5" /><span className="text-sm text-stone-100">Specific people…</span>
+            </button>
+          </div>
           {custom && (
-            <div className="pl-6 pr-1 pb-1 space-y-0.5">
-              <label className="flex items-center gap-2 text-sm text-stone-300 h-7"><input type="checkbox" className="accent-amber-500" checked={!!custom.owners} onChange={(e) => onChange({ ...custom, owners: e.target.checked })} /> Owners</label>
+            <div className="space-y-1 pl-2">
+              <label className="flex items-center gap-2 text-sm text-stone-300 h-8"><input type="checkbox" className="accent-amber-500" checked={!!custom.owners} onChange={(e) => onChange({ ...custom, owners: e.target.checked })} /> Owners</label>
               {players.map((m) => (
-                <label key={m.userId} className="flex items-center gap-2 text-sm text-stone-300 h-7"><input type="checkbox" className="accent-amber-500" checked={custom.users.includes(m.userId)} onChange={() => toggleUser(m.userId)} /> {m.name}</label>
+                <label key={m.userId} className="flex items-center gap-2 text-sm text-stone-300 h-8"><input type="checkbox" className="accent-amber-500" checked={custom.users.includes(m.userId)} onChange={() => toggleUser(m.userId)} /> {m.name}</label>
               ))}
               {players.length === 0 && <div className="text-xs text-stone-500">No players have joined yet.</div>}
             </div>
           )}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </AgPanel>
+      )}
+    </>
   );
 }
 
@@ -70,65 +72,34 @@ export function AclEditor({ acl, onChange, allowInherit = true, editLabel = "Edi
   );
 }
 
-/** Pick a value from this sheet (or a connected one); free text allowed for @paths and $params. */
+/** Pick a value from this sheet, a connected one, any other sheet, or a $parameter; or type a reference. */
 export function RefPicker({ noteId, value, onChange, params, placeholder = "Pick a value", allowTypes }: {
   noteId: string; value: string | undefined; onChange: (ref: string) => void; params?: string[]; placeholder?: string; allowTypes?: string[];
 }) {
   const { state } = useAg();
   const options = useRefOptions(noteId).filter((o) => !allowTypes || allowTypes.includes(o.type));
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const shown = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return options.filter((o) => !s || o.label.toLowerCase().includes(s) || o.ref.includes(s));
-  }, [options, q]);
-  // Searching also reaches values on any other sheet (linked directly by id).
-  const others = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [];
-    const out: Array<{ ref: string; label: string }> = [];
+  const items = useMemo<SelItem[]>(() => {
+    const out: SelItem[] = [];
+    for (const p of params ?? []) out.push({ id: `$${p}`, name: `$${p}`, mono: true, group: "Parameters", icon: <Puzzle className="h-4 w-4 text-sky-300" />, sub: `Parameter — left unconnected it uses the sheet's “${p}”` });
+    for (const o of options) out.push({ id: o.ref, name: o.label, sub: o.ref, badge: o.type, group: o.via ? "Connected" : "This sheet", words: o.ref, icon: <Hash className="h-4 w-4" /> });
     for (const f of Array.from(state.fields.values())) {
       if (f.noteId === noteId || (allowTypes && !allowTypes.includes(f.type))) continue;
       const n = state.notes.get(f.noteId);
       if (!n || n.isTemplate) continue;
-      if (!(f.label.toLowerCase().includes(s) || n.name.toLowerCase().includes(s) || f.key.includes(s))) continue;
-      out.push({ ref: `@{${n.id}}.${f.key}`, label: `${f.label} — ${n.name}` });
-      if (out.length >= 30) break;
+      out.push({ id: `@{${n.id}}.${f.key}`, name: f.label, sub: n.name || "Untitled", image: n.portrait, badge: f.type, group: "Other sheets", words: `${n.name} ${f.key}` });
     }
     return out;
-  }, [q, state, noteId, allowTypes]);
+  }, [options, params, state, noteId, allowTypes]);
   const absolute = value ? /^@\{([^}]+)\}\.(.+)$/.exec(value) : null;
-  const absLabel = absolute ? (() => { const n = state.notes.get(absolute[1]); const f = [...Array.from(state.fields.values())].find((x) => x.noteId === absolute[1] && x.key === absolute[2]); return n ? `${f?.label ?? absolute[2]} — ${n.name}` : null; })() : null;
-  const current = options.find((o) => o.ref === value) ?? (absLabel ? { ref: value!, label: absLabel } : undefined);
+  const absLabel = absolute ? (() => { const n = state.notes.get(absolute[1]); const f = Array.from(state.fields.values()).find((x) => x.noteId === absolute[1] && x.key === absolute[2]); return n ? `${f?.label ?? absolute[2]} — ${n.name}` : null; })() : null;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button type="button" className="h-8 sm:h-7 w-full px-2 rounded border border-stone-700 bg-stone-900 text-xs text-left text-stone-200 inline-flex items-center justify-between gap-1">
-          <span className="truncate">{current ? current.label : value || <span className="text-stone-500">{placeholder}</span>}</span>
-          <ChevronDown className="h-3 w-3 text-stone-500 shrink-0" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-1.5 bg-stone-900 border-stone-700" align="start">
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search, or type @owner.hp / $param"
-          onKeyDown={(e) => { if (e.key === "Enter" && q.trim()) { onChange(q.trim()); setOpen(false); setQ(""); } e.stopPropagation(); }}
-          className="w-full h-8 px-2 mb-1 rounded bg-stone-800 border border-stone-700 text-sm text-stone-100 outline-none" />
-        <div className="max-h-60 overflow-y-auto">
-          {(params ?? []).map((p) => (
-            <button key={`$${p}`} type="button" onClick={() => { onChange(`$${p}`); setOpen(false); }} className="w-full text-left px-2 h-7 rounded hover:bg-stone-800 text-sm text-sky-300">${p} <span className="text-stone-500 text-xs">parameter</span></button>
-          ))}
-          {shown.map((o) => (
-            <button key={o.ref} type="button" onClick={() => { onChange(o.ref); setOpen(false); setQ(""); }} className="w-full text-left px-2 py-1 rounded hover:bg-stone-800 text-sm text-stone-200">
-              {o.label} <span className="text-[10px] text-stone-500 font-mono">{o.ref}</span>
-            </button>
-          ))}
-          {others.length > 0 && <div className="text-[10px] uppercase tracking-wide text-stone-500 px-2 pt-1.5">Other sheets</div>}
-          {others.map((o) => (
-            <button key={o.ref} type="button" onClick={() => { onChange(o.ref); setOpen(false); setQ(""); }} className="w-full text-left px-2 py-1 rounded hover:bg-stone-800 text-sm text-stone-200">{o.label}</button>
-          ))}
-          {!shown.length && !others.length && !params?.length && <div className="text-xs text-stone-500 p-2">No values yet — add fields to this sheet first, search another sheet's values, or type a reference and press Enter.</div>}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <PickField
+      value={value ?? ""} items={items} onChange={onChange} title="Choose a value" placeholder={placeholder} display={absLabel ?? value}
+      freeText={(q) => (/^[@$]/.test(q) ? q.toLowerCase() : null)}
+      hint={<>Or type a reference and press Enter, e.g. <span className="font-mono text-sky-300">@owner.hp</span> or <span className="font-mono text-sky-300">@target.hp</span>.</>}
+      emptyText="No values yet — add some in the sheet's Values tab."
+      testId="ag-ref-picker"
+    />
   );
 }
 
@@ -148,3 +119,34 @@ function toHex(c: string | undefined) {
 }
 
 export const audienceName = (a: AgAudience) => describeAudience(a);
+
+// --- choosers for lists that grow (components, sheets, players) -------------------------
+export function ComponentPicker({ value, onChange, testId = "ag-component-picker" }: { value: string; onChange: (id: string) => void; testId?: string }) {
+  const { state } = useAg();
+  const items = useMemo<SelItem[]>(() => Array.from(state.components.values()).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({
+    id: c.id, name: c.name, icon: <Puzzle className="h-4 w-4" />, words: c.params.join(" "),
+    sub: c.params.length ? c.params.map((p) => `$${p}`).join("  ") : "No parameters",
+  })), [state.components]);
+  return <PickField value={value} items={items} onChange={onChange} title="Choose a component" placeholder="Choose a component…" emptyText="No components yet — make one in the Components tab." testId={testId} />;
+}
+
+export function noteItems(notes: AgNote[]): SelItem[] {
+  return notes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((n) => ({
+    id: n.id, name: n.name || "Untitled", image: n.portrait, group: agTypeLabel(n.type),
+    sub: n.isTemplate ? `${agTypeLabel(n.type)} template · v${n.templateMeta?.version ?? 1}` : agTypeLabel(n.type),
+  }));
+}
+
+export function NotePicker({ value, onChange, notes, title = "Choose a sheet", placeholder = "Choose a sheet…", noneLabel, testId = "ag-note-picker" }: {
+  value: string; onChange: (id: string) => void; notes: AgNote[]; title?: string; placeholder?: string; noneLabel?: string; testId?: string;
+}) {
+  const items = useMemo(() => noteItems(notes), [notes]);
+  return <PickField value={value} items={items} onChange={onChange} title={title} placeholder={placeholder} noneLabel={noneLabel} emptyText="No sheets yet." testId={testId} />;
+}
+
+/** Players (for "view as"). Empty value = the GM's own view. */
+export function MemberPicker({ value, onChange, noneLabel = "Viewing as GM", title = "View as…", testId }: { value: string; onChange: (id: string) => void; noneLabel?: string; title?: string; testId?: string }) {
+  const { state } = useAg();
+  const items = useMemo<SelItem[]>(() => state.members.filter((m) => m.role !== "gm").map((m) => ({ id: m.userId, name: m.name, icon: <Users className="h-4 w-4" />, sub: "See everything exactly as this player does" })), [state.members]);
+  return <PickField value={value} items={items} onChange={onChange} title={title} noneLabel={noneLabel} placeholder={noneLabel} display={null} testId={testId} />;
+}

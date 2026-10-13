@@ -4,7 +4,7 @@
 // sheet blocks their width / alignment / background and drag-to-resize handles.
 import React, { useRef, useState } from "react";
 import { RotateCcw, X, AlignLeft, AlignCenter, AlignRight, Paintbrush } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel } from "./float";
 import type { AgLook } from "@shared/agnostic/types";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
 
@@ -165,15 +165,12 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
 
 /** A small brush button that opens the look panel (token bars and other compact rows). */
 export function LookButton({ look, onChange, kind, title = "Look & size" }: { look: AgLook | undefined; onChange: (l: AgLook) => void; kind: LookKind; title?: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" className={`h-7 w-7 grid place-items-center rounded hover:bg-stone-800 ${look && Object.keys(look).length ? "text-amber-300" : "text-stone-400"}`} title={title} data-testid={`ag-look-button-${kind}`}><Paintbrush className="h-3.5 w-3.5" /></button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80 max-w-[calc(100vw-16px)] max-h-[70vh] overflow-y-auto p-2 bg-stone-900 border-stone-700" align="end" collisionPadding={8} onKeyDown={(e) => e.stopPropagation()}>
-        <LookEditor look={look} onChange={onChange} kind={kind} />
-      </PopoverContent>
-    </Popover>
+    <>
+      <button type="button" onClick={() => setOpen(!open)} className={`h-7 w-7 grid place-items-center rounded hover:bg-stone-800 ${look && Object.keys(look).length ? "text-amber-300" : "text-stone-400"}`} title={title} data-testid={`ag-look-button-${kind}`}><Paintbrush className="h-3.5 w-3.5" /></button>
+      {open && <AgPanel title={title} onClose={() => setOpen(false)} width={360} height={540}><LookEditor look={look} onChange={onChange} kind={kind} /></AgPanel>}
+    </>
   );
 }
 

@@ -3,10 +3,11 @@
 // last roll…), placed where the GM wants it. Values are the live ones —
 // change HP anywhere and every card updates instantly.
 import React, { useMemo, useState } from "react";
-import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X } from "lucide-react";
+import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate } from "lucide-react";
 import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
 import { DEFAULT_TRACKER_CARD, agTypeLabel } from "@shared/agnostic/types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AgPanel, AgSelector, PickField } from "./float";
+import { NotePicker, noteItems } from "./pickers";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useAgMaybe } from "./hooks";
 import { LayoutView } from "./widgets";
@@ -89,6 +90,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
   const card = t.cards.find((c) => c.id === cardId) ?? t.cards[0];
   const sheets = [...Array.from(state.notes.values())].filter((n) => !n.isTemplate);
   const [previewId, setPreviewId] = useState(t.pinned[0] ?? sheets[0]?.id ?? "");
+  const [adding, setAdding] = useState(false);
   const types = useMemo(() => [...Array.from(new Set(sheets.map((n) => n.type)))], [sheets.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (next: AgCampaignSettings["tracker"]) =>
@@ -109,9 +111,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl w-[calc(100vw-16px)] max-h-[92vh] overflow-y-auto" onKeyDown={(e) => e.stopPropagation()} data-testid="ag-tracker-designer">
-        <DialogHeader><DialogTitle className="text-stone-100 flex items-center gap-1">Player tracker <GuideButton compact topic="tracker" /></DialogTitle></DialogHeader>
+    <AgPanel title={<span className="inline-flex items-center gap-1">Player tracker <GuideButton compact topic="tracker" /></span>} onClose={onClose} width={780} height={760} testId="ag-tracker-designer">
         <div className="space-y-4 text-stone-200 text-sm">
           <div className="flex flex-wrap items-center gap-3">
             <label className="inline-flex items-center gap-1.5 text-xs">Where
@@ -132,20 +132,15 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
               return (
                 <div key={id} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1">
                   <span className="flex-1 truncate">{n?.name ?? "(deleted)"}</span>
-                  <select value={t.cardByNote[id] ?? ""} onChange={(e) => { const m = { ...t.cardByNote }; if (e.target.value) m[id] = e.target.value; else delete m[id]; save({ ...t, cardByNote: m }); }} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-xs">
-                    <option value="">Card: by kind</option>
-                    {t.cards.map((c) => <option key={c.id} value={c.id}>Card: {c.name}</option>)}
-                  </select>
+                  <div className="w-36"><PickField value={t.cardByNote[id] ?? ""} items={t.cards.map((c) => ({ id: c.id, name: c.name, icon: <LayoutTemplate className="h-4 w-4" />, sub: `${c.layout.items.length} items` }))} noneLabel="Card: by kind" placeholder="Card: by kind" title={`Card for ${n?.name ?? "this sheet"}`} onChange={(cid) => { const m = { ...t.cardByNote }; if (cid) m[id] = cid; else delete m[id]; save({ ...t, cardByNote: m }); }} /></div>
                   <button type="button" onClick={() => movePinned(i, -1)} className="h-7 w-7 grid place-items-center text-stone-400"><ArrowUp className="h-3.5 w-3.5" /></button>
                   <button type="button" onClick={() => movePinned(i, 1)} className="h-7 w-7 grid place-items-center text-stone-400"><ArrowDown className="h-3.5 w-3.5" /></button>
                   <button type="button" onClick={() => save({ ...t, pinned: t.pinned.filter((x) => x !== id) })} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400"><X className="h-3.5 w-3.5" /></button>
                 </div>
               );
             })}
-            <select value="" onChange={(e) => e.target.value && save({ ...t, pinned: [...t.pinned, e.target.value] })} className="h-8 bg-stone-950 border border-stone-700 rounded px-1 text-xs" data-testid="ag-tracker-add">
-              <option value="">+ Add a sheet…</option>
-              {sheets.filter((n) => !t.pinned.includes(n.id)).map((n) => <option key={n.id} value={n.id}>{n.name} ({agTypeLabel(n.type)})</option>)}
-            </select>
+            <button type="button" onClick={() => setAdding(true)} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1" data-testid="ag-tracker-add"><Plus className="h-3.5 w-3.5" /> Add sheets…</button>
+            {adding && <AgSelector title="Add to the tracker" keepOpen items={noteItems(sheets.filter((n) => !t.pinned.includes(n.id)))} onPick={(id) => save({ ...t, pinned: [...t.pinned, id] })} onClose={() => setAdding(false)} hint="Click each sheet to add it; this window stays open." emptyText="Every sheet is already in the tracker." testId="ag-tracker-add-selector" />}
           </section>
 
           <section className="space-y-1.5">
@@ -167,9 +162,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
                   })}
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-stone-400">Preview with
-                  <select value={previewId} onChange={(e) => setPreviewId(e.target.value)} className="h-7 bg-stone-950 border border-stone-700 rounded px-1 text-stone-200">
-                    {sheets.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-                  </select>
+                  <div className="w-44"><NotePicker value={previewId} onChange={(id) => id && setPreviewId(id)} notes={sheets} title="Preview with which sheet?" /></div>
                 </div>
                 {!previewId && <div className="text-[11px] text-stone-500">No sheets yet, so values show as “—”. You can still design the card.</div>}
                 <LayoutEditor key={card.id} layout={card.layout} allowLastRoll opts={{ noteId: previewId, lastRoll: { label: "Attack", total: 17, ts: Date.now() } }} maxWidth={560}
@@ -181,8 +174,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
 
           <TokenBarDefaults previewId={previewId} types={types} />
         </div>
-      </DialogContent>
-    </Dialog>
+    </AgPanel>
   );
 }
 

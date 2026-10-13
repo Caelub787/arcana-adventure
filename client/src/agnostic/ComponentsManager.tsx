@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAg } from "./hooks";
 import { LayoutEditor } from "./LayoutEditor";
 import { GuideButton } from "./AgGuide";
+import { agConfirm } from "./float";
+import { NotePicker } from "./pickers";
 
 export function ComponentsManager() {
   const { state, request } = useAg();
@@ -63,7 +65,7 @@ function ComponentEditor({ comp, onBack }: { comp: AgComponentDef; onBack: () =>
         <button type="button" onClick={onBack} className="h-8 w-8 grid place-items-center rounded hover:bg-stone-800"><ChevronLeft className="h-4 w-4" /></button>
         <input defaultValue={comp.name} onBlur={(e) => e.target.value !== comp.name && save({ name: e.target.value })} className="h-8 flex-1 bg-stone-900 border border-stone-700 rounded px-2 text-sm" />
         <GuideButton compact topic="components" />
-        <button type="button" onClick={() => { if (window.confirm(`Delete “${comp.name}”? Places using it will show “component removed”.`)) request({ op: "component.delete", id: comp.id }).then(onBack); }} className="h-8 w-8 grid place-items-center rounded text-red-300 hover:bg-red-950"><Trash2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { agConfirm("Places using it will show “component removed”.", { title: `Delete “${comp.name}”?`, confirm: "Delete" }).then((ok) => { if (ok) request({ op: "component.delete", id: comp.id }).then(onBack); }); }} className="h-8 w-8 grid place-items-center rounded text-red-300 hover:bg-red-950"><Trash2 className="h-4 w-4" /></button>
       </div>
       <div className="text-[11px] text-stone-500">Select an item to change what it shows and its look; drag to move, drag the handles to resize. Pick <span className="font-mono text-sky-300">$parameters</span> (top of the value list) so the component works on any sheet.</div>
       <label className="flex items-center gap-1.5 text-xs">Parameters
@@ -71,9 +73,7 @@ function ComponentEditor({ comp, onBack }: { comp: AgComponentDef; onBack: () =>
       </label>
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-stone-400">
         Preview with
-        <select value={previewNote} onChange={(e) => setPreviewNote(e.target.value)} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-stone-200">
-          {notes.map((n) => <option key={n.id} value={n.id}>{n.name}</option>)}
-        </select>
+        <div className="w-40"><NotePicker value={previewNote} onChange={(id) => id && setPreviewNote(id)} notes={notes} title="Preview with which sheet?" testId="ag-component-preview" /></div>
         {comp.params.map((p) => (
           <label key={p} className="inline-flex items-center gap-1"><span className="font-mono text-sky-300">${p}</span>=<input value={bindings[p] ?? ""} placeholder={p} onChange={(e) => setBindings({ ...bindings, [p]: e.target.value.trim() })} className="h-7 w-20 bg-stone-900 border border-stone-700 rounded px-1 font-mono text-stone-200" /></label>
         ))}

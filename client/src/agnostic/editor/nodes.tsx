@@ -9,11 +9,11 @@ import { Settings2, GripVertical, Trash2, Lock, EyeOff, LayoutGrid, Check, Plus,
 import type { AgLayout, AgLayoutItem, AgLook } from "@shared/agnostic/types";
 import { regionDocName } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAg, useAgMaybe, useMemberName } from "../hooks";
 import { FieldDisplay, ActionButton, ChartWidget, LinksTable, NoteChip, ComponentView, LayoutView } from "../widgets";
 import { LayoutEditor, RefList } from "../LayoutEditor";
-import { RefPicker, AclEditor } from "../pickers";
+import { RefPicker, AclEditor, ComponentPicker } from "../pickers";
+import { AgPanel, agConfirm } from "../float";
 import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, type LookKind } from "../look";
@@ -74,27 +74,32 @@ function ToolButton({ onClick, title, children, danger }: { onClick: () => void;
   return <button type="button" onClick={onClick} title={title} className={`h-6 w-6 grid place-items-center rounded ${danger ? "text-red-300 hover:bg-red-950" : "text-stone-300 hover:bg-stone-800"}`}>{children}</button>;
 }
 
-function ConfigPopover({ children, defaultOpen, look }: {
+function ConfigPopover({ children, defaultOpen, look, title = "Settings" }: {
   children?: React.ReactNode; defaultOpen?: boolean;
   /** Adds a "Look" tab: size, colours, text, style. */
   look?: { value: AgLook; onChange: (l: AgLook) => void; kind: LookKind };
+  title?: string;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const [tab, setTab] = useState<"data" | "look">(children ? "data" : "look");
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild><button type="button" className="h-6 w-6 grid place-items-center rounded text-stone-300 hover:bg-stone-800" title="Settings & look" data-testid="ag-node-config"><Settings2 className="h-3.5 w-3.5" /></button></PopoverTrigger>
-      <PopoverContent className="w-80 max-w-[calc(100vw-16px)] max-h-[75vh] overflow-y-auto p-2 bg-stone-900 border-stone-700 space-y-2 text-stone-200" align="start" collisionPadding={8} onKeyDown={(e) => e.stopPropagation()}>
-        {look && children && (
-          <div className="flex gap-1 sticky -top-2 -mt-2 -mx-2 px-2 pt-2 pb-1 bg-stone-900 z-10">
-            <button type="button" onClick={() => setTab("data")} className={`h-7 px-2.5 rounded text-xs ${tab === "data" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>Settings</button>
-            <button type="button" onClick={() => setTab("look")} className={`h-7 px-2.5 rounded text-xs ${tab === "look" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`} data-testid="ag-node-look-tab">Look & size</button>
+    <>
+      <button type="button" onClick={() => setOpen(!open)} className={`h-6 w-6 grid place-items-center rounded hover:bg-stone-800 ${open ? "text-amber-300" : "text-stone-300"}`} title="Settings & look" data-testid="ag-node-config"><Settings2 className="h-3.5 w-3.5" /></button>
+      {open && (
+        <AgPanel title={title} onClose={() => setOpen(false)} width={360} height={560} padded={false} testId="ag-node-panel">
+          {look && children && (
+            <div className="flex gap-1 sticky top-0 px-3 pt-3 pb-2 bg-stone-900 z-10 border-b border-stone-800">
+              <button type="button" onClick={() => setTab("data")} className={`h-8 px-3 rounded text-xs ${tab === "data" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>Settings</button>
+              <button type="button" onClick={() => setTab("look")} className={`h-8 px-3 rounded text-xs ${tab === "look" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`} data-testid="ag-node-look-tab">Look & size</button>
+            </div>
+          )}
+          <div className="p-3 space-y-2">
+            {tab === "data" && children}
+            {tab === "look" && look && <LookEditor look={look.value} onChange={look.onChange} kind={look.kind} />}
           </div>
-        )}
-        {tab === "data" && children}
-        {tab === "look" && look && <LookEditor look={look.value} onChange={look.onChange} kind={look.kind} />}
-      </PopoverContent>
-    </Popover>
+        </AgPanel>
+      )}
+    </>
   );
 }
 
@@ -146,7 +151,7 @@ function FieldInlineView(p: NodeViewProps) {
   const a = p.node.attrs;
   const look = nodeLook(a);
   return (
-    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover look={{ value: a.look ?? {}, onChange: (l) => p.updateAttributes({ look: l }), kind: "inlineValue" }}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block={false} /></ConfigPopover></span>}>
+    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover title="Value in the text" look={{ value: a.look ?? {}, onChange: (l) => p.updateAttributes({ look: l }), kind: "inlineValue" }}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block={false} /></ConfigPopover></span>}>
       <span contentEditable={false} className="align-baseline">{a.ref ? <FieldDisplay noteId={ctx.noteId} refPath={a.ref} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={look} /> : <span className="text-xs text-stone-500">[value]</span>}</span>
     </Shell>
   );
@@ -161,7 +166,7 @@ function FieldBlockView(p: NodeViewProps) {
     <Shell
       selected={p.selected} editable={p.editor.isEditable} label="value"
       frame={{ look, onLook: lookUpdater(p), height: fieldHeight(a.display, look) }}
-      tools={<><ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l, color: "" }), kind: lookKindFor(a.display, false) }}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block /></ConfigPopover><ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton></>}
+      tools={<><ConfigPopover title={a.display === "bar" ? "Resource bar" : "Value block"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l, color: "" }), kind: lookKindFor(a.display, false) }}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block /></ConfigPopover><ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton></>}
     >
       {(live) => <div contentEditable={false} className="py-0.5">{a.ref ? <FieldDisplay noteId={ctx.noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={live?.height ? { ...look, height: live.height } : look} /> : <span className="text-xs text-stone-500">Choose a value (⚙)</span>}</div>}
     </Shell>
@@ -219,7 +224,7 @@ function RegionBlockView(p: NodeViewProps) {
   const look = nodeLook(p.node.attrs);
   return (
     <Shell selected={p.selected} editable={editable && gmView} label={region.label || "section"} frame={{ look, onLook: lookUpdater(p) }} tools={<>
-      <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "section" }}>
+      <ConfigPopover title={region.label || "Hidden section"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "section" }}>
         <div className="text-xs text-stone-300">Who can see and edit this section</div>
         <RegionAcl regionId={regionId} />
         <RegionLabel regionId={regionId} />
@@ -242,6 +247,7 @@ function RegionLabel({ regionId }: { regionId: string }) {
 }
 
 function SecretInlineView(p: NodeViewProps) {
+  const [aclOpen, setAclOpen] = useState(false);
   const regionId = p.node.attrs.regionId as string;
   const { region, note, gmView } = useRegion(regionId);
   if (!region || !note) return <NodeViewWrapper as="span" />;
@@ -249,14 +255,14 @@ function SecretInlineView(p: NodeViewProps) {
     <NodeViewWrapper as="span" className={`ag-secret inline-block align-baseline ${gmView ? "rounded border border-dashed border-violet-600/80 bg-violet-950/30 px-0.5" : ""} ${p.selected ? "ring-1 ring-amber-400" : ""}`} data-testid={`ag-secret-${regionId}`}>
       {gmView && p.editor.isEditable && (
         <span contentEditable={false} className="inline-flex align-middle mr-0.5">
-          <Popover>
-            <PopoverTrigger asChild><button type="button" className="text-violet-300" title="Who can see these words"><Lock className="h-3 w-3" /></button></PopoverTrigger>
-            <PopoverContent className="w-64 p-2 bg-stone-900 border-stone-700 space-y-2" align="start">
+          <button type="button" onClick={() => setAclOpen(!aclOpen)} className="text-violet-300" title="Who can see these words" data-testid="ag-secret-lock"><Lock className="h-3 w-3" /></button>
+          {aclOpen && (
+            <AgPanel title="Secret words" onClose={() => setAclOpen(false)} width={340} height={260} testId="ag-secret-panel">
               <div className="text-xs text-stone-300">Who can see / edit these words</div>
               <RegionAcl regionId={regionId} />
-              <button type="button" onClick={p.deleteNode} className="h-7 px-2 rounded text-xs text-red-300 hover:bg-red-950">Remove</button>
-            </PopoverContent>
-          </Popover>
+              <button type="button" onClick={() => { setAclOpen(false); p.deleteNode(); }} className="h-8 px-2.5 rounded text-xs text-red-300 hover:bg-red-950">Remove the secret words</button>
+            </AgPanel>
+          )}
         </span>
       )}
       <span contentEditable={false} className="inline-block align-baseline min-w-[1ch]"><AgEditor docName={regionDocName(regionId, note.docEpoch)} noteId={note.id} nested inline /></span>
@@ -296,9 +302,10 @@ function ColumnsView(p: NodeViewProps) {
     const pos = p.getPos();
     if (typeof pos !== "number" || n <= 2) return;
     const last = p.node.lastChild!;
-    if (last.textContent.trim() && !window.confirm("Remove the last column and what's in it?")) return;
     const end = pos + p.node.nodeSize - 1;
-    p.editor.chain().deleteRange({ from: end - last.nodeSize, to: end }).run();
+    const go = () => p.editor.chain().deleteRange({ from: end - last.nodeSize, to: end }).run();
+    if (!last.textContent.trim()) go();
+    else agConfirm("What's written in it goes too (Ctrl+Z brings it back).", { title: "Remove the last column?", confirm: "Remove" }).then((ok) => { if (ok) go(); });
   };
   return (
     <NodeViewWrapper className="ag-columns-wrap group relative my-1.5">
@@ -308,7 +315,7 @@ function ColumnsView(p: NodeViewProps) {
           <span className="text-[10px] text-stone-400 px-0.5">{n} columns</span>
           <ToolButton title="One column fewer" onClick={removeColumn}><Minus className="h-3.5 w-3.5" /></ToolButton>
           <ToolButton title="One more column" onClick={addColumn}><Plus className="h-3.5 w-3.5" /></ToolButton>
-          <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "columns" }} />
+          <ConfigPopover title="Columns" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "columns" }} />
           <ToolButton title="Remove columns" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
         </div>
       )}
@@ -389,7 +396,7 @@ function CanvasView(p: NodeViewProps) {
   return (
     <Shell selected={p.selected} editable={editable} label="canvas" frame={designing ? undefined : { look, onLook: lookUpdater(p) }} tools={<>
       <ToolButton title={designing ? "Done arranging" : "Arrange"} onClick={() => setDesigning(!designing)}>{designing ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <LayoutGrid className="h-3.5 w-3.5" />}</ToolButton>
-      <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "canvas" }} />
+      <ConfigPopover title="Canvas" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "canvas" }} />
       <ToolButton title="Remove canvas" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
     </>}>
       <div contentEditable={false} className={`w-full ${designing && editable ? "pt-6" : ""}`} data-testid="ag-canvas">
@@ -432,7 +439,7 @@ function ButtonView(p: NodeViewProps) {
   const a = p.node.attrs;
   const look = nodeLook(a);
   return (
-    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "button" }}>
+    <Shell inline selected={p.selected} editable={p.editor.isEditable} tools={<span contentEditable={false}><ConfigPopover title="Button" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "button" }}>
       <Row label="Does"><ActionPicker noteId={ctx.noteId} value={a.actionId} onChange={(actionId) => p.updateAttributes({ actionId })} /></Row>
       <Row label="Text"><input value={a.label ?? ""} placeholder="(action name)" onChange={(e) => p.updateAttributes({ label: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></Row>
     </ConfigPopover></span>}>
@@ -458,7 +465,7 @@ function ChartView(p: NodeViewProps) {
   const height = look.height ?? a.height ?? 220;
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="chart" frame={{ look, onLook: lookUpdater(p), height: { value: height, min: 80, max: 900 } }} tools={<>
-      <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "chart" }}>
+      <ConfigPopover title="Chart" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "chart" }}>
         <Row label="Type"><select value={a.chart} onChange={(e) => p.updateAttributes({ chart: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded text-xs px-1"><option value="radar">Radar</option><option value="bar">Bars</option><option value="line">Line</option><option value="pie">Pie</option></select></Row>
         <RefList noteId={ctx.noteId} refs={refs} onChange={(r) => p.updateAttributes({ refs: r })} />
         <Row label="Scale max"><RefPicker noteId={ctx.noteId} value={a.maxRef} placeholder="(auto)" onChange={(maxRef) => p.updateAttributes({ maxRef })} /></Row>
@@ -489,7 +496,7 @@ function LinksView(p: NodeViewProps) {
   const look = nodeLook(a);
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="connections" frame={{ look, onLook: lookUpdater(p), height: { value: look.height ?? 0, min: 60, max: 1200 } }} tools={<>
-      <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
+      <ConfigPopover title="Connections table" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
         <Row label="Connection">
           <input list="ag-link-labels" value={a.label} placeholder="e.g. items" onChange={(e) => p.updateAttributes({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" />
           <datalist id="ag-link-labels">{[...Array.from(labels)].map((l) => <option key={l} value={l} />)}</datalist>
@@ -537,12 +544,9 @@ function ComponentNodeView(p: NodeViewProps) {
   const look = nodeLook(a);
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label={comp?.name ?? "component"} frame={{ look, onLook: lookUpdater(p) }} tools={<>
-      <ConfigPopover look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "component" }}>
+      <ConfigPopover title={comp ? `Component — ${comp.name}` : "Component"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "component" }}>
         <Row label="Component">
-          <select value={a.componentId} onChange={(e) => p.updateAttributes({ componentId: e.target.value, bindings: {} })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded text-xs px-1">
-            <option value="">Choose…</option>
-            {[...Array.from(ag.state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <ComponentPicker value={a.componentId} onChange={(componentId) => p.updateAttributes({ componentId, bindings: {} })} />
         </Row>
         {(comp?.params ?? []).map((param) => (
           <Row key={param} label={`$${param}`}><RefPicker noteId={ctx.noteId} value={bindings[param]} placeholder={`(this sheet's ${param})`} onChange={(ref) => p.updateAttributes({ bindings: { ...bindings, [param]: ref } })} /></Row>

@@ -7,6 +7,7 @@ import { AgScopeProvider } from "./hooks";
 import { AgWindowsProvider, AgWindowStack, useAgWindows } from "./AgWindows";
 import { AgNotesBrowser } from "./AgNotesBrowser";
 import { GuideButton, AgGuideHost } from "./AgGuide";
+import { AgConfirmHost } from "./float";
 
 export const AG_LIBRARY_TYPES = ["character", "npc", "item", "species"];
 
@@ -19,6 +20,7 @@ function Inner({ scope }: { scope: AgScope }) {
       </div>
       <AgWindowStack />
       <AgGuideHost />
+      <AgConfirmHost />
     </AgScopeProvider>
   );
 }

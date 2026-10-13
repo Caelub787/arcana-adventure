@@ -4,7 +4,7 @@
 import React, { useRef, useState } from "react";
 import { Download, Upload, Loader2 } from "lucide-react";
 import type { AgExportBundle } from "@shared/agnostic/types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AgPanel } from "./float";
 import { useToast } from "@/hooks/use-toast";
 import { useAg } from "./hooks";
 
@@ -46,9 +46,7 @@ export function ImportExportDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[85vh] overflow-y-auto" onKeyDown={(e) => e.stopPropagation()}>
-        <DialogHeader><DialogTitle className="text-stone-100">Share templates</DialogTitle></DialogHeader>
+    <AgPanel title="Share templates & components" onClose={onClose} width={440} height={600} testId="ag-import-export">
         <div className="space-y-3 text-stone-200 text-sm">
           <div className="rounded border border-stone-800 p-2 space-y-1.5">
             <div className="text-xs uppercase tracking-wide text-amber-400/90">Export</div>
@@ -69,7 +67,6 @@ export function ImportExportDialog({ onClose }: { onClose: () => void }) {
             <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) doImport(f); }} />
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </AgPanel>
   );
 }

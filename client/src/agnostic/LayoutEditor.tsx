@@ -7,10 +7,10 @@ import {
   Plus, Trash2, Copy, ArrowUp, ArrowDown, Type, Image as ImageIcon, User, Hash, BarChart3, Square, Link2, Dices, Puzzle, SlidersHorizontal, Gauge, X, AlignLeft, FileText,
 } from "lucide-react";
 import type { AgAudience, AgLayout, AgLayoutItem, AgLook, AgWidget } from "@shared/agnostic/types";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel } from "./float";
 import { useAg } from "./hooks";
 import { WidgetView, type LayoutRenderOpts } from "./widgets";
-import { AudienceSelect, ColorInput, RefPicker } from "./pickers";
+import { AudienceSelect, ColorInput, RefPicker, ComponentPicker } from "./pickers";
 import { ActionPicker } from "./ActionEditor";
 import { LookEditor, type LookKind } from "./look";
 import { mergeLook } from "./lookUtil";
@@ -217,18 +217,20 @@ function LayoutToolbar({ local, commit, addItem, palette, sel, onDuplicate, onDe
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button type="button" className="h-8 px-2.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1" data-testid="ag-layout-add"><Plus className="h-3.5 w-3.5" /> Add</button>
-        </PopoverTrigger>
-        <PopoverContent className="w-64 p-1.5 bg-stone-900 border-stone-700 grid grid-cols-2 gap-1" align="start">
-          {palette.map((p) => (
-            <button key={p.label} type="button" onClick={() => { setOpen(false); addItem(p); }} className="h-9 px-2 rounded hover:bg-stone-800 text-xs text-stone-200 inline-flex items-center gap-1.5 text-left" data-testid={`ag-layout-add-${p.label}`}>
-              {p.icon}{p.label}
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
+      <button type="button" onClick={() => setOpen(!open)} className="h-8 px-2.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1" data-testid="ag-layout-add"><Plus className="h-3.5 w-3.5" /> Add</button>
+      {open && (
+        <AgPanel title="Add to the layout" onClose={() => setOpen(false)} width={320} height={560} testId="ag-layout-add-panel">
+          <div className="text-[11px] text-stone-500">Click to add; it appears in the top-left corner, ready to drag. This window stays open so you can add several.</div>
+          <div className="space-y-1">
+            {palette.map((p) => (
+              <button key={p.label} type="button" onClick={() => addItem(p)} className="w-full flex items-center gap-3 p-2 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-left" data-testid={`ag-layout-add-${p.label}`}>
+                <span className="h-8 w-8 rounded bg-stone-900 border border-stone-700 grid place-items-center text-amber-400 shrink-0">{p.icon}</span>
+                <span className="text-sm text-stone-100">{p.label}</span>
+              </button>
+            ))}
+          </div>
+        </AgPanel>
+      )}
       <label className="text-[11px] text-stone-400 inline-flex items-center gap-1">W
         <input type="number" value={local.width} min={40} max={2000} onChange={(e) => commit({ ...local, width: Math.max(40, Math.min(2000, Number(e.target.value) || 40)) })} className="h-7 w-16 bg-stone-900 border border-stone-700 rounded px-1 text-stone-100" />
       </label>
@@ -337,10 +339,7 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
       {w.kind === "component" && (
         <>
           <div className={row}><span className={lbl}>Component</span>
-            <select value={w.componentId} onChange={(e) => onWidget({ componentId: e.target.value, bindings: {} } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded text-xs px-1">
-              <option value="">Choose…</option>
-              {[...Array.from(state.components.values())].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div className="flex-1 min-w-[140px]"><ComponentPicker value={w.componentId} onChange={(componentId) => onWidget({ componentId, bindings: {} } as any)} /></div>
           </div>
           {(state.components.get(w.componentId)?.params ?? []).map((p) => (
             <div key={p} className={row}><span className={`${lbl} font-mono text-sky-300`}>${p}</span><div className="flex-1 min-w-[140px]"><RefPicker noteId={noteId} params={params} value={w.bindings?.[p]} placeholder={`(the sheet's ${p})`} onChange={(ref) => onWidget({ bindings: { ...(w.bindings ?? {}), [p]: ref } } as any)} /></div></div>

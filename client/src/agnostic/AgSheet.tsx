@@ -4,7 +4,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2 } from "lucide-react";
 import { agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel } from "./float";
+import { MemberPicker } from "./pickers";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useAg, usePerms, useDoc } from "./hooks";
 import { agClient } from "./client";
@@ -87,6 +88,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [browse, setBrowse] = useState(false);
+  const [menu, setMenu] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   if (!note) return null;
   const template = note.templateId ? state.notes.get(note.templateId) : undefined;
@@ -95,14 +97,17 @@ function SheetHeader({ noteId }: { noteId: string }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-stone-800 shrink-0 bg-gradient-to-b from-stone-900 to-stone-950">
       {canEditHeader ? (
-        <Popover>
-          <PopoverTrigger asChild><button type="button" className="relative shrink-0 group" title="Change portrait" data-testid="ag-portrait">{portrait}<span className="absolute inset-0 rounded-[10px] bg-black/50 opacity-0 group-hover:opacity-100 grid place-items-center">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}</span></button></PopoverTrigger>
-          <PopoverContent className="w-52 p-1.5 bg-stone-900 border-stone-700">
-            <button type="button" onClick={() => fileRef.current?.click()} className="w-full h-8 px-2 rounded hover:bg-stone-800 text-sm text-stone-200 inline-flex items-center gap-2"><Upload className="h-3.5 w-3.5" /> Upload…</button>
-            <button type="button" onClick={() => setBrowse(true)} className="w-full h-8 px-2 rounded hover:bg-stone-800 text-sm text-stone-200 inline-flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> Image library…</button>
-            {note.portrait && <button type="button" onClick={() => setPortrait(null)} className="w-full h-8 px-2 rounded hover:bg-stone-800 text-sm text-red-300">Remove</button>}
-          </PopoverContent>
-        </Popover>
+        <>
+          <button type="button" onClick={() => setMenu(true)} className="relative shrink-0 group" title="Change portrait" data-testid="ag-portrait">{portrait}<span className="absolute inset-0 rounded-[10px] bg-black/50 opacity-0 group-hover:opacity-100 grid place-items-center">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}</span></button>
+          {menu && (
+            <AgPanel title={`Portrait — ${note.name || "Untitled"}`} onClose={() => setMenu(false)} width={300} height={300} testId="ag-portrait-panel">
+              <div className="flex justify-center">{portrait}</div>
+              <button type="button" onClick={() => fileRef.current?.click()} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload…</button>
+              <button type="button" onClick={() => setBrowse(true)} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Image library…</button>
+              {note.portrait && <button type="button" onClick={() => setPortrait(null)} className="w-full h-9 px-3 rounded-lg text-sm text-red-300 hover:bg-red-950">Remove portrait</button>}
+            </AgPanel>
+          )}
+        </>
       ) : portrait}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
         const f = e.target.files?.[0]; e.target.value = "";
@@ -110,7 +115,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
         setBusy(true);
         try { await setPortrait(await uploadImage(f)); } catch (err: any) { toast({ title: "Upload failed", description: err.message, variant: "destructive" }); } finally { setBusy(false); }
       }} />
-      {browse && <ImageBrowser open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setPortrait(src); setBrowse(false); }} />}
+      {browse && <ImageBrowser floating open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setPortrait(src); setBrowse(false); }} />}
       <div className="min-w-0 flex-1">
         {canEditHeader
           ? <CommitInput value={note.name} onCommit={(name) => request({ op: "note.update", id: noteId, patch: { name } })} className="w-full h-9 text-lg font-semibold bg-transparent border-transparent hover:border-stone-700 text-amber-100" aria-label="Name" data-testid="ag-name" />
@@ -167,10 +172,5 @@ function PreviewSelect() {
   const { state, previewUserId, setPreviewUserId } = useAg();
   const players = state.members.filter((m) => m.role !== "gm");
   if (!players.length) return null;
-  return (
-    <select value={previewUserId ?? ""} onChange={(e) => setPreviewUserId(e.target.value || null)} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-[11px] text-stone-300" title="Preview as a player" data-testid="ag-preview-as">
-      <option value="">View as GM</option>
-      {players.map((m) => <option key={m.userId} value={m.userId}>View as {m.name}</option>)}
-    </select>
-  );
+  return <div className="w-32"><MemberPicker value={previewUserId ?? ""} onChange={(id) => setPreviewUserId(id || null)} noneLabel="View as GM" testId="ag-preview-as" /></div>;
 }

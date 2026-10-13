@@ -10,7 +10,7 @@ import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { useToast } from "@/hooks/use-toast";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel, PickField } from "./float";
 import { api } from "@/lib/api";
 import { pushUndo } from "./undo";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
@@ -77,11 +77,13 @@ export function CommitInput({ value, onCommit, type = "text", className = "", pl
 function NumberEditor({ field, max, children }: { field: AgField; max?: number | null; children: React.ReactNode }) {
   const w = useFieldWriter();
   const v = asNumber(effOf(field) as any);
+  const [open, setOpen] = useState(false);
+  const note = useAg().state.notes.get(field.noteId);
   return (
-    <Popover>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      {/* Portal events still bubble through React to whatever hosts the bar (a token starts a drag on pointerdown) — stop them here. */}
-      <PopoverContent className="w-56 p-2 bg-stone-900 border-stone-700" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+    <>
+      <div className="contents" onClick={() => setOpen(true)}>{children}</div>
+      {open && (
+      <AgPanel title={`${field.label}${note?.name ? ` — ${note.name}` : ""}`} onClose={() => setOpen(false)} width={300} height={220} testId="ag-number-panel">
         <div className="text-xs text-stone-400 mb-1.5">{field.label}{max != null ? ` (max ${formatValue(max)})` : ""}</div>
         <div className="flex items-center gap-1">
           {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}
@@ -95,8 +97,9 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
           </div>
         )}
         <div className="text-[10px] text-stone-500 mt-1.5">Now {formatValue(v)}</div>
-      </PopoverContent>
-    </Popover>
+      </AgPanel>
+      )}
+    </>
   );
 }
 
@@ -241,10 +244,9 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
       return <input type="checkbox" checked={!!v} onChange={(e) => w.set(field, e.target.checked)} className={`h-4 w-4 accent-amber-500 ${className}`} aria-label={field.label} />;
     case "select":
       return (
-        <select value={String(v ?? "")} onChange={(e) => w.set(field, e.target.value)} className={`h-7 sm:h-6 bg-stone-900 border border-stone-700 rounded text-stone-100 px-1 ${className}`} aria-label={field.label}>
-          <option value="">—</option>
-          {(field.options.choices ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <span className={`inline-block min-w-[120px] ${className}`} aria-label={field.label}>
+          <PickField value={String(v ?? "")} items={(field.options.choices ?? []).map((c) => ({ id: c, name: c }))} onChange={(c) => w.set(field, c)} title={field.label} placeholder="—" noneLabel="— (none)" emptyText="No choices yet — the GM adds them in the Values tab." />
+        </span>
       );
     case "image":
       return <ImageFieldInput field={field} className={className} />;

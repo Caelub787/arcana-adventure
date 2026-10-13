@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Calculator, Dices, Check, AlertTriangle, Plus } from "lucide-react";
 import { parseFormula, containsDice } from "@shared/agnostic/formula";
 import { formatValue } from "@shared/agnostic/formula";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AgPanel } from "./float";
 import { useAg } from "./hooks";
 import { useRefOptions } from "./widgets";
 
@@ -24,6 +24,8 @@ export function FormulaInput({ noteId, value, onChange, allowDice = false, local
   const options = useRefOptions(noteId);
   const ref = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<{ value?: any; error?: string } | null>(null);
+  const [builder, setBuilder] = useState(false);
+  const [vq, setVq] = useState("");
 
   let syntax: string | null = null;
   try {
@@ -68,15 +70,15 @@ export function FormulaInput({ noteId, value, onChange, allowDice = false, local
           />
           <span className="absolute right-2 top-1/2 -translate-y-1/2">{value.trim() ? (syntax ? <AlertTriangle className="h-3.5 w-3.5 text-red-400" /> : <Check className="h-3.5 w-3.5 text-emerald-400" />) : null}</span>
         </div>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button type="button" className="h-8 px-2 rounded bg-stone-800 hover:bg-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 shrink-0" data-testid={testId ? `${testId}-builder` : undefined}><Plus className="h-3.5 w-3.5" /><Calculator className="h-3.5 w-3.5" /></button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 max-w-[calc(100vw-24px)] p-2 bg-stone-900 border-stone-700 space-y-2" align="end">
+        <button type="button" onClick={() => setBuilder(!builder)} className={`h-8 px-2 rounded text-xs inline-flex items-center gap-1 shrink-0 ${builder ? "bg-amber-600 text-white" : "bg-stone-800 hover:bg-stone-700 text-stone-200"}`} title="Formula builder" data-testid={testId ? `${testId}-builder` : undefined}><Plus className="h-3.5 w-3.5" /><Calculator className="h-3.5 w-3.5" /></button>
+        {builder && (
+          <AgPanel title="Formula builder — click to add" onClose={() => setBuilder(false)} width={380} height={560} testId="ag-formula-builder">
+            <div className="rounded border border-stone-800 bg-stone-950 px-2 py-1.5 font-mono text-xs text-amber-100 break-all min-h-8">{value || <span className="text-stone-600">(empty)</span>}</div>
             <Section title="Values">
-              <div className="max-h-40 overflow-y-auto flex flex-wrap gap-1">
+              <input value={vq} onChange={(e) => setVq(e.target.value)} placeholder="Search values…" className="w-full h-8 mb-1.5 px-2 rounded bg-stone-800 border border-stone-700 text-xs text-stone-100" />
+              <div className="max-h-48 overflow-y-auto flex flex-wrap gap-1">
                 {locals.map((l) => <Chip key={l} onClick={() => insert(`$${l}`)} className="text-sky-300">${l}</Chip>)}
-                {options.map((o) => <Chip key={o.ref} onClick={() => insert(o.ref.startsWith("@") ? o.ref : o.ref)} title={o.ref}>{o.label}</Chip>)}
+                {options.filter((o) => !vq.trim() || `${o.label} ${o.ref}`.toLowerCase().includes(vq.trim().toLowerCase())).map((o) => <Chip key={o.ref} onClick={() => insert(o.ref)} title={o.ref}>{o.label}</Chip>)}
                 <Chip onClick={() => insert("@target.")} className="text-rose-300" title="The targeted token's sheet (in buttons)">target…</Chip>
                 {!options.length && !locals.length && <span className="text-xs text-stone-500">This sheet has no values yet.</span>}
               </div>
@@ -84,8 +86,8 @@ export function FormulaInput({ noteId, value, onChange, allowDice = false, local
             {allowDice && <Section title="Dice"><div className="flex flex-wrap gap-1">{DICE.map((d) => <Chip key={d} onClick={() => insert(d)} className="font-mono text-amber-200"><Dices className="inline h-3 w-3 mr-0.5" />{d}</Chip>)}</div></Section>}
             <Section title="Maths"><div className="flex flex-wrap gap-1">{OPS.map((o) => <Chip key={o} onClick={() => insert(o === "(" || o === ")" ? o : ` ${o} `)} className="font-mono">{o}</Chip>)}</div></Section>
             <Section title="Functions"><div className="grid grid-cols-2 gap-1">{FUNCS.map(([sig, ins, desc]) => <button key={sig} type="button" onClick={() => insert(ins)} className="text-left px-1.5 py-1 rounded hover:bg-stone-800"><div className="font-mono text-xs text-stone-200">{sig}</div><div className="text-[10px] text-stone-500">{desc}</div></button>)}</div></Section>
-          </PopoverContent>
-        </Popover>
+          </AgPanel>
+        )}
       </div>
       {syntax ? <div className="text-[11px] text-red-400">{syntax}</div>
         : preview ? <div className={`text-[11px] ${preview.error ? "text-red-400" : "text-stone-400"}`}>{preview.error ? `⚠ ${preview.error}` : <>= <b className="text-amber-200">{Array.isArray(preview.value) ? preview.value.map((v: any) => formatValue(v)).join(", ") : formatValue(preview.value)}</b> right now</>}</div>

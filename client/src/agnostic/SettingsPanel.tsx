@@ -5,11 +5,11 @@ import { Lock, History, RotateCcw, Save, Copy, Trash2, Plus, Library, Dices, Pen
 import type { AgAcl, AgTokenBar, AgVersionMeta } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AgPanel, AgSelector, agConfirm } from "./float";
 import { useAuth } from "@/lib/AuthContext";
 import { agClient } from "./client";
 import { useAg, usePerms } from "./hooks";
-import { AclEditor, ColorInput, RefPicker } from "./pickers";
+import { AclEditor, ColorInput, RefPicker, noteItems } from "./pickers";
 import { LookButton } from "./look";
 import { ActionEditorDialog } from "./ActionEditor";
 import { pushUndo } from "./undo";
@@ -78,7 +78,7 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
             <button type="button" onClick={() => agClient.request({ kind: "library", id: user.id }, { op: "note.copyFrom", sourceNoteId: noteId, sourceScope: scope }).then(() => toast({ title: "Saved to My Library" })).catch((e) => toast({ title: "Couldn't copy", description: e.message, variant: "destructive" }))}
               className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1" data-testid="ag-save-to-library"><Library className="h-3.5 w-3.5" /> Save to My Library</button>
           )}
-          <button type="button" onClick={() => { if (window.confirm(`Delete “${note.name}” for everyone? (Its version history goes too.)`)) request({ op: "note.delete", id: noteId }).then(onDeleted); }} className="h-8 px-2.5 rounded text-xs text-red-300 hover:bg-red-950 inline-flex items-center gap-1 ml-auto" data-testid="ag-note-delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+          <button type="button" onClick={() => { agConfirm(`Delete “${note.name}” for everyone? Its version history goes too.`, { title: "Delete this sheet?", confirm: "Delete" }).then((ok) => { if (ok) request({ op: "note.delete", id: noteId }).then(onDeleted); }); }} className="h-8 px-2.5 rounded text-xs text-red-300 hover:bg-red-950 inline-flex items-center gap-1 ml-auto" data-testid="ag-note-delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
         </div>
       </Section>
     </div>
@@ -138,6 +138,7 @@ function ActionsSection({ noteId }: { noteId: string }) {
 
 /** Sheets show their template, locked; changing it wipes the sheet (after a confirm) and can be undone. */
 function TemplateLockSection({ noteId }: { noteId: string }) {
+  const [choosing, setChoosing] = useState(false);
   const { state, request, key } = useAg();
   const { toast } = useToast();
   const note = state.notes.get(noteId)!;
@@ -163,11 +164,11 @@ function TemplateLockSection({ noteId }: { noteId: string }) {
     <Section title="Template" icon={<Lock className="h-3.5 w-3.5" />}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="h-8 px-2.5 rounded border border-stone-700 bg-stone-950 text-sm inline-flex items-center gap-1.5" data-testid="ag-template-locked"><Lock className="h-3.5 w-3.5 text-amber-400" />{current?.name ?? (note.templateId ? "(deleted template)" : "No template")}</span>
-        <select value="" onChange={(e) => setPending(e.target.value === "__none" ? null : e.target.value)} className="h-8 bg-stone-900 border border-stone-700 rounded px-1 text-xs" data-testid="ag-template-switch">
-          <option value="">Change template…</option>
-          {templates.filter((t) => t.id !== note.templateId).map((t) => <option key={t.id} value={t.id}>{t.name} ({agTypeLabel(t.type)})</option>)}
-          {note.templateId && <option value="__none">No template (blank sheet)</option>}
-        </select>
+        <button type="button" onClick={() => setChoosing(true)} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1" data-testid="ag-template-switch">Change template…</button>
+        {choosing && (
+          <AgSelector title="Change template" items={noteItems(templates.filter((t) => t.id !== note.templateId))} noneLabel={note.templateId ? "No template (blank sheet)" : undefined}
+            onPick={(id) => setPending(id || null)} onClose={() => setChoosing(false)} emptyText="No other templates yet." testId="ag-template-switch-selector" />
+        )}
         {lastUndo && <button type="button" onClick={() => request({ op: "version.restore", versionId: lastUndo }).then(() => setLastUndo(null))} className="h-8 px-2.5 rounded bg-stone-800 text-xs inline-flex items-center gap-1" data-testid="ag-template-undo"><RotateCcw className="h-3.5 w-3.5" /> Undo template change</button>}
       </div>
       {behind && (
@@ -175,18 +176,15 @@ function TemplateLockSection({ noteId }: { noteId: string }) {
           <AlertTriangle className="h-3.5 w-3.5" /> The template has a newer version (v{current!.templateMeta?.version}). Open the template's settings → “Apply to sheets”.
         </div>
       )}
-      <AlertDialog open={pending !== undefined} onOpenChange={(o) => { if (!o) setPending(undefined); }}>
-        <AlertDialogContent className="bg-stone-900 border-stone-700">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-stone-100">Switch to {pending ? `“${state.notes.get(pending)?.name}”` : "no template"}?</AlertDialogTitle>
-            <AlertDialogDescription className="text-stone-400">This clears everything on the sheet — its values, text and buttons — and starts over from the new template. The name, portrait, owners and connections stay. You can undo this afterwards (it's also saved in Version history).</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-200">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={doSwitch} className="bg-red-700 hover:bg-red-600" data-testid="ag-template-confirm">Clear sheet & switch</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {pending !== undefined && (
+        <AgPanel title={`Switch to ${pending ? `“${state.notes.get(pending)?.name}”` : "no template"}?`} onClose={() => setPending(undefined)} width={400} height={280} testId="ag-template-confirm-panel"
+          footer={<>
+            <button type="button" onClick={() => setPending(undefined)} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
+            <button type="button" onClick={doSwitch} className="h-9 px-4 rounded bg-red-700 hover:bg-red-600 text-white text-sm" data-testid="ag-template-confirm">Clear sheet & switch</button>
+          </>}>
+          <div className="text-sm text-stone-300 leading-relaxed">This clears everything on the sheet — its values, text and buttons — and starts over from the new template. The name, portrait, owners and connections stay. You can undo this afterwards (it's also saved in Version history).</div>
+        </AgPanel>
+      )}
     </Section>
   );
 }
@@ -261,7 +259,7 @@ function VersionsSection({ noteId }: { noteId: string }) {
           {versions.map((v) => (
             <div key={v.id} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-900/60 px-2 py-1 text-xs">
               <span className="flex-1 min-w-0"><span className="text-stone-200">{v.label || REASONS[v.reason] || v.reason}</span><span className="block text-[10px] text-stone-500">{new Date(v.createdAt).toLocaleString()}</span></span>
-              <button type="button" onClick={() => { if (window.confirm("Restore this version? The current state is saved first.")) request({ op: "version.restore", versionId: v.id }).then(() => { toast({ title: "Restored" }); load(); }).catch((e) => toast({ title: "Couldn't restore", description: e.message, variant: "destructive" })); }}
+              <button type="button" onClick={() => { agConfirm("The sheet goes back to this version. Its current state is saved first, so you can come back.", { title: "Restore this version?", confirm: "Restore", danger: false }).then((ok) => { if (ok) request({ op: "version.restore", versionId: v.id }).then(() => { toast({ title: "Restored" }); load(); }).catch((e) => toast({ title: "Couldn't restore", description: e.message, variant: "destructive" })); }); }}
                 className="h-7 px-2 rounded bg-stone-800 hover:bg-stone-700 inline-flex items-center gap-1" data-testid="ag-version-restore"><RotateCcw className="h-3 w-3" /> Restore</button>
             </div>
           ))}

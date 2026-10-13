@@ -11,6 +11,7 @@ import { useAg, useNoteFields, usePerms, useMemberName } from "./hooks";
 import { FieldInput, CommitInput } from "./widgets";
 import { FormulaInput } from "./FormulaBuilder";
 import { AclEditor } from "./pickers";
+import { agConfirm } from "./float";
 
 const TYPES: Array<[AgFieldType, string, string]> = [
   ["number", "Number", "HP, strength, gold…"],
@@ -152,7 +153,7 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
             <button type="button" onClick={() => onMove(-1)} className="h-7 w-7 grid place-items-center rounded hover:bg-stone-800 text-stone-400" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></button>
             <button type="button" onClick={() => onMove(1)} className="h-7 w-7 grid place-items-center rounded hover:bg-stone-800 text-stone-400" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></button>
             {f.err && <span className="text-[11px] text-red-400 ml-1">{f.err}</span>}
-            <button type="button" onClick={() => { if (window.confirm(`Delete “${f.label}”? Formulas and bars using it will show a warning.`)) request({ op: "field.delete", id: f.id }); }} className="ml-auto h-7 px-2 rounded text-xs text-red-300 hover:bg-red-950 inline-flex items-center gap-1" data-testid="ag-field-delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+            <button type="button" onClick={() => { agConfirm(`Formulas and bars that use “${f.label}” will show a warning.`, { title: `Delete “${f.label}”?`, confirm: "Delete" }).then((ok) => { if (ok) request({ op: "field.delete", id: f.id }); }); }} className="ml-auto h-7 px-2 rounded text-xs text-red-300 hover:bg-red-950 inline-flex items-center gap-1" data-testid="ag-field-delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
           </div>
         </div>
       )}

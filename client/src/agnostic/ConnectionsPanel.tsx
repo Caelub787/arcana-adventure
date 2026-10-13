@@ -9,6 +9,7 @@ import { useAg, usePerms } from "./hooks";
 import { Portrait } from "./widgets";
 import { NotePickerDialog } from "./editor/AgEditor";
 import { FormulaInput } from "./FormulaBuilder";
+import { PickField } from "./float";
 
 const PRESETS: Array<[string, string, string]> = [
   ["owner", "items", "Owned by (item → character)"],
@@ -106,7 +107,7 @@ function ModifierRow({ mod, labels, onSave, onDelete }: { mod: AgModifier; label
       <div className="flex flex-wrap items-center gap-1.5">
         <select value={mod.op} onChange={(e) => onSave({ op: e.target.value as any })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1"><option value="add">Add</option><option value="multiply">Multiply</option></select>
         <span className="text-stone-400">to</span>
-        <select value={mod.via} onChange={(e) => onSave({ via: e.target.value })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1">{labels.map((l) => <option key={l} value={l}>{l === "self" ? "this sheet" : `@${l}`}</option>)}</select>
+        <span className="w-32 inline-block"><PickField value={mod.via} items={labels.map((l) => ({ id: l, name: l === "self" ? "this sheet" : `@${l}`, mono: l !== "self", icon: <Link2 className="h-4 w-4" />, sub: l === "self" ? "Change a value on this same sheet" : `Every sheet connected as “${l}”` }))} onChange={(via) => onSave({ via })} title="Which sheets does it change?" /></span>
         <span className="text-stone-400">'s</span>
         <input value={target} onChange={(e) => setTarget(e.target.value)} onBlur={() => target !== mod.targetKey && onSave({ targetKey: target })} placeholder="value key, e.g. str" className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 font-mono" />
         <button type="button" onClick={onDelete} className="ml-auto h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>

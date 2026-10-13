@@ -7,7 +7,8 @@ import {
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AgPanel } from "./float";
+import { NotePicker } from "./pickers";
 import { useAuth } from "@/lib/AuthContext";
 import { useAg, AgScopeProvider } from "./hooks";
 import { Portrait } from "./widgets";
@@ -156,9 +157,11 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
     } catch (e: any) { toast({ title: "Couldn't create it", description: e.message, variant: "destructive" }); }
   };
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-md" onKeyDown={(e) => e.stopPropagation()}>
-        <DialogHeader><DialogTitle className="text-stone-100">{template ? "New template" : "New sheet"}</DialogTitle></DialogHeader>
+    <AgPanel title={template ? "New template" : "New sheet"} onClose={onClose} width={440} height={520} testId="ag-create"
+      footer={<>
+        <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
+        <button type="button" onClick={create} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-create-submit">Create</button>
+      </>}>
         <div className="space-y-3 text-stone-200">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Name" className="w-full h-10 bg-stone-950 border border-stone-700 rounded px-2" data-testid="ag-create-name" />
           <div>
@@ -171,10 +174,7 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
           {!template && (
             <div>
               <div className="text-[11px] text-stone-400 mb-1">Template (locked once chosen)</div>
-              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className="w-full h-9 bg-stone-950 border border-stone-700 rounded px-2 text-sm" data-testid="ag-create-template">
-                <option value="">Blank sheet</option>
-                {templates.map((t) => <option key={t.id} value={t.id}>{t.name} (v{t.templateMeta?.version ?? 1})</option>)}
-              </select>
+              <NotePicker value={templateId} onChange={setTemplateId} notes={templates} title={`${agTypeLabel(type)} templates`} noneLabel="Blank sheet" placeholder="Blank sheet" testId="ag-create-template" />
               {!templates.length && <div className="text-[10px] text-stone-500 mt-1">No {agTypeLabel(type)} templates yet — make one in the Templates tab.</div>}
             </div>
           )}
@@ -184,13 +184,8 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
               <div className="flex flex-wrap gap-1">{players.map((m) => <button key={m.userId} type="button" onClick={() => setOwners(owners.includes(m.userId) ? owners.filter((x) => x !== m.userId) : [...owners, m.userId])} className={`h-8 px-2.5 rounded-full border text-xs ${owners.includes(m.userId) ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-300"}`}>{m.name}</button>)}</div>
             </div>
           )}
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
-            <button type="button" onClick={create} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-create-submit">Create</button>
-          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </AgPanel>
   );
 }
 
@@ -200,20 +195,17 @@ function ImportFromLibraryDialog({ onClose }: { onClose: () => void }) {
   const { user, isAdmin } = useAuth() as any;
   const [source, setSource] = useState<AgScope>({ kind: "library", id: user?.id ?? "" });
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[85vh] flex flex-col" onKeyDown={(e) => e.stopPropagation()}>
-        <DialogHeader><DialogTitle className="text-stone-100">Bring in from…</DialogTitle></DialogHeader>
+    <AgPanel title="Bring in from My Library / Admin" onClose={onClose} width={480} height={620} testId="ag-bring-in">
         <div className="flex gap-1">
           <button type="button" onClick={() => setSource({ kind: "library", id: user?.id ?? "" })} className={`h-8 px-3 rounded text-xs ${source.kind === "library" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>My Library</button>
           {isAdmin && <button type="button" onClick={() => setSource({ kind: "admin", id: "admin" })} className={`h-8 px-3 rounded text-xs ${source.kind === "admin" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>Admin</button>}
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div>
           <AgScopeProvider key={`${source.kind}:${source.id}`} scope={source}>
             <SourceList target={scope} source={source} />
           </AgScopeProvider>
         </div>
-      </DialogContent>
-    </Dialog>
+    </AgPanel>
   );
 }
 
@@ -221,7 +213,11 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
   const { state } = useAg();
   const { toast } = useToast();
   const [done, setDone] = useState<Set<string>>(new Set());
-  const notes = [...Array.from(state.notes.values())].sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
+  const [q, setQ] = useState("");
+  const [kind, setKind] = useState("");
+  const all = Array.from(state.notes.values()).sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
+  const kinds = Array.from(new Set(all.map((n) => (n.isTemplate ? "Templates" : agTypeLabel(n.type)))));
+  const notes = all.filter((n) => (!kind || (n.isTemplate ? "Templates" : agTypeLabel(n.type)) === kind) && (!q.trim() || n.name.toLowerCase().includes(q.trim().toLowerCase())));
   const copy = async (n: AgNote) => {
     try {
       await agClient.request(target, { op: "note.copyFrom", sourceNoteId: n.id, sourceScope: source });
@@ -229,15 +225,25 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
     } catch (e: any) { toast({ title: "Couldn't copy", description: e.message, variant: "destructive" }); }
   };
   return (
-    <div className="space-y-1 py-1">
+    <div className="space-y-2 py-1">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-9 pl-9 pr-2 rounded-md bg-stone-800 border border-stone-700 text-sm text-stone-100" data-testid="ag-bring-in-search" />
+      </div>
+      {kinds.length > 1 && (
+        <div className="flex gap-1 overflow-x-auto no-scrollbar">
+          {["", ...kinds].map((k) => <button key={k || "all"} type="button" onClick={() => setKind(k)} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${kind === k ? "border-amber-500 text-amber-300 bg-amber-500/10" : "border-stone-700 text-stone-400"}`}>{k || "All"}</button>)}
+        </div>
+      )}
+      <div className="text-[11px] text-stone-500">Each one is copied into this campaign (with the components it uses). The copy is yours to change; the library stays as it is.</div>
       {notes.map((n) => (
-        <div key={n.id} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1">
-          <Portrait note={n} size={28} radius={4} />
-          <span className="flex-1 min-w-0 text-sm text-stone-200 truncate">{n.name}<span className="block text-[10px] text-stone-500">{agTypeLabel(n.type)}{n.isTemplate ? " template" : ""}</span></span>
-          <button type="button" disabled={done.has(n.id)} onClick={() => copy(n)} className="h-8 px-2.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs disabled:bg-emerald-800" data-testid={`ag-copy-${n.name}`}>{done.has(n.id) ? "Added" : "Add"}</button>
+        <div key={n.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-stone-800 border border-stone-700">
+          <Portrait note={n} size={36} radius={6} />
+          <span className="flex-1 min-w-0"><span className="block text-sm font-medium text-stone-100 truncate">{n.name}</span><span className="block text-xs text-stone-400">{agTypeLabel(n.type)}{n.isTemplate ? " template" : ""}</span></span>
+          <button type="button" disabled={done.has(n.id)} onClick={() => copy(n)} className="h-8 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1 disabled:bg-emerald-800" data-testid={`ag-copy-${n.name}`}>{done.has(n.id) ? "Added" : <><Plus className="h-3.5 w-3.5" /> Add</>}</button>
         </div>
       ))}
-      {!notes.length && <div className="text-sm text-stone-500 p-3">Nothing there yet.</div>}
+      {!notes.length && <div className="text-sm text-stone-500 p-3 text-center">{q || kind ? "Nothing matches." : "Nothing there yet."}</div>}
     </div>
   );
 }
