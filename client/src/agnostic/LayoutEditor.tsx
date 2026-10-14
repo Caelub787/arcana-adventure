@@ -4,7 +4,7 @@
 // screen and every coordinate is converted back to design pixels.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Plus, Trash2, Copy, ArrowUp, ArrowDown, Type, Image as ImageIcon, User, Hash, BarChart3, Square, Link2, Dices, Puzzle, SlidersHorizontal, Gauge, X, AlignLeft, FileText,
+  Plus, Trash2, Copy, ArrowUp, ArrowDown, Type, Star, Image as ImageIcon, User, Hash, BarChart3, Square, Link2, Dices, Puzzle, SlidersHorizontal, Gauge, X, AlignLeft, FileText,
 } from "lucide-react";
 import type { AgAudience, AgLayout, AgLayoutItem, AgLook, AgWidget } from "@shared/agnostic/types";
 import { AgPanel } from "./float";
@@ -14,6 +14,8 @@ import { AudienceSelect, ColorInput, RefPicker, ComponentPicker } from "./picker
 import { ActionPicker } from "./ActionEditor";
 import { LookEditor, type LookKind } from "./look";
 import { mergeLook } from "./lookUtil";
+import { IconGrid } from "./icons";
+import { LinksConfigEditor } from "./links";
 
 const lookKindFor = (display: string, _inline: boolean): LookKind =>
   (["bar", "pips", "dial", "value", "input", "badge", "label"].includes(display) ? display : "value") as LookKind;
@@ -40,6 +42,7 @@ export function widgetPalette(opts: { allowRichText?: boolean; allowLastRoll?: b
     { label: "Chart", icon: <BarChart3 className="h-4 w-4" />, make: () => ({ kind: "chart", chart: "radar", refs: [] }), w: 200, h: 160 },
     { label: "Connections table", icon: <Link2 className="h-4 w-4" />, make: () => ({ kind: "links", label: "", columns: [] }), w: 260, h: 120 },
     { label: "Shape", icon: <Square className="h-4 w-4" />, make: () => ({ kind: "shape", shape: "rect", color: "rgba(120,53,15,0.5)", radius: 6 }), w: 80, h: 40 },
+    { label: "Icon", icon: <Star className="h-4 w-4" />, make: () => ({ kind: "icon", name: "Star", color: "#d4a24c" }), w: 24, h: 24 },
     { label: "Component", icon: <Puzzle className="h-4 w-4" />, make: () => ({ kind: "component", componentId: "", bindings: {} }), w: 160, h: 60 },
   ];
   if (opts.allowRichText) p.splice(6, 0, { label: "Text box", icon: <FileText className="h-4 w-4" />, make: () => ({ kind: "richtext", regionId: "" }), w: 200, h: 80 });
@@ -323,8 +326,7 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
       )}
       {w.kind === "links" && (
         <>
-          <div className={row}><span className={lbl}>Connection</span><input value={w.label} placeholder="e.g. items" onChange={(e) => onWidget({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
-          <div className={row}><span className={lbl}>Columns</span><input value={(w.columns ?? []).join(", ")} placeholder="weight, qty" onChange={(e) => onWidget({ columns: e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) } as any)} className="h-7 flex-1 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></div>
+          <LinksConfigEditor noteId={noteId} value={{ label: w.label, columns: w.columns ?? [], config: w.config }} onChange={(v) => onWidget({ label: v.label, columns: v.columns, config: v.config } as any)} />
           <LookSection look={w.look} kind="links" onChange={(look) => onWidget({ look } as any)} />
         </>
       )}
@@ -335,6 +337,12 @@ function ItemInspector({ item, noteId, params, onItem, onWidget, onClose }: {
           <ColorInput value={w.border} onChange={(border) => onWidget({ border } as any)} title="Border" />
           <input type="range" min={0} max={1} step={0.05} value={w.opacity ?? 1} onChange={(e) => onWidget({ opacity: Number(e.target.value) } as any)} className="w-20" title="Opacity" />
         </div>
+      )}
+      {w.kind === "icon" && (
+        <>
+          <div className={row}><span className={lbl}>Colour</span><ColorInput value={w.color} onChange={(color) => onWidget({ color } as any)} /></div>
+          <IconGrid value={w.name} onPick={(name) => onWidget({ name } as any)} />
+        </>
       )}
       {w.kind === "component" && (
         <>

@@ -19,7 +19,7 @@ import * as Y from "yjs";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote,
   AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Plus, Hash, Gauge, Dices, EyeOff, Lock, Columns2, Columns3, LayoutGrid,
-  Image as ImageIcon, Table as TableIcon, BarChart3, Link2, Puzzle, Minus, Highlighter, Palette, Loader2, FileText, Code,
+  Image as ImageIcon, Table as TableIcon, BarChart3, Link2, Puzzle, Minus, Highlighter, Palette, Loader2, FileText, Code, Sparkles, PanelsTopLeft, Backpack,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
@@ -28,6 +28,7 @@ import { AG_NODES, AgDocContext, FieldConfig, lookKindFor } from "./nodes";
 import { LookEditor } from "../look";
 import { FieldDisplay, ActionButton, ChartWidget, LinksTable, ComponentView } from "../widgets";
 import { RefPicker, ComponentPicker, noteItems } from "../pickers";
+import { LinksConfigEditor } from "../links";
 import { AgPanel, AgSelector } from "../float";
 import { RefList } from "../LayoutEditor";
 import { ActionPicker } from "../ActionEditor";
@@ -239,6 +240,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Button / roll", hint: "Rolls dice, changes values, posts messages", icon: <Dices className="h-4 w-4" />, gm: true, run: () => configure("agButton", { actionId: "", label: "" }, "Button") },
     { label: "Hidden section", icon: <EyeOff className="h-4 w-4" />, gm: true, run: () => makeRegion(false), hint: "Its own who-can-see / who-can-edit" },
     { label: "Secret words", icon: <Lock className="h-4 w-4" />, gm: true, run: () => makeRegion(true), hint: "Hidden words inside a sentence" },
+    { label: "Tabs", hint: "Split the page into tabs (Overview, Skills, Inventory…)", icon: <PanelsTopLeft className="h-4 w-4" />, run: () => insert({ type: "agTabs", attrs: { tabsId: uid() }, content: ["Overview", "Details", "Notes"].map((title) => ({ type: "agTab", attrs: { title }, content: [{ type: "paragraph" }] })) }) },
     { label: "2 columns", hint: "Side by side", icon: <Columns2 className="h-4 w-4" />, run: () => insert({ type: "agColumns", content: [col(), col()] }) },
     { label: "3 columns", hint: "Side by side", icon: <Columns3 className="h-4 w-4" />, run: () => insert({ type: "agColumns", content: [col(), col(), col()] }) },
     { label: "Free canvas", icon: <LayoutGrid className="h-4 w-4" />, run: () => insert({ type: "agCanvas", attrs: { canvasId: uid(), width: 600, height: 260 } }), hint: "Drag & drop anything anywhere" },
@@ -246,9 +248,11 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Image (library)", hint: "From the image library", icon: <ImageIcon className="h-4 w-4" />, run: () => { setOpen(false); setPicker("image"); } },
     { label: "Table", hint: "Rows and columns", icon: <TableIcon className="h-4 w-4" />, run: () => { editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); setOpen(false); } },
     { label: "Chart", hint: "Radar, bars, line or pie of several values", icon: <BarChart3 className="h-4 w-4" />, run: () => configure("agChart", { chart: "radar", refs: [], maxRef: "", height: 220 }, "Chart") },
-    { label: "Connections table", hint: "Every connected sheet, with value columns", icon: <Link2 className="h-4 w-4" />, run: () => configure("agLinks", { label: "", columns: [] }, "Connections table") },
+    { label: "Connections table", hint: "Every connected sheet, with value columns", icon: <Link2 className="h-4 w-4" />, run: () => configure("agLinks", { label: "", columns: [], config: {} }, "Connections table") },
+    { label: "Inventory", hint: "Item cards with search, filters, Add and equip", icon: <Backpack className="h-4 w-4" />, run: () => configure("agLinks", { label: "items", columns: [{ ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", suffix: "lbs" }, { ref: "equipped", display: "toggle", label: "Equip" }], config: { layout: "cards", search: true, add: { types: ["item"], reverse: "owner", existing: true }, remove: "delete" } }, "Inventory") },
     { label: "Link to a sheet", hint: "A chip that opens another sheet", icon: <FileText className="h-4 w-4" />, run: () => { setOpen(false); setPicker("note"); } },
     { label: "Component", hint: "One of your reusable designs", icon: <Puzzle className="h-4 w-4" />, run: () => configure("agComponent", { componentId: "", bindings: {} }, "Component") },
+    { label: "Icon", hint: "A small picture in the text (heart, sword, coins…)", icon: <Sparkles className="h-4 w-4" />, run: () => insert({ type: "agIcon", attrs: { name: "Star", color: "#d4a24c", size: 16 } }) },
     { label: "Divider", hint: "A horizontal line", icon: <Minus className="h-4 w-4" />, run: () => { editor?.chain().focus().setHorizontalRule().run(); setOpen(false); } },
   ];
   return (
@@ -323,7 +327,7 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
     : isField ? <FieldDisplay noteId={noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={look} />
     : config.type === "agButton" ? <ActionButton actionId={a.actionId} label={a.label || undefined} look={look} />
     : config.type === "agChart" ? <ChartWidget noteId={noteId} chart={a.chart} refs={(a.refs ?? []).filter(Boolean)} maxRef={a.maxRef || undefined} height={Math.min(220, look.height ?? a.height ?? 220)} look={look} />
-    : config.type === "agLinks" ? <LinksTable noteId={noteId} label={a.label} columns={a.columns ?? []} look={look} />
+    : config.type === "agLinks" ? <LinksTable noteId={noteId} label={a.label} columns={a.columns ?? []} config={a.config} look={look} />
     : config.type === "agComponent" ? <ComponentView componentId={a.componentId} noteId={noteId} bindings={a.bindings ?? {}} />
     : null;
   return (
@@ -349,9 +353,8 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
           )}
           {config.type === "agLinks" && (
             <>
-              {row("Connection", <input value={a.label} placeholder="e.g. items" onChange={(e) => update({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-2 text-sm" />)}
-              {row("Columns", <input value={(a.columns ?? []).join(", ")} placeholder="weight, qty" onChange={(e) => update({ columns: e.target.value.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) })} className="h-8 w-full bg-stone-950 border border-stone-700 rounded px-2 text-sm" />)}
-              <div className="text-[10px] text-stone-500">Lists every sheet connected by that name (Links tab), with the chosen values as columns.</div>
+              <LinksConfigEditor noteId={noteId} value={{ label: a.label, columns: a.columns ?? [], config: a.config }} onChange={(v) => update({ label: v.label, columns: v.columns, config: v.config ?? {} })} />
+              <div className="text-[10px] text-stone-500">Lists every sheet connected by that name (Links tab). As item cards with Add, it's an inventory.</div>
             </>
           )}
           {config.type === "agComponent" && (

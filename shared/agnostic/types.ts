@@ -102,6 +102,9 @@ export interface AgLook {
   bold?: boolean;
   italic?: boolean;
   labelPos?: "above" | "left" | "right" | "below" | "inside" | "none";
+  /** Small-caps style labels (and badge text). */
+  labelUpper?: boolean;
+  labelSize?: number;
   /** What numbers a bar / dial shows. */
   numbers?: "fraction" | "value" | "percent" | "none";
   barStyle?: "solid" | "gradient" | "striped" | "segments" | "glow";
@@ -113,6 +116,11 @@ export interface AgLook {
   ratio?: string;
   /** Buttons: show the dice icon. */
   icon?: boolean;
+  /** Text after a value, e.g. "lbs" or "ft". */
+  suffix?: string;
+  /** An icon (by name) shown before a value / label / button text. */
+  iconName?: string;
+  iconColor?: string;
   /** Overall zoom for components / canvases placed on a sheet (0.25–4). */
   scale?: number;
 }
@@ -132,6 +140,12 @@ export interface AgTokenBar {
 export interface AgTemplateMeta {
   version: number;
   description?: string;
+  /**
+   * Players may add a new sheet from this template to a sheet they can edit
+   * (e.g. an item into their own inventory) and remove ones they added.
+   * Everything else about creating sheets stays GM-only.
+   */
+  playersCanCreate?: boolean;
   /** Last time "Save version" was pressed. */
   savedAt?: number;
 }
@@ -174,6 +188,8 @@ export interface AgFieldOptions {
   color?: string;
   /** Formula fields may produce text; default number. */
   resultType?: "number" | "text";
+  /** Choice (and text) values: a colour per value, used by badges / values (e.g. rarity). */
+  choiceColors?: Record<string, string>;
 }
 
 export interface AgField {
@@ -239,10 +255,28 @@ export interface AgModifier {
 // ---------------------------------------------------------------------------
 // Actions — no-code functions behind buttons.
 // ---------------------------------------------------------------------------
+/** Every step can be skipped by a condition ("only if"), a formula like `qty <= 0`. */
+interface AgStepBase { when?: string }
 export type AgActionStep =
-  | { type: "roll"; name: string; expr: string; label?: string }
-  | { type: "modify"; target: string; op: "set" | "add" | "subtract"; value: string }
-  | { type: "message"; text: string };
+  | ({ type: "roll"; name: string; expr: string; label?: string } & AgStepBase)
+  | ({ type: "modify"; target: string; op: "set" | "add" | "subtract"; value: string } & AgStepBase)
+  | ({ type: "message"; text: string } & AgStepBase)
+  /**
+   * Ask whoever pressed the button to pick one sheet — e.g. which of the
+   * owner's wounds a potion heals. `from` is a connection path ("@owner.wounds");
+   * `filter` keeps only sheets where it is true (evaluated on each one).
+   * Later steps reach the pick as @<name>.value / $… just like @target.
+   */
+  | ({ type: "choose"; name: string; from: string; filter?: string; prompt?: string } & AgStepBase)
+  /** Delete a sheet: "self" (the sheet the button is on) or a chosen one. */
+  | ({ type: "remove"; target: string } & AgStepBase);
+
+/** What a "choose" step offers before the button runs. */
+export interface AgActionChoice {
+  name: string;
+  prompt: string;
+  options: Array<{ id: string; name: string; portrait: string | null; sub?: string }>;
+}
 
 export interface AgAction {
   id: string;
@@ -282,10 +316,11 @@ export type AgWidget =
   | { kind: "name"; fontSize?: number; color?: string; align?: "left" | "center" | "right"; look?: AgLook }
   | { kind: "button"; actionId: string; label?: string; look?: AgLook }
   | { kind: "chart"; chart: "bar" | "radar" | "line" | "pie"; refs: string[]; maxRef?: string; look?: AgLook }
-  | { kind: "links"; label: string; columns: string[]; look?: AgLook }
+  | { kind: "links"; label: string; columns: Array<string | AgLinkColumn>; config?: AgLinksConfig; look?: AgLook }
   | { kind: "component"; componentId: string; bindings: Record<string, string>; look?: AgLook }
   | { kind: "shape"; shape: "rect" | "circle" | "line"; color: string; border?: string; radius?: number; opacity?: number }
-  | { kind: "lastRoll" };
+  | { kind: "lastRoll" }
+  | { kind: "icon"; name: string; color?: string; look?: AgLook };
 
 export interface AgLayoutItem {
   id: string;
@@ -323,6 +358,34 @@ export interface AgComponentDef {
   params: string[];
   layout: AgLayout;
   updatedAt: number;
+}
+
+/** A column of a connections table / inventory: a value on each connected sheet. */
+export interface AgLinkColumn {
+  ref: string;
+  label?: string;
+  display?: "value" | "input" | "bar" | "badge" | "toggle";
+  /** Bars: the max value (another key on the same sheet). */
+  maxRef?: string;
+  color?: string;
+  /** Shown after the value, e.g. "lbs". */
+  suffix?: string;
+}
+
+/** How a connections table behaves — enough to build a full inventory. */
+export interface AgLinksConfig {
+  layout?: "table" | "cards";
+  search?: boolean;
+  /** "name" or a column key. */
+  sortBy?: string;
+  /** Filter chips from this column's values (e.g. item type). */
+  filterBy?: string;
+  /** Card border coloured by this column's choice colour (e.g. rarity). */
+  accentBy?: string;
+  /** Adding: which kinds of sheet, and what the new sheet calls this one (e.g. "owner"). */
+  add?: { types?: string[]; reverse?: string; existing?: boolean } | null;
+  remove?: "none" | "disconnect" | "delete";
+  emptyText?: string;
 }
 
 export interface AgTrackerCard {

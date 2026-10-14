@@ -13,6 +13,7 @@ const FUNCS: Array<[string, string, string]> = [
   ["min(a, b)", "min(", "Smallest"], ["max(a, b)", "max(", "Largest"], ["floor(x)", "floor(", "Round down"], ["ceil(x)", "ceil(", "Round up"],
   ["round(x)", "round(", "Round"], ["abs(x)", "abs(", "Absolute"], ["clamp(x, lo, hi)", "clamp(", "Keep between"], ["if(cond, a, b)", "if(", "If…then…else"],
   ["sum(list)", "sum(", "Total of many"], ["count(list)", "count(", "How many"], ["avg(list)", "avg(", "Average"], ["concat(a, b)", "concat(", "Join text"],
+  ["choose(i, a, b…)", "choose(", "Pick by number (0 = first)"], ["tier(x, t0, t1…)", "tier(", "Ladder step reached"], ["roll(n, sides)", "roll(", "Dice sized by a value"], ["base(x)", "base(", "x before changes from links"],
 ];
 const DICE = ["1d4", "1d6", "1d8", "1d10", "1d12", "1d20", "2d6", "4d6kh3", "1d100"];
 const OPS = ["+", "-", "*", "/", "(", ")", ">=", "<=", "==", "&&", "||"];

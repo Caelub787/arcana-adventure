@@ -9,7 +9,9 @@
 //   1d20 + @dex   4d6kh3   d%     dice (roll buttons only, never in fields)
 //   $r                            a value from an earlier action step / component parameter
 //   if(hp <= 0, "Down", "Up")     functions: min max floor ceil round abs clamp
-//                                 if sum count avg sqrt pow concat
+//                                 if sum count avg sqrt pow concat choose tier
+//   roll(1, might_die) + athletics  dice whose size comes from a value (buttons only)
+//   tier(pool, 0, 20, 30)         ladder position: thresholds reached − 1
 //   hp > 0 && !stunned ? 1 : 0    comparisons, logic, ternary
 //
 // Lists (from multi-sheet refs) are summed automatically when used as numbers.
@@ -223,7 +225,7 @@ export function parseFormula(src: string): FNode {
 // --------------------------------------------------------------------------- evaluation
 export interface EvalContext {
   /** Resolve a field reference. Multi-sheet paths return lists. Throw FormulaError if unknown. */
-  ref(path: string[], abs?: string): FValue;
+  ref(path: string[], abs?: string, opts?: { base?: boolean }): FValue;
   local?(name: string): FValue | undefined;
   /** Supplying this enables dice; omitted → dice are an error (fields must be deterministic). */
   rollDie?(sides: number): number;
@@ -267,6 +269,14 @@ const FUNCS: Record<string, (args: FValue[]) => FValue> = {
   concat: (a) => flat(a).map((x) => (x === null ? "" : typeof x === "number" ? fmt(x) : String(x))).join(""),
   // if() is special-cased in evaluate() so only the taken branch runs.
   if: (a) => (truthy(a[0]) ? a[1] : a[2] ?? null),
+  /** choose(i, a, b, c…): the i-th (0-based) of the options; past the end → the last one. */
+  choose: (a) => { const opts = a.slice(1); if (!opts.length) return null; const i = Math.max(0, Math.min(opts.length - 1, Math.floor(num(a[0])))); return opts[i]; },
+  /** tier(x, t0, t1, …): how many thresholds x has reached, minus one (a ladder position). */
+  tier: (a) => { const x = num(a[0]); let i = 0; for (let k = 1; k < a.length; k++) if (x >= num(a[k])) i = k - 1; return i; },
+  // roll() is special-cased in evaluate(): it needs the dice roller.
+  roll: () => { throw new FormulaError("Dice can only be used in roll buttons"); },
+  // base() is special-cased in evaluate(): it reads a value before modifiers.
+  base: () => { throw new FormulaError("base() takes a value name, e.g. base(athletics)"); },
 };
 
 export function evaluate(node: FNode, ctx: EvalContext): EvalResult {
@@ -312,6 +322,24 @@ export function evaluate(node: FNode, ctx: EvalContext): EvalResult {
           const c = ev(n.args[0] ?? { t: "bool", v: false });
           const r = truthy(c.v) ? (n.args[1] ? ev(n.args[1]) : { v: null, s: "null" }) : (n.args[2] ? ev(n.args[2]) : { v: null, s: "null" });
           return r;
+        }
+        if (n.name === "roll") {
+          // roll(count, sides[, keepHighest]): dice whose size comes from the sheet, e.g. roll(1, might_die).
+          if (!ctx.rollDie) throw new FormulaError("Dice can only be used in roll buttons");
+          const ra = n.args.map(ev);
+          const count = Math.max(1, Math.min(200, Math.floor(num(ra[0]?.v ?? 1))));
+          const sides = Math.max(1, Math.min(1000, Math.floor(num(ra[1]?.v ?? 6))));
+          const rolls = Array.from({ length: count }, () => ctx.rollDie!(sides));
+          const keepN = ra[2] ? Math.floor(num(ra[2].v)) : 0;
+          const kept = keepN > 0 ? [...rolls].sort((x, y) => y - x).slice(0, keepN) : rolls;
+          return { v: kept.reduce((s2, x) => s2 + x, 0), s: `${count}d${sides}${keepN > 0 ? `kh${keepN}` : ""}[${rolls.join(",")}]` };
+        }
+        if (n.name === "base") {
+          // base(x): x as written on the sheet, before any changes from connected sheets.
+          const a = n.args[0];
+          if (n.args.length !== 1 || a.t !== "ref") throw new FormulaError("base() takes a value name, e.g. base(athletics)");
+          const v = ctx.ref(a.path, a.abs, { base: true });
+          return { v, s: `base(${fmt(v)})` };
         }
         const args = n.args.map(ev);
         const v = FUNCS[n.name](args.map((a) => a.v));
@@ -379,7 +407,7 @@ export function containsDice(node: FNode): boolean {
     case "un": return containsDice(node.a);
     case "bin": return containsDice(node.a) || containsDice(node.b);
     case "tern": return containsDice(node.c) || containsDice(node.a) || containsDice(node.b);
-    case "call": return node.args.some(containsDice);
+    case "call": return node.name === "roll" || node.args.some(containsDice);
     default: return false;
   }
 }

@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  BookOpen, Minus, Rocket, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
+  BookOpen, Minus, Rocket, Backpack, Package, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
 } from "lucide-react";
 import type { AgLayout } from "@shared/agnostic/types";
 import { FloatingPanel, bringFloatingPanelToFront, isFloatingPanelOnTop } from "@/components/ui/floating-panel";
@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAgMaybe } from "./hooks";
 
 export type GuideTopic =
-  | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "privacy" | "tracker" | "libraries" | "formulas";
+  | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "inventory" | "kits" | "privacy" | "tracker" | "libraries" | "formulas";
 
 // --------------------------------------------------------------------------- open from anywhere
 // One guide panel for the page, opened from any GuideButton. It's a floating,
@@ -186,6 +186,9 @@ const TOPICS: Topic[] = [
           ["Hidden section", "A block with its own who-can-see / who-can-edit."],
           ["Secret words", "Hidden words inside a sentence (select text first)."],
           ["2 / 3 columns", "Side-by-side columns. Use + / − on the columns' toolbar for up to 4."],
+          ["Tabs", "Splits the page into tabs (Overview, Skills, Inventory…). ⚙ on the tabs renames them, gives them icons and reorders them."],
+          ["Icon", "A small picture inside the text: heart, sword, coins, star…"],
+          ["Inventory", <>Item cards with search, filters, quantity, equip and an <Ui>Add</Ui> button. See <Go to="inventory">Inventory & lists</Go>.</>],
           ["Free canvas", "A drag-and-drop area: put anything anywhere, at any size, layered."],
           ["Image", "Upload or pick from the image library; drag its sides to resize."],
           ["Table", "A normal table; drag column borders to resize."],
@@ -200,6 +203,7 @@ const TOPICS: Topic[] = [
           <li>Hover an insert (on phones it's always shown) to see its little toolbar: <b>⠿</b> drag to move, <b>⚙</b> settings & look, <b>🗑</b> remove.</li>
           <li>Drag its edges to resize it. <Go to="look">Resizing & styling</Go> explains every option.</li>
           <li>Canvases: press the grid button (or double-click) to arrange items; press ✓ when done.</li>
+          <li><b>Double-click a value</b> on the page to change it right there (if you're allowed to). Values changed by something else (a wound, equipped gear) show a small <Code>= 5</Code> tag with what they really come to.</li>
         </Bullets>
         <H>Undo</H>
         <P><Ui>Ctrl+Z</Ui> / <Ui>Ctrl+Shift+Z</Ui> undo and redo in the page. Outside the text (value changes, template switches) <Ui>Ctrl+Z</Ui> or the ↶ button at the top of the sheet undoes the last change.</P>
@@ -221,7 +225,7 @@ const TOPICS: Topic[] = [
           ["Number", "Scores, HP, gold. Can have min / max / step."],
           ["Text", "Class, notes, anything written."],
           ["Yes / No", "A tickbox: Equipped, Stunned, Inspired."],
-          ["Choice", "A dropdown of options you list."],
+          ["Choice", "One of a list of options you write. Each option can have its own colour (Common grey, Rare blue…) which badges and card edges use."],
           ["Calculated", <>Worked out from other values: <Code>10 + con * 2</Code>, <Code>floor((str - 10) / 2)</Code>. Updates by itself.</>],
           ["Dice", <>A dice expression stored on the sheet, e.g. <Code>1d8 + str</Code>, for buttons to roll.</>],
           ["Image", "A picture that's part of the data (a weapon's art, a map)."],
@@ -367,7 +371,16 @@ const TOPICS: Topic[] = [
           ["Roll", <>Rolls a formula with dice, e.g. <Code>1d20 + str</Code>, <Code>2d6 + @owner.str</Code>, <Code>4d6kh3</Code>. The result is saved as <Code>$r</Code> (rename it) for later steps.</>],
           ["Change a value", <>Add to, subtract from or set a value: subtract <Code>$dmg</Code> from <Code>@target.hp</Code>, add 1 to <Code>uses</Code>.</>],
           ["Message", <>Posts text; anything in {"{ }"} is worked out: <Code>{"{name} hits for {$dmg}!"}</Code></>],
+          ["Choose a sheet", <>Asks whoever pressed it to pick one of a list of sheets, e.g. one of <Code>@owner.wounds</Code>. A filter narrows the list (<Code>severity_rank &lt;= @source.heal_rank</Code>). The pick is <Code>$pick</Code> for later steps.</>],
+          ["Remove a sheet", <>Deletes a sheet: <Code>self</Code> (a used-up potion, a treated wound) or one that was chosen (<Code>$pick</Code>).</>],
         ]} />
+        <P>Every step has <Ui>+ Only if…</Ui>: the step is skipped unless its condition is true, e.g. <Code>qty &lt;= 0</Code> before “Remove self”.</P>
+        <H>Inside a step</H>
+        <Bullets>
+          <li><Code>@owner.hp</Code>, <Code>@items</Code>… reach through connections, just like formulas.</li>
+          <li><Code>@source</Code> is the sheet the button is on (handy inside a filter, which runs on each choice).</li>
+          <li><Code>roll(1, might_die)</Code> rolls a die whose size comes from a value. Rolling a Dice value (<Code>damage</Code>) rolls what's written in it.</li>
+        </Bullets>
         <Steps>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>Choose what it does…</Ui> → <Ui>New action…</Ui> (or a sheet's <Ui>Settings → Buttons</Ui>).</li>
           <li>Name it, add steps, choose its colour and who can see and press it.</li>
@@ -385,10 +398,56 @@ const TOPICS: Topic[] = [
         <Steps>
           <li>Open a sheet's <Ui>Links</Ui> tab, choose a kind (Owned by, Owns, Is at, Ally of, Species, Part of, or <Ui>Custom…</Ui>) and pick the other sheet.</li>
           <li>Formulas can now reach through: <Code>@owner.str</Code>, <Code>sum(@items.weight)</Code>, <Code>count(@items)</Code>.</li>
-          <li><Ui>+ Insert</Ui> → <Ui>Connections table</Ui> lists connected sheets with value columns (e.g. weight, qty).</li>
+          <li><Ui>+ Insert</Ui> → <Ui>Connections table</Ui> (or <Ui>Inventory</Ui>) lists connected sheets with value columns (e.g. weight, qty). See <Go to="inventory">Inventory & lists</Go>.</li>
         </Steps>
         <H>Modifiers</H>
         <P>Also in the Links tab: a sheet can change values on what it's connected to. E.g. a sword adds <Code>2</Code> to its owner's <Code>str</Code>, only while <Code>equipped</Code>. Remove the connection or untick equipped and the bonus goes away by itself.</P>
+      </>
+    ),
+  },
+  {
+    id: "inventory", title: "Inventory & lists", icon: <Backpack className="h-4 w-4" />, words: "inventory items list cards table equip qty quantity add remove filter search sort wounds traits",
+    body: (
+      <>
+        <P>A connections table shows every sheet connected to this one: items it owns, wounds it carries, party members. Set it up as an inventory and it works like a game's inventory screen.</P>
+        <Steps>
+          <li><Ui>+ Insert</Ui> → <Ui>Inventory</Ui> (or <Ui>Connections table</Ui>) and choose the connection, e.g. <Code>items</Code>.</li>
+          <li>Add <b>columns</b>: any value of the connected sheets, each shown as a value, an editable number (Qty with − / +), a bar (durability), a coloured badge (type, rarity) or a toggle (Equip).</li>
+          <li>Choose <b>Cards</b> (a row per item with its badges) or <b>Table</b>.</li>
+          <li>Turn on <b>Search</b>, <b>Sort by</b>, <b>Filter by</b> a choice value (shows chips like Weapon · Armor · Consumable) and <b>Colour edges by</b> one (rarity).</li>
+          <li><b>Add button</b>: which templates it offers (e.g. only <Code>item</Code> sheets), what the new sheet calls this one (<Code>owner</Code>) and whether existing sheets can be picked too.</li>
+          <li><b>Remove</b>: disconnect only, delete the sheet, or no remove button.</li>
+        </Steps>
+        <Tip>Players only see <Ui>Add</Ui> templates that have <Ui>Settings → Players can add this</Ui> ticked. Everything else stays GM-only.</Tip>
+        <H>Totals and bonuses</H>
+        <Bullets>
+          <li>Weight carried: <Code>sum(@items.total_weight)</Code> where each item has <Code>total_weight = weight * qty</Code>.</li>
+          <li>Equipped gear changes the owner through <Go to="connections">modifiers</Go> with the condition <Code>equipped</Code>.</li>
+          <li>Click an item card to open the item: its own buttons (Use, Strike, Damage) are there.</li>
+        </Bullets>
+      </>
+    ),
+  },
+  {
+    id: "kits", title: "Starter kits (C.A.)", icon: <Package className="h-4 w-4" />, words: "starter kit cultivator adventure ca rank wounds items potion rune backpack example",
+    body: (
+      <>
+        <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the top of the <Ui>Templates</Ui> tab (GM only).</P>
+        <H>Cultivator's Adventure</H>
+        <Table rows={[
+          [<b>CA Character</b>, "Tabs for Overview, Skills, Ability, Inventory and Traits. Rank, Max HP, Focus and Lifespan come from the Energy Pool by themselves; attributes set each skill's die; attribute and skill points are counted for you."],
+          [<b>CA items</b>, "Weapon (Strike, Damage), Armor (adds to DC while equipped), Consumable (Heal HP, Heal a wound), Rune, Container (adds carry weight), Currency, Ammunition, Miscellaneous."],
+          [<b>Wound</b>, "Severity, location and effects. Its effects are modifiers on the bearer (−2 Athletics…) that end when it's treated or healed."],
+          [<b>Trait</b>, "A named trait with a summary."],
+        ]} />
+        <H>How it's built (copy these ideas)</H>
+        <Bullets>
+          <li>Rank: <Code>tier(energy_pool, 0, 20, 30, …)</Code> finds the step on the ladder; <Code>choose(rank_index, 20, 25, …)</Code> reads Max HP off a list.</li>
+          <li>Skill rolls: <Code>roll(1, might_die) + athletics</Code>.</li>
+          <li>Points spent use <Code>base(athletics)</Code>, so a wound's −2 doesn't give points back.</li>
+          <li>Heal a wound: <Ui>Choose a sheet</Ui> from <Code>@owner.wounds</Code> filtered by severity, then <Ui>Remove a sheet</Ui> <Code>$wound</Code> (the pick), then take one off <Code>qty</Code> and remove the potion when it's at 0.</li>
+        </Bullets>
+        <Tip>The example character, “Example Cultivator”, shows everything working: open it, its items and its wounds.</Tip>
       </>
     ),
   },
@@ -467,6 +526,10 @@ const TOPICS: Topic[] = [
           [<Code>sqrt pow</Code>, "Roots and powers."],
           [<Code>if(cond, yes, no)</Code>, "Choice."],
           [<Code>concat(a, b, …)</Code>, "Join text."],
+          [<Code>choose(i, a, b, c…)</Code>, "The i-th option, counting from 0 (past the end → the last)."],
+          [<Code>tier(x, t0, t1, …)</Code>, "How far up a ladder x is: 0 below t1, 1 from t1, 2 from t2…"],
+          [<Code>roll(n, sides)</Code>, "Dice whose size is a value (buttons only): roll(1, might_die)."],
+          [<Code>base(x)</Code>, "x as written on the sheet, before modifiers from connected sheets."],
         ]} />
         <P>Examples: <Code>floor((str - 10) / 2)</Code> (a modifier), <Code>10 + con * 2</Code> (max HP), <Code>{'if(hp <= 0, "Down", "Up")'}</Code>.</P>
       </>

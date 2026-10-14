@@ -15,6 +15,14 @@ export type AgOp =
   | { op: "note.duplicate"; id: string }
   | { op: "note.copyFrom"; sourceNoteId: string; sourceScope: AgScope; asTemplate?: boolean }
   | { op: "note.switchTemplate"; id: string; templateId: string | null }
+  /** Add a new sheet (from a template) connected to a host sheet — an item into an inventory. */
+  | { op: "note.createLinked"; hostNoteId: string; templateId?: string | null; type?: string; name?: string; label: string; reverseLabel: string }
+  /** Take a connected sheet out of a table: disconnect it, or delete it. */
+  | { op: "note.removeLinked"; hostNoteId: string; noteId: string; mode: "disconnect" | "delete" }
+  /** Templates this viewer may add from (players only see ones the GM allowed). */
+  | { op: "note.creatableTemplates"; types?: string[] }
+  /** Add a ready-made starter kit (templates, and optionally example sheets) to this scope. */
+  | { op: "kit.apply"; kit: "ca"; examples?: boolean }
   | { op: "field.create"; noteId: string; label: string; key?: string; type: AgFieldType; value?: AgValue; formula?: string | null; options?: AgFieldOptions; acl?: AgAcl }
   | { op: "field.update"; id: string; patch: Partial<Pick<AgField, "label" | "key" | "type" | "formula" | "options" | "acl" | "sortOrder">> }
   | { op: "field.set"; id: string; value: AgValue }
@@ -30,7 +38,8 @@ export type AgOp =
   | { op: "modifier.delete"; id: string }
   | { op: "action.upsert"; action: { id?: string; noteId: string; name: string; steps: AgActionStep[]; acl?: AgAcl; color?: string | null } }
   | { op: "action.delete"; id: string }
-  | { op: "action.run"; id: string; targetNoteIds?: string[] }
+  | { op: "action.run"; id: string; targetNoteIds?: string[]; choices?: Record<string, string> }
+  | { op: "action.prepare"; id: string; targetNoteIds?: string[] }
   | { op: "settings.update"; settings: AgCampaignSettings }
   | { op: "component.upsert"; component: { id?: string; name: string; params: string[]; layout: AgLayout } }
   | { op: "component.delete"; id: string }

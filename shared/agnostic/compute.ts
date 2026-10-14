@@ -64,7 +64,7 @@ export class AgComputer {
   }
 
   /** Resolve a reference path starting at `noteId`. */
-  resolve(noteId: string, path: string[], abs?: string, extraRoots?: Record<string, string[]>): FValue {
+  resolve(noteId: string, path: string[], abs?: string, extraRoots?: Record<string, string[]>, rollDie?: (s: number) => number, base = false): FValue {
     let set: string[] = [abs ?? noteId];
     let multi = false;
     if (abs && !this.data.notes.has(abs)) throw new FormulaError("Linked sheet no longer exists");
@@ -76,9 +76,15 @@ export class AgComputer {
         let found = false;
         for (const id of set) {
           const f = this.field(id, seg);
+          if (f && f.type === "dice" && rollDie) {
+            // In a roll button, a dice value ("1d8 + 2") is rolled, against its own sheet.
+            found = true;
+            values.push(f.formula?.trim() ? evaluate(parseCached(f.formula), { ref: (p, a, o) => this.resolve(f.noteId, p, a, undefined, rollDie, o?.base), rollDie }).value : 0);
+            continue;
+          }
           if (f) {
             found = true;
-            const c = this.effOf(f);
+            const c = base ? this.baseOf(f) : this.effOf(f);
             // Errors propagate, so a broken source never silently reads as 0.
             if (c.err) throw new FormulaError(c.err.startsWith("Circular") ? c.err : `"${seg}" has an error`);
             values.push(c.eff as FValue);
@@ -108,6 +114,19 @@ export class AgComputer {
     return null;
   }
 
+  /** A field's own value, before incoming modifiers (formula fields still compute). */
+  baseOf(f: AgField): Computed {
+    if (f.type !== "formula") return { eff: f.type === "dice" ? f.formula ?? "" : f.value, err: null };
+    if (!this.incomingMods.get(f.noteId)?.some((m) => m.targetKey === f.key)) return this.effOf(f);
+    if (!f.formula?.trim()) return { eff: null, err: null };
+    try {
+      const r = evaluate(parseCached(f.formula), { ref: (p, a, o) => this.resolve(f.noteId, p, a, undefined, undefined, o?.base) });
+      return { eff: toFieldValue(r.value, f.options?.resultType ?? "number"), err: null };
+    } catch (e) {
+      return { eff: null, err: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   effOf(f: AgField): Computed {
     const hit = this.memo.get(f.id);
     if (hit) return hit;
@@ -119,7 +138,7 @@ export class AgComputer {
       if (f.type === "formula") {
         if (!f.formula?.trim()) base = null;
         else {
-          const r = evaluate(parseCached(f.formula), { ref: (p, a) => this.resolve(f.noteId, p, a) });
+          const r = evaluate(parseCached(f.formula), { ref: (p, a, o) => this.resolve(f.noteId, p, a, undefined, undefined, o?.base) });
           base = toFieldValue(r.value, f.options?.resultType ?? "number");
         }
       } else if (f.type === "dice") {
@@ -133,10 +152,10 @@ export class AgComputer {
         let v = asNumber(base as FValue);
         const active = mods.filter((m) => {
           if (!m.condition?.trim()) return true;
-          return isTruthy(evaluate(parseCached(m.condition), { ref: (p, a) => this.resolve(m.noteId, p, a) }).value);
+          return isTruthy(evaluate(parseCached(m.condition), { ref: (p, a, o) => this.resolve(m.noteId, p, a, undefined, undefined, o?.base) }).value);
         });
-        for (const m of active.filter((m) => m.op === "add")) v += asNumber(evaluate(parseCached(m.amount), { ref: (p, a) => this.resolve(m.noteId, p, a) }).value);
-        for (const m of active.filter((m) => m.op === "multiply")) v *= asNumber(evaluate(parseCached(m.amount), { ref: (p, a) => this.resolve(m.noteId, p, a) }).value);
+        for (const m of active.filter((m) => m.op === "add")) v += asNumber(evaluate(parseCached(m.amount), { ref: (p, a, o) => this.resolve(m.noteId, p, a, undefined, undefined, o?.base) }).value);
+        for (const m of active.filter((m) => m.op === "multiply")) v *= asNumber(evaluate(parseCached(m.amount), { ref: (p, a, o) => this.resolve(m.noteId, p, a, undefined, undefined, o?.base) }).value);
         base = v;
       }
       if (typeof base === "number") base = clampField(base, f);
@@ -159,7 +178,7 @@ export class AgComputer {
   /** Evaluate an arbitrary expression in a note's context (action steps, previews). */
   evalIn(noteId: string, expr: string, opts: { rollDie?: (s: number) => number; locals?: Record<string, FValue>; roots?: Record<string, string[]> } = {}) {
     return evaluate(parseCached(expr), {
-      ref: (p, a) => this.resolve(noteId, p, a, opts.roots),
+      ref: (p, a, o) => this.resolve(noteId, p, a, opts.roots, opts.rollDie, o?.base),
       local: (n) => opts.locals?.[n],
       rollDie: opts.rollDie,
     });

@@ -140,9 +140,22 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
             </label>
           )}
           {f.type === "select" && (
-            <label className="text-xs flex items-center gap-1">Choices
-              <CommitInput value={(f.options.choices ?? []).join(", ")} className="h-7 flex-1" placeholder="Fighter, Wizard, Rogue" onCommit={(v) => update({ options: { ...f.options, choices: v.split(",").map((s) => s.trim()).filter(Boolean) } })} />
-            </label>
+            <>
+              <label className="text-xs flex items-center gap-1">Choices
+                <CommitInput value={(f.options.choices ?? []).join(", ")} className="h-7 flex-1" placeholder="Fighter, Wizard, Rogue" onCommit={(v) => update({ options: { ...f.options, choices: v.split(",").map((s) => s.trim()).filter(Boolean) } })} />
+              </label>
+              {(f.options.choices ?? []).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span className="text-stone-400">Colours</span>
+                  {(f.options.choices ?? []).map((c) => (
+                    <label key={c} className="inline-flex items-center gap-1 h-7 px-1.5 rounded border border-stone-700 bg-stone-900 cursor-pointer" title={`Colour for “${c}” (badges and values)`}>
+                      <input type="color" value={f.options.choiceColors?.[c] ?? "#a8a29e"} onChange={(e) => update({ options: { ...f.options, choiceColors: { ...(f.options.choiceColors ?? {}), [c]: e.target.value } } })} className="h-4 w-5 bg-transparent border-0 p-0" />
+                      <span style={{ color: f.options.choiceColors?.[c] }}>{c}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </>
           )}
           <div>
             <div className="text-[11px] text-stone-400 mb-1">Who can see / change this value</div>

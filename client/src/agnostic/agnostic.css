@@ -72,4 +72,14 @@
   .ag-resize, .ag-prose [data-resize-handle] { opacity: .85 !important; }
   .ag-node-body { padding-top: 22px; }
   .ag-touch-only { display: inline; }
+  /* Columns and tabs carry their bar above them too; keep it off the content. */
+  .ag-columns-wrap, .ag-tabs { padding-top: 16px; }
+  /* An inline value's tool floats on its corner instead of breaking the line. */
+  .ag-inline { position: relative; }
+  .ag-inline > .ag-inline-tools { position: absolute; top: -14px; right: -12px; z-index: 5; transform: scale(.75); }
 }
+
+/* Block tools show for the innermost block under the pointer only, so nested
+   blocks (tabs › sections › columns) don't stack their bars over the text. */
+.ag-node-wrap:hover:not(:has(.ag-node-wrap:hover)) > .ag-node-tools,
+.ag-node-tools:hover, .ag-node-tools:focus-within { opacity: 1; }

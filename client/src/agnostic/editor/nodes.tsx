@@ -5,7 +5,8 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from "
 import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import * as Y from "yjs";
-import { Settings2, GripVertical, Trash2, Lock, EyeOff, LayoutGrid, Check, Plus, Minus } from "lucide-react";
+import { Settings2, GripVertical, Trash2, Lock, EyeOff, LayoutGrid, Check, Plus, Minus, ArrowUp, ArrowDown } from "lucide-react";
+import { Fragment } from "@tiptap/pm/model";
 import type { AgLayout, AgLayoutItem, AgLook } from "@shared/agnostic/types";
 import { regionDocName } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
@@ -14,6 +15,8 @@ import { FieldDisplay, ActionButton, ChartWidget, LinksTable, NoteChip, Componen
 import { LayoutEditor, RefList } from "../LayoutEditor";
 import { RefPicker, AclEditor, ComponentPicker } from "../pickers";
 import { AgPanel, agConfirm } from "../float";
+import { AgIcon, IconGrid } from "../icons";
+import { LinksConfigEditor } from "../links";
 import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, type LookKind } from "../look";
@@ -53,11 +56,11 @@ function Shell({ selected, editable, children, tools, label, className = "", inl
   frame?: FrameSpec;
 }) {
   const body = typeof children === "function" ? children(null) : children;
-  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{body}{editable && <span className={selected ? "" : "ag-touch-only"}>{tools}</span>}</NodeViewWrapper>;
+  if (inline) return <NodeViewWrapper as="span" className={`ag-inline ${selected ? "ring-1 ring-amber-400 rounded" : ""} ${className}`}>{body}{editable && <span className={`ag-inline-tools ${selected ? "" : "ag-touch-only"}`}>{tools}</span>}</NodeViewWrapper>;
   return (
-    <NodeViewWrapper className={`group relative my-1.5 ${className}`}>
+    <NodeViewWrapper className={`ag-node-wrap group relative my-1.5 ${className}`}>
       {editable && (
-        <div className={`ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 shadow ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100"} transition-opacity`} contentEditable={false}>
+        <div className={`ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 shadow ${selected ? "opacity-100" : "opacity-0"} transition-opacity`} contentEditable={false}>
           <span data-drag-handle draggable className="h-6 w-5 grid place-items-center cursor-grab text-stone-400" title="Drag to move"><GripVertical className="h-3.5 w-3.5" /></span>
           {label && <span className="text-[10px] text-stone-400 px-0.5">{label}</span>}
           {tools}
@@ -308,9 +311,9 @@ function ColumnsView(p: NodeViewProps) {
     else agConfirm("What's written in it goes too (Ctrl+Z brings it back).", { title: "Remove the last column?", confirm: "Remove" }).then((ok) => { if (ok) go(); });
   };
   return (
-    <NodeViewWrapper className="ag-columns-wrap group relative my-1.5">
+    <NodeViewWrapper className="ag-columns-wrap ag-node-wrap group relative my-1.5">
       {editable && (
-        <div contentEditable={false} className="ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+        <div contentEditable={false} className="ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 opacity-0 transition-opacity">
           <span data-drag-handle draggable className="h-6 w-5 grid place-items-center cursor-grab text-stone-400"><GripVertical className="h-3.5 w-3.5" /></span>
           <span className="text-[10px] text-stone-400 px-0.5">{n} columns</span>
           <ToolButton title="One column fewer" onClick={removeColumn}><Minus className="h-3.5 w-3.5" /></ToolButton>
@@ -490,29 +493,24 @@ function LinksView(p: NodeViewProps) {
   const ag = useAgMaybe();
   if (!ctx || !ag) return <NodeViewWrapper />;
   const a = p.node.attrs;
-  const cols: string[] = Array.isArray(a.columns) ? a.columns : [];
-  const labels = new Set<string>();
-  for (const l of Array.from(ag.state.links.values())) { if (l.fromNoteId === ctx.noteId) labels.add(l.label); if (l.toNoteId === ctx.noteId) labels.add(l.reverseLabel); }
+  const cols = Array.isArray(a.columns) ? a.columns : [];
+  const config = a.config && typeof a.config === "object" ? a.config : {};
   const look = nodeLook(a);
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="connections" frame={{ look, onLook: lookUpdater(p), height: { value: look.height ?? 0, min: 60, max: 1200 } }} tools={<>
-      <ConfigPopover title="Connections table" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
-        <Row label="Connection">
-          <input list="ag-link-labels" value={a.label} placeholder="e.g. items" onChange={(e) => p.updateAttributes({ label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" />
-          <datalist id="ag-link-labels">{[...Array.from(labels)].map((l) => <option key={l} value={l} />)}</datalist>
-        </Row>
-        <Row label="Columns"><input value={cols.join(", ")} placeholder="weight, qty" onChange={(e) => p.updateAttributes({ columns: e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" /></Row>
+      <ConfigPopover title={config.layout === "cards" ? "Inventory / item cards" : "Connections table"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
+        <LinksConfigEditor noteId={ctx.noteId} value={{ label: a.label, columns: cols, config }} onChange={(v) => p.updateAttributes({ label: v.label, columns: v.columns, config: v.config ?? {} })} />
       </ConfigPopover>
       <ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
     </>}>
-      {(live) => <div contentEditable={false}><LinksTable noteId={ctx.noteId} label={a.label} columns={cols} look={live?.height ? { ...look, height: live.height } : look} /></div>}
+      {(live) => <div contentEditable={false}><LinksTable noteId={ctx.noteId} label={a.label} columns={cols} config={config} look={live?.height ? { ...look, height: live.height } : look} /></div>}
     </Shell>
   );
 }
 
 export const AgLinks = Node.create({
   name: "agLinks", group: "block", atom: true, selectable: true, draggable: true,
-  addAttributes: () => ({ label: { default: "" }, columns: { default: [] }, look: { default: {} } }),
+  addAttributes: () => ({ label: { default: "" }, columns: { default: [] }, config: { default: {} }, look: { default: {} } }),
   parseHTML: () => [{ tag: "div[data-ag-links]" }],
   renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-links": "" })],
   addNodeView: () => ReactNodeViewRenderer(LinksView, { stopEvent: stopInside }),
@@ -568,5 +566,183 @@ export const AgComponent = Node.create({
   addNodeView: () => ReactNodeViewRenderer(ComponentNodeView, { stopEvent: stopInside }),
 });
 
-export const AG_NODES = [AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgNoteLink, AgComponent];
+// --------------------------------------------------------------------------- icons (inline)
+function IconView(p: NodeViewProps) {
+  const a = p.node.attrs;
+  const [open, setOpen] = useState(false);
+  const editable = p.editor.isEditable;
+  return (
+    <NodeViewWrapper as="span" className={`inline-flex align-middle ${p.selected ? "ring-1 ring-amber-400 rounded" : ""}`}>
+      <span contentEditable={false} className={`inline-flex ${editable ? "cursor-pointer" : ""}`} onClick={() => editable && setOpen(true)} title={editable ? "Click to change the icon" : undefined}>
+        <AgIcon name={a.name} size={a.size || 16} color={a.color || "#d4a24c"} />
+      </span>
+      {open && (
+        <AgPanel title="Icon" onClose={() => setOpen(false)} width={340} height={480}>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-stone-400">Colour</span><input type="color" value={a.color || "#d4a24c"} onChange={(e) => p.updateAttributes({ color: e.target.value })} className="h-7 w-9 bg-transparent" />
+            <span className="text-stone-400">Size</span><input type="range" min={10} max={64} value={a.size || 16} onChange={(e) => p.updateAttributes({ size: Number(e.target.value) })} className="flex-1 accent-amber-500" />
+            <button type="button" onClick={() => { setOpen(false); p.deleteNode(); }} className="h-7 px-2 rounded text-red-300 hover:bg-red-950">Remove</button>
+          </div>
+          <IconGrid value={a.name} onPick={(name) => p.updateAttributes({ name })} />
+        </AgPanel>
+      )}
+    </NodeViewWrapper>
+  );
+}
+
+export const AgIconNode = Node.create({
+  name: "agIcon", group: "inline", inline: true, atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ name: { default: "Star" }, color: { default: "" }, size: { default: 16 } }),
+  parseHTML: () => [{ tag: "span[data-ag-icon]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { "data-ag-icon": "" })],
+  addNodeView: () => ReactNodeViewRenderer(IconView, { stopEvent: () => true, as: "span" }),
+});
+
+// --------------------------------------------------------------------------- tabs
+// A row of tabs, each holding its own part of the page. Which tab is open is
+// each viewer's own (remembered on this device); the content is shared.
+const activeTabs = new Map<string, number>();
+const tabListeners = new Set<() => void>();
+const tabKey = (noteId: string, tabsId: string) => `ag-tab:${noteId}:${tabsId}`;
+function getActiveTab(noteId: string, tabsId: string): number {
+  const k = tabKey(noteId, tabsId);
+  if (!activeTabs.has(k)) { let v = 0; try { v = Number(localStorage.getItem(k) ?? 0) || 0; } catch { /* storage blocked */ } activeTabs.set(k, v); }
+  return activeTabs.get(k)!;
+}
+function setActiveTab(noteId: string, tabsId: string, i: number) {
+  const k = tabKey(noteId, tabsId);
+  activeTabs.set(k, i);
+  try { localStorage.setItem(k, String(i)); } catch { /* storage blocked */ }
+  tabListeners.forEach((l) => l());
+}
+function useActiveTab(noteId: string, tabsId: string) {
+  const [, force] = useState(0);
+  useEffect(() => { const l = () => force((n) => n + 1); tabListeners.add(l); return () => { tabListeners.delete(l); }; }, []);
+  return getActiveTab(noteId, tabsId);
+}
+
+function TabsView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  const a = p.node.attrs;
+  const tabsId: string = a.tabsId || "t";
+  const noteId = ctx?.noteId ?? "";
+  const active = Math.min(useActiveTab(noteId, tabsId), Math.max(0, p.node.childCount - 1));
+  const editable = p.editor.isEditable;
+  const look = nodeLook(a);
+  const [editing, setEditing] = useState(false);
+  const tabs = Array.from({ length: p.node.childCount }, (_, i) => p.node.child(i));
+  const accent = look.color ?? "#d4a24c";
+  return (
+    <NodeViewWrapper className="ag-node-wrap group relative my-2 ag-tabs" data-testid="ag-tabs">
+      {editable && (
+        <div contentEditable={false} className="ag-node-tools absolute -left-1 -top-2.5 z-10 flex items-center gap-0.5 rounded bg-stone-900/95 border border-stone-700 px-0.5 opacity-0 transition-opacity">
+          <span data-drag-handle draggable className="h-6 w-5 grid place-items-center cursor-grab text-stone-400"><GripVertical className="h-3.5 w-3.5" /></span>
+          <span className="text-[10px] text-stone-400 px-0.5">tabs</span>
+          <ToolButton title="Edit tabs (names, icons, order)" onClick={() => setEditing(true)}><Settings2 className="h-3.5 w-3.5" /></ToolButton>
+          <ToolButton title="Remove the tabs (and everything in them)" danger onClick={() => agConfirm("Everything inside every tab goes too (Ctrl+Z brings it back).", { title: "Remove these tabs?", confirm: "Remove" }).then((ok) => ok && p.deleteNode())}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
+        </div>
+      )}
+      <div contentEditable={false} className="flex gap-1 p-1.5 rounded-xl border overflow-x-auto no-scrollbar" style={{ borderColor: look.outline ?? `color-mix(in srgb, ${accent} 35%, transparent)`, background: look.bg ?? "rgba(12,10,9,0.8)" }} data-testid="ag-tab-strip">
+        {tabs.map((t, i) => (
+          <button key={i} type="button" onClick={() => setActiveTab(noteId, tabsId, i)}
+            className={`flex-1 min-w-[64px] flex flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-[11px] sm:text-xs font-medium transition-colors ${i === active ? "text-stone-100" : "border-transparent text-stone-400 hover:text-stone-200 hover:bg-stone-800/60"}`}
+            style={i === active ? { borderColor: accent, background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: look.textColor } : undefined}
+            data-testid={`ag-tab-button-${t.attrs.title}`}>
+            {t.attrs.icon ? <AgIcon name={t.attrs.icon} size={16} color={t.attrs.color || (i === active ? accent : undefined)} /> : null}
+            <span className="truncate max-w-full">{t.attrs.title || `Tab ${i + 1}`}</span>
+          </button>
+        ))}
+      </div>
+      <NodeViewContent className="ag-tabs-body pt-2" />
+      {editing && <TabsEditor p={p} onClose={() => setEditing(false)} />}
+    </NodeViewWrapper>
+  );
+}
+
+function TabsEditor({ p, onClose }: { p: NodeViewProps; onClose: () => void }) {
+  const tabs = Array.from({ length: p.node.childCount }, (_, i) => p.node.child(i));
+  const [iconFor, setIconFor] = useState<number | null>(null);
+  const childPos = (i: number) => { let pos = (p.getPos() as number) + 1; for (let k = 0; k < i; k++) pos += p.node.child(k).nodeSize; return pos; };
+  const setTab = (i: number, attrs: Record<string, any>) => p.editor.view.dispatch(p.editor.state.tr.setNodeMarkup(childPos(i), undefined, { ...p.node.child(i).attrs, ...attrs }));
+  const reorder = (from: number, to: number) => {
+    if (to < 0 || to >= tabs.length) return;
+    const list = [...tabs];
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+    const start = (p.getPos() as number) + 1;
+    p.editor.view.dispatch(p.editor.state.tr.replaceWith(start, start + p.node.content.size, Fragment.from(list)));
+  };
+  const add = () => {
+    const end = (p.getPos() as number) + p.node.nodeSize - 1;
+    p.editor.chain().insertContentAt(end, { type: "agTab", attrs: { title: `Tab ${tabs.length + 1}` }, content: [{ type: "paragraph" }] }).run();
+  };
+  const remove = (i: number) => {
+    if (tabs.length <= 1) return;
+    const go = () => { const from = childPos(i); p.editor.view.dispatch(p.editor.state.tr.delete(from, from + p.node.child(i).nodeSize)); };
+    if (!tabs[i].textContent.trim() && tabs[i].childCount <= 1) go();
+    else agConfirm(`Everything in “${tabs[i].attrs.title}” goes too (Ctrl+Z brings it back).`, { title: "Remove this tab?", confirm: "Remove" }).then((ok) => ok && go());
+  };
+  const look = nodeLook(p.node.attrs);
+  return (
+    <AgPanel title="Tabs" onClose={onClose} width={380} height={560} testId="ag-tabs-editor">
+      <div className="space-y-1.5">
+        {tabs.map((t, i) => (
+          <div key={i} className="flex items-center gap-1.5 rounded-lg bg-stone-800 border border-stone-700 p-1.5">
+            <button type="button" onClick={() => setIconFor(i)} className="h-8 w-8 grid place-items-center rounded border border-stone-700 bg-stone-900 shrink-0" title="Icon">{t.attrs.icon ? <AgIcon name={t.attrs.icon} size={16} color="#d4a24c" /> : <span className="text-[10px] text-stone-500">icon</span>}</button>
+            <input defaultValue={t.attrs.title} onBlur={(e) => e.target.value !== t.attrs.title && setTab(i, { title: e.target.value || `Tab ${i + 1}` })} className="h-8 flex-1 min-w-0 bg-stone-900 border border-stone-700 rounded px-2 text-sm" data-testid={`ag-tab-title-${i}`} />
+            <ToolButton title="Move left" onClick={() => reorder(i, i - 1)}><ArrowUp className="h-3.5 w-3.5" /></ToolButton>
+            <ToolButton title="Move right" onClick={() => reorder(i, i + 1)}><ArrowDown className="h-3.5 w-3.5" /></ToolButton>
+            <ToolButton title="Remove tab" danger onClick={() => remove(i)}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
+          </div>
+        ))}
+        <button type="button" onClick={add} className="h-9 w-full rounded-lg border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1" data-testid="ag-tab-add"><Plus className="h-3.5 w-3.5" /> Add a tab</button>
+      </div>
+      <div className="border-t border-stone-800 pt-2">
+        <div className="text-[10px] uppercase tracking-wide text-amber-400/80 mb-1">Look</div>
+        <LookEditor look={look} onChange={(l) => p.updateAttributes({ look: l })} kind="tabs" />
+      </div>
+      {iconFor !== null && (
+        <AgPanel title={`Icon for “${tabs[iconFor]?.attrs.title ?? ""}”`} onClose={() => setIconFor(null)} width={340} height={420}>
+          <button type="button" onClick={() => { setTab(iconFor, { icon: "" }); setIconFor(null); }} className="h-8 px-2 rounded text-xs text-stone-300 hover:bg-stone-800">No icon</button>
+          <IconGrid value={tabs[iconFor]?.attrs.icon} onPick={(name) => { setTab(iconFor, { icon: name }); setIconFor(null); }} />
+        </AgPanel>
+      )}
+    </AgPanel>
+  );
+}
+
+function TabView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  const pos = typeof p.getPos === "function" ? p.getPos() : undefined;
+  let index = 0, tabsId = "t";
+  if (typeof pos === "number") {
+    const $pos = p.editor.state.doc.resolve(pos);
+    index = $pos.index();
+    tabsId = $pos.parent.attrs.tabsId || "t";
+  }
+  const active = useActiveTab(ctx?.noteId ?? "", tabsId);
+  const shown = Math.min(active, Math.max(0, ((typeof pos === "number" ? p.editor.state.doc.resolve(pos).parent.childCount : 1)) - 1)) === index;
+  return (
+    <NodeViewWrapper data-ag-tab="" style={shown ? undefined : { display: "none" }}>
+      <NodeViewContent />
+    </NodeViewWrapper>
+  );
+}
+
+export const AgTabs = Node.create({
+  name: "agTabs", group: "block", content: "agTab+", draggable: true, isolating: true,
+  addAttributes: () => ({ tabsId: { default: "" }, look: { default: {} } }),
+  parseHTML: () => [{ tag: "div[data-ag-tabs]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-tabs": "" }), 0],
+  addNodeView: () => ReactNodeViewRenderer(TabsView),
+});
+export const AgTab = Node.create({
+  name: "agTab", content: "block+", isolating: true, defining: true,
+  addAttributes: () => ({ title: { default: "Tab" }, icon: { default: "" }, color: { default: "" } }),
+  parseHTML: () => [{ tag: "div[data-ag-tab]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-tab": "" }), 0],
+  addNodeView: () => ReactNodeViewRenderer(TabView),
+});
+
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgNoteLink, AgComponent];
 

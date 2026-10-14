@@ -47,7 +47,8 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: Ro
     t.placement === "top" ? { top: 56, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
     : t.placement === "bottom" ? { bottom: isMobile ? 132 : 104, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
     : t.placement === "left" ? { left: 16, top: leftOffset ?? 240, maxHeight: "calc(100vh - 300px)" }
-    : { right: 16, top: 72, maxHeight: "calc(100vh - 200px)" };
+    // On phones the map's tool buttons run down the right edge: sit beside them, not on them.
+    : { right: isMobile ? 64 : 16, top: 72, maxHeight: "calc(100vh - 200px)", maxWidth: isMobile ? "calc(100vw - 132px)" : undefined };
   if (!notes.length && !viewer.isGM) return null;
   return (
     <>

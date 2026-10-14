@@ -9,6 +9,7 @@ import ws from "ws";
 import { registerRoutes } from "./routes";
 import { pool as dbPool } from "./db";
 import { AGNOSTIC_SCHEMA_STATEMENTS } from "@shared/agnostic-schema";
+import { runAgnosticProvisioning } from "./agnostic/provision";
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -700,5 +701,7 @@ export default async function runApp(
       log(`${pendingSchema.length} schema statement(s) did not apply; retrying in the background`);
       void retrySchemaGuard(pendingSchema);
     }
+    // Agnostic campaigns set up for particular accounts (each runs once).
+    void runAgnosticProvisioning();
   });
 }

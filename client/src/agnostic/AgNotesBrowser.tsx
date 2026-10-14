@@ -2,12 +2,12 @@
 // side panel, My Library and the Admin library.
 import React, { useMemo, useState } from "react";
 import {
-  Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock,
+  Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock, Flame, Loader2,
 } from "lucide-react";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
-import { AgPanel } from "./float";
+import { AgPanel, agConfirm } from "./float";
 import { NotePicker } from "./pickers";
 import { useAuth } from "@/lib/AuthContext";
 import { useAg, AgScopeProvider } from "./hooks";
@@ -89,6 +89,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
             {!list.length && <div className="text-sm text-stone-500 p-3 text-center">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
             {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
             {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
+            {tab === "templates" && isGM && !opts.types && <StarterKits />}
           </div>
         </>
       )}
@@ -248,6 +249,36 @@ function SourceList({ target, source }: { target: AgScope; source: AgScope }) {
   );
 }
 
+
+/** Ready-made game systems built from Agnostic parts — fully editable once added. */
+function StarterKits() {
+  const { state, request } = useAg();
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  if (Array.from(state.notes.values()).some((n) => n.isTemplate && n.name === "CA Character")) return null;
+  const add = async () => {
+    const ok = await agConfirm(
+      "Adds the Cultivator's Adventure character sheet (Overview, Skills, Ability, Inventory, Traits), item templates (weapon, armor, consumable, rune, container, currency…), wounds and traits, a C.A. tracker card, and an example character with gear to try it on. Everything is ordinary Agnostic content you can change.",
+      { title: "Add Cultivator's Adventure?", confirm: "Add it", danger: false },
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await request<{ templates: number; sheets: number }>({ op: "kit.apply", kit: "ca", examples: true });
+      toast({ title: "Cultivator's Adventure added", description: `${r.templates} templates${r.sheets ? ` and an example character with ${r.sheets - 1} items, wounds and a trait` : ""}. Look in the “${"Cultivator's Adventure"}” folder.` });
+    } catch (e: any) { toast({ title: "Couldn't add it", description: e.message, variant: "destructive" }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mt-3 rounded-lg border border-stone-800 bg-stone-900/60 p-2.5 space-y-1.5" data-testid="ag-starter-kits">
+      <div className="text-[10px] uppercase tracking-wide text-amber-400/90">Starter kits</div>
+      <button type="button" disabled={busy} onClick={add} className="w-full flex items-center gap-3 p-2 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-left disabled:opacity-60" data-testid="ag-kit-ca">
+        <span className="h-9 w-9 rounded bg-stone-900 border border-stone-700 grid place-items-center text-amber-400 shrink-0">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}</span>
+        <span className="min-w-0"><span className="block text-sm text-stone-100">Cultivator's Adventure (C.A.)</span><span className="block text-[11px] text-stone-400">The C.A. sheet, inventory, items, wounds and traits — built in Agnostic so you can change any of it.</span></span>
+      </button>
+    </div>
+  );
+}
 
 /** One click: a blank template for each kind, ready to be designed. */
 function StarterTemplates({ types }: { types: string[] }) {

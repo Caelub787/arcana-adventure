@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseFormula, evaluate, FormulaError, parseCached } from "./formula";
+import { parseFormula, evaluate, FormulaError, parseCached, containsDice } from "./formula";
 import { AgComputer } from "./compute";
 import { canViewField, canEditField, canViewNote, canViewBody, canEditBody, canViewRegion } from "./acl";
 import type { AgField, AgLink, AgModifier, AgNote, AgRegion } from "./types";
@@ -127,5 +127,47 @@ describe("acl", () => {
     const n = note("x", { acl: { view: { users: ["p2"] }, edit: "gm" } });
     expect(canViewNote(n, p1)).toBe(false);
     expect(canViewNote(n, p2)).toBe(true);
+  });
+});
+
+describe("formula: roll / choose / tier", () => {
+  const run = (src: string, roll = false) => evaluate(parseFormula(src), { ref: () => 0, ...(roll ? { rollDie: (s: number) => s } : {}) });
+  it("choose picks by index and clamps", () => {
+    expect(run('choose(1, "a", "b", "c")').value).toBe("b");
+    expect(run('choose(9, "a", "b")').value).toBe("b");
+  });
+  it("tier finds the ladder position", () => {
+    expect(run("tier(0, 0, 20, 30)").value).toBe(0);
+    expect(run("tier(25, 0, 20, 30)").value).toBe(1);
+    expect(run("tier(999, 0, 20, 30)").value).toBe(2);
+  });
+  it("roll uses computed dice sizes and only in buttons", () => {
+    expect(run("roll(2, 3 + 3)", true).value).toBe(12);
+    expect(() => run("roll(1, 6)")).toThrow();
+    expect(containsDice(parseFormula("roll(1, 8) + 2"))).toBe(true);
+  });
+});
+
+describe("dice values roll in buttons", () => {
+  it("a roll step referencing a dice value rolls it", () => {
+    const notes = new Map([["w", { id: "w" } as any]]);
+    const dmg = { id: "d", noteId: "w", key: "damage", label: "Damage", type: "dice", value: null, formula: "2d6 + 1", options: {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: 0, templateFieldId: null } as any;
+    const comp = new AgComputer({ notes, fieldsByNote: new Map([["w", new Map([["damage", dmg]])]]), links: [], modifiers: [] });
+    expect(comp.evalIn("w", "damage + 1", { rollDie: (s) => s }).value).toBe(14);
+  });
+});
+
+describe("base()", () => {
+  it("reads a value before modifiers", () => {
+    const hero = note("hero"), wound = note("wound");
+    const ath = field("hero", "athletics", { value: 2 });
+    const spent = field("hero", "spent", { type: "formula", formula: "base(athletics)" });
+    const eff = field("hero", "now", { type: "formula", formula: "athletics" });
+    const link: AgLink = { id: "l", fromNoteId: "wound", toNoteId: "hero", label: "bearer", reverseLabel: "wounds", acl: { view: "inherit", edit: "inherit" }, createdAt: 0 };
+    const mod: AgModifier = { id: "m", noteId: "wound", via: "bearer", targetKey: "athletics", op: "add", amount: "-2", condition: null, label: null };
+    const all = data([hero, wound], [ath, spent, eff], [link], [mod]).computeAll();
+    expect(all.get(eff.id)!.eff).toBe(0);
+    expect(all.get(spent.id)!.eff).toBe(2);
+    expect(() => evaluate(parseFormula("base(1 + 2)"), ctx({}))).toThrow(FormulaError);
   });
 });

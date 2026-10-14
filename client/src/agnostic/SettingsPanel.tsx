@@ -217,6 +217,10 @@ function TemplateSection({ noteId }: { noteId: string }) {
   return (
     <Section title={`Template · v${version}`} icon={<RefreshCw className="h-3.5 w-3.5" />}>
       <div className="text-[11px] text-stone-500">Edit this template like any sheet. New sheets made from it get the current state. Existing sheets only change when you apply.</div>
+      <label className="flex items-start gap-2 text-xs text-stone-300 rounded border border-stone-800 bg-stone-900/60 p-2">
+        <input type="checkbox" className="accent-amber-500 mt-0.5" checked={!!t.templateMeta?.playersCanCreate} onChange={(e) => request({ op: "note.update", id: noteId, patch: { templateMeta: { ...t.templateMeta!, playersCanCreate: e.target.checked } } })} data-testid="ag-template-players-create" />
+        <span><b className="text-stone-100">Players can add this</b> to sheets they own (e.g. an item into their inventory with an Add button) and remove the ones they added.</span>
+      </label>
       <button type="button" onClick={saveVersion} className="h-8 px-2.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1" data-testid="ag-template-save-version"><Save className="h-3.5 w-3.5" /> Save as new version</button>
       <div className="rounded border border-stone-800 p-2 space-y-1.5">
         <div className="text-xs text-stone-300">Apply to existing sheets ({sheets.length})</div>

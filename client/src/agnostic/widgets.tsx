@@ -4,16 +4,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
-import type { AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
+import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { useToast } from "@/hooks/use-toast";
-import { AgPanel, PickField } from "./float";
+import { AgPanel, AgSelector, PickField } from "./float";
 import { api } from "@/lib/api";
 import { pushUndo } from "./undo";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
+import { LinksTable } from "./links";
+import { AgIcon } from "./icons";
 
 // --- battlemap / tracker targets ("@target" in actions) -----------------------------
 let currentTargets: string[] = [];
@@ -218,6 +220,33 @@ function Dial({ field, maxField, color = "#38bdf8", size = 56, look }: { field: 
   return canEditField(field) ? <NumberEditor field={field} max={max || null}><button type="button">{dial}</button></NumberEditor> : dial;
 }
 
+/**
+ * A shown value that opens its own editor on double-click (long-press on
+ * touch), in a floating panel — no edit mode, nothing else changes.
+ */
+function EditOnDoubleClick({ field, children }: { field?: AgField; children: React.ReactNode }) {
+  const { canEditField } = usePerms(field?.noteId);
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editable = !!field && field.type !== "formula" && field.type !== "dice" && canEditField(field);
+  if (!editable) return <>{children}</>;
+  const cancel = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  return (
+    <>
+      <span className="cursor-pointer" title="Double-click (or long-press) to change"
+        onDoubleClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        onTouchStart={() => { cancel(); timer.current = setTimeout(() => setOpen(true), 500); }}
+        onTouchEnd={cancel} onTouchMove={cancel} onTouchCancel={cancel}
+        data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
+      {open && (
+        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={300} height={field!.type === "text" ? 200 : 180} testId="ag-value-edit">
+          <FieldInput field={field!} className={field!.type === "text" ? "w-full" : ""} />
+        </AgPanel>
+      )}
+    </>
+  );
+}
+
 /** Inline editor for a field's value, by type. */
 export function FieldInput({ field, className = "" }: { field: AgField; className?: string }) {
   const { canEditField } = usePerms(field.noteId);
@@ -238,6 +267,10 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
           <button type="button" onClick={() => w.adjust(field, -(field.options.step ?? 1))} className="h-7 w-6 sm:h-6 sm:w-5 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300" aria-label={`Lower ${field.label}`}><Minus className="h-3 w-3" /></button>
           <CommitInput value={field.value as number} type="number" step={field.options.step} className="h-7 sm:h-6 w-14 text-center" onCommit={(s) => w.set(field, s === "" ? null : Number(s))} aria-label={field.label} />
           <button type="button" onClick={() => w.adjust(field, field.options.step ?? 1)} className="h-7 w-6 sm:h-6 sm:w-5 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300" aria-label={`Raise ${field.label}`}><Plus className="h-3 w-3" /></button>
+          {/* Items, wounds and other modifiers change the value in play; the box edits the base. */}
+          {typeof v === "number" && typeof field.value === "number" && v !== field.value && (
+            <span className={`ml-1 px-1 rounded text-[11px] font-semibold ${v > field.value ? "text-emerald-300 bg-emerald-950/60" : "text-red-300 bg-red-950/60"}`} title={`${formatValue(field.value)} base, ${formatValue(v)} with modifiers`} data-testid={`ag-eff-${field.key}`}>= {formatValue(v)}</span>
+          )}
         </span>
       );
     case "boolean":
@@ -296,13 +329,15 @@ export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabe
   const field = fields[0];
   if (!field) return <span className="text-stone-600 text-xs" title={`Nothing at "${refPath}" for this viewer`}>—</span>;
   const name = label || field.label;
+  // Choice values can carry their own colour (rarity, type…).
+  const choiceColor = field.options.choiceColors?.[String(effOf(field) ?? "")];
   let pos = showLabel === false ? "none" : (L.labelPos ?? defaultLabelPos(display));
   if (pos === "inside" && display !== "bar") pos = "left";
   const column = pos === "above" || pos === "below";
   const labelSize = L.fontSize ? Math.max(8, Math.round(L.fontSize * 0.85)) : display === "bar" || display === "pips" || display === "dial" ? 11 : 13;
   const labelH = column && pos !== "none" ? Math.round(labelSize * 1.25) + 2 : 0;
   const labelEl = pos === "none" || pos === "inside" ? null : (
-    <span className="leading-tight shrink-0 truncate" style={{ fontSize: labelSize, color: L.labelColor ?? "#a8a29e", fontStyle: L.italic ? "italic" : undefined, maxWidth: "100%" }}>{name}</span>
+    <span className="leading-tight shrink-0 truncate" style={{ fontSize: L.labelSize ?? labelSize, color: L.labelColor ?? "#a8a29e", fontStyle: L.italic ? "italic" : undefined, maxWidth: "100%", textTransform: L.labelUpper ? "uppercase" : undefined, letterSpacing: L.labelUpper ? "0.12em" : undefined }}>{name}</span>
   );
   const textStyle: React.CSSProperties = { fontSize: L.fontSize, color: L.textColor, fontWeight: L.bold ? 700 : undefined, fontStyle: L.italic ? "italic" : undefined };
   const many = fields.length > 1 ? fields.map((f) => formatValue(effOf(f))).join(", ") : null;
@@ -317,9 +352,9 @@ export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabe
     case "dial": body = <Dial field={field} maxField={maxField} look={L} size={box ? Math.max(20, Math.min(box.w, box.h - labelH)) : (L.height ?? 56)} />; break;
     case "badge":
       body = (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 border" style={{ borderColor: L.border ?? L.color ?? "#78350f", background: "rgba(0,0,0,.35)", borderRadius: L.radius ?? 999, fontSize: L.fontSize ?? 12 }}>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 border" style={{ borderColor: L.border ?? choiceColor ?? L.color ?? "#78350f", background: choiceColor ? `color-mix(in srgb, ${choiceColor} 14%, transparent)` : "rgba(0,0,0,.35)", borderRadius: L.radius ?? 999, fontSize: L.fontSize ?? 12 }}>
           {pos === "left" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
-          <span className="font-semibold" style={{ color: L.textColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span>
+          <span className="font-semibold" style={{ color: L.textColor ?? choiceColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined, textTransform: L.labelUpper ? "uppercase" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span>
           {pos === "right" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
         </span>
       );
@@ -332,11 +367,22 @@ export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabe
     }
     default:
       body = (
-        <span className={`font-semibold ${field.err ? "text-red-400" : "text-stone-100"}`} style={{ ...textStyle, color: field.err ? undefined : (L.textColor ?? L.color) }} title={field.err ?? undefined}>
-          {field.err ? "\u26a0" : many ?? formatValue(effOf(field), field.options.decimals)}
-          {maxField ? <span className="text-stone-400 font-normal"> / {formatValue(effOf(maxField))}</span> : null}
-        </span>
+        <EditOnDoubleClick field={many ? undefined : field}>
+          <span className={`font-semibold ${field.err ? "text-red-400" : "text-stone-100"}`} style={{ ...textStyle, color: field.err ? undefined : (L.textColor ?? choiceColor ?? L.color) }} title={field.err ?? undefined}>
+            {field.err ? "\u26a0" : many ?? formatValue(effOf(field), field.options.decimals)}{L.suffix ? <span className="font-normal text-stone-400"> {L.suffix}</span> : null}
+            {maxField ? <span className="text-stone-400 font-normal"> / {formatValue(effOf(maxField))}</span> : null}
+          </span>
+        </EditOnDoubleClick>
       );
+  }
+  if (L.iconName) {
+    // A leading icon, chip-style: icon, then the value (and its label).
+    const icon = <AgIcon name={L.iconName} size={Math.round((L.fontSize ?? 14) * 1.15)} color={L.iconColor ?? "#d4a24c"} className="shrink-0" />;
+    const inner = labelEl
+      // A bar has no width of its own: it stretches across whatever's left.
+      ? <span className={`flex min-w-0 ${display === "bar" ? "w-full" : ""}`} style={{ flexDirection: column ? (pos === "above" ? "column" : "column-reverse") : pos === "right" ? "row-reverse" : "row", gap: column ? 0 : 6, alignItems: column ? (display === "bar" ? "stretch" : "flex-start") : "center" }}>{labelEl}<span className={display === "bar" ? (column ? "block w-full" : "flex-1 min-w-0") : ""}>{body}</span></span>
+      : body;
+    return <span className={`${display === "bar" ? "flex w-full" : "inline-flex"} items-center gap-2 min-w-0`} style={{ minWidth: L.minWidth }}>{icon}<span className={display === "bar" ? "flex flex-1 min-w-0" : "min-w-0"}>{inner}</span></span>;
   }
   if (!labelEl) {
     const fullWidth = display === "bar";
@@ -360,15 +406,31 @@ export function ActionButton({ actionId, label, className = "", look }: { action
   const { state, request, scope, realViewer, viewer } = useAg();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState<null | { choices: AgActionChoice[]; idx: number; picked: Record<string, string> }>(null);
   const action = state.actions.get(actionId);
   const { canRun } = usePerms(action?.noteId);
   if (!action) return realViewer.isGM && !viewer.isGM ? null : realViewer.isGM ? <span className="text-xs text-red-400">[missing action]</span> : null;
   const allowed = canRun(actionId);
   const run = async () => {
     if (!allowed || busy) return;
+    // Buttons that ask "which one?" (e.g. which wound a potion heals) get the options first.
+    if (action.steps?.some((st) => st.type === "choose")) {
+      setBusy(true);
+      try {
+        const { choices } = await request<{ choices: AgActionChoice[] }>({ op: "action.prepare", id: actionId, targetNoteIds: getAgTargets() });
+        const empty = choices.find((c) => !c.options.length);
+        if (empty) { toast({ title: action.name, description: `Nothing to choose: ${empty.prompt}` }); return; }
+        setPicking({ choices, idx: 0, picked: {} });
+      } catch (e: any) { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }
+      finally { setBusy(false); }
+      return;
+    }
+    await go({});
+  };
+  const go = async (choices: Record<string, string>) => {
     setBusy(true);
     try {
-      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets() });
+      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices });
       const broadcast = scope.kind === "campaign";
       for (const r of res.result.rolls) {
         triggerRollNotification({
@@ -387,6 +449,7 @@ export function ActionButton({ actionId, label, className = "", look }: { action
     }
   };
   return (
+    <>
     <button
       type="button"
       onClick={run}
@@ -400,9 +463,27 @@ export function ActionButton({ actionId, label, className = "", look }: { action
       title={allowed ? action.name : "You can't use this"}
       data-testid={`ag-action-${action.name}`}
     >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : look?.icon === false ? null : <Dices className="h-3.5 w-3.5" />}
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : look?.iconName ? <AgIcon name={look.iconName} size={14} color={look.iconColor} /> : look?.icon === false ? null : <Dices className="h-3.5 w-3.5" />}
       {label || action.name}
     </button>
+    {picking && (() => {
+      const c = picking.choices[picking.idx];
+      return (
+        <AgSelector
+          title={c.prompt}
+          items={c.options.map((o) => ({ id: o.id, name: o.name, image: o.portrait, sub: o.sub }))}
+          onClose={() => setPicking(null)}
+          onPick={(id) => {
+            const picked = { ...picking.picked, [c.name]: id };
+            if (picking.idx + 1 < picking.choices.length) setPicking({ ...picking, idx: picking.idx + 1, picked });
+            else { setPicking(null); void go(picked); }
+          }}
+          keepOpen
+          testId="ag-action-choose"
+        />
+      );
+    })()}
+    </>
   );
 }
 
@@ -427,32 +508,8 @@ export function NoteChip({ noteId }: { noteId: string }) {
   );
 }
 
-/** A table of every sheet connected by `label`, with chosen columns. */
-export function LinksTable({ noteId, label, columns, look }: { noteId: string; label: string; columns: string[]; look?: AgLook }) {
-  const { state, openNote } = useAg();
-  const ids = follow(state, noteId, label);
-  return (
-    <div className={`overflow-auto ${look?.border ? "" : "border border-stone-700"}`} style={{ maxHeight: look?.height || undefined, borderRadius: look?.radius ?? 4, border: look?.border ? `1px solid ${look.border}` : undefined }}>
-      <table className="w-full text-sm" style={{ fontSize: look?.fontSize, color: look?.textColor, fontStyle: look?.italic ? "italic" : undefined }}>
-        <thead className={`${look?.color ? "" : "bg-stone-800/80"} text-stone-300 sticky top-0`} style={{ background: look?.color, color: look?.textColor, fontWeight: look?.bold ? 700 : undefined }}>
-          <tr><th className="text-left px-2 py-1 font-medium">{label.replace(/_/g, " ") || "Connected"}</th>{columns.map((c) => <th key={c} className="text-left px-2 py-1 font-medium">{c.replace(/_/g, " ")}</th>)}</tr>
-        </thead>
-        <tbody>
-          {ids.map((id) => {
-            const n = state.notes.get(id)!;
-            return (
-              <tr key={id} className="border-t border-stone-800 hover:bg-stone-800/40">
-                <td className="px-2 py-1"><button type="button" className="inline-flex items-center gap-1.5 text-amber-200 hover:underline" onClick={() => openNote(id)}><Portrait note={n} size={20} radius={4} />{n.name}</button></td>
-                {columns.map((c) => { const f = resolveRef(state, id, c)[0]; return <td key={c} className="px-2 py-1">{f ? <FieldInput field={f} /> : <span className="text-stone-600">—</span>}</td>; })}
-              </tr>
-            );
-          })}
-          {ids.length === 0 && <tr><td colSpan={columns.length + 1} className="px-2 py-2 text-stone-500 text-xs">Nothing connected as “{label}” yet.</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+// Connections tables (and inventories) live in links.tsx.
+export { LinksTable } from "./links";
 
 const CHART_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#ef4444", "#a855f7", "#ec4899", "#14b8a6", "#eab308"];
 
@@ -521,7 +578,7 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
     case "name": return <div className="w-full h-full truncate font-semibold leading-tight" style={{ fontSize: widget.fontSize ?? 14, color: widget.color ?? "#fde68a", textAlign: widget.align }}>{note?.name}</div>;
     case "button": return <ActionButton actionId={widget.actionId} label={widget.label} className="w-full h-full" look={widget.look ? { ...widget.look, height: undefined } : undefined} />;
     case "chart": return <ChartWidget noteId={opts.noteId} chart={widget.chart} refs={widget.refs} maxRef={widget.maxRef} params={opts.params} height={h} look={widget.look} />;
-    case "links": return <div className="w-full h-full overflow-auto"><LinksTable noteId={opts.noteId} label={widget.label} columns={widget.columns} look={widget.look ? { ...widget.look, height: undefined } : undefined} /></div>;
+    case "links": return <div className="w-full h-full overflow-auto"><LinksTable noteId={opts.noteId} label={widget.label} columns={widget.columns} config={widget.config} look={widget.look ? { ...widget.look, height: undefined } : undefined} /></div>;
     case "component": return <ComponentView componentId={widget.componentId} noteId={opts.noteId} bindings={widget.bindings} width={w} lastRoll={opts.lastRoll} />;
     case "shape":
       return <div className="w-full h-full" style={{
@@ -529,6 +586,7 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
         border: widget.border ? `2px solid ${widget.border}` : undefined, opacity: widget.opacity ?? 1,
         borderTop: widget.shape === "line" ? `2px solid ${widget.color}` : undefined,
       }} />;
+    case "icon": return <div className="w-full h-full grid place-items-center"><AgIcon name={widget.name} size={Math.max(8, Math.min(w, h))} color={widget.color ?? "#d4a24c"} /></div>;
     case "lastRoll":
       return opts.lastRoll && Date.now() - opts.lastRoll.ts < 10 * 60_000
         ? <div className="w-full h-full truncate text-[11px] text-stone-300 leading-tight"><Dices className="inline h-3 w-3 mr-0.5 text-amber-400" />{opts.lastRoll.label}: <b className="text-amber-200">{formatValue(opts.lastRoll.total)}</b></div>

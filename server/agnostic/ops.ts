@@ -3,19 +3,20 @@
 // player from changing something.
 import { randomUUID } from "crypto";
 import type {
-  AgAcl, AgAction, AgActionResult, AgActionStep, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
+  AgAcl, AgAction, AgActionChoice, AgActionResult, AgActionStep, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
   AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
 } from "@shared/agnostic/types";
 import { defaultCampaignSettings, isValidKey, slugifyKey } from "@shared/agnostic/types";
 import {
-  canEditField, canEditNoteHeader, canRunAction, canViewNote, normalizeAcl, normalizeAudience,
+  canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
-import { FormulaError, interpolate, parseFormula, toFieldValue, asNumber } from "@shared/agnostic/formula";
+import { FormulaError, interpolate, parseFormula, toFieldValue, asNumber, isTruthy } from "@shared/agnostic/formula";
 import { rollDie } from "@shared/agnostic/compute";
 import type { AgOp, AgOpResult } from "@shared/agnostic/protocol";
 import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
 import * as snap from "./snapshot";
+import { applyCAKit } from "./kits/ca";
 import * as repo from "./repo";
 
 export interface HostHooks {
@@ -50,6 +51,11 @@ function cleanOptions(raw: unknown): AgFieldOptions {
   if (Array.isArray(o.choices)) out.choices = o.choices.filter((c: unknown) => typeof c === "string").map((c: string) => c.slice(0, 200)).slice(0, 100);
   if (typeof o.color === "string") out.color = o.color.slice(0, 40);
   if (o.resultType === "text" || o.resultType === "number") out.resultType = o.resultType;
+  if (o.choiceColors && typeof o.choiceColors === "object") {
+    const cc: Record<string, string> = {};
+    for (const [k, v] of Object.entries(o.choiceColors).slice(0, 100)) if (typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v)) cc[String(k).slice(0, 200)] = v;
+    if (Object.keys(cc).length) out.choiceColors = cc;
+  }
   return out;
 }
 
@@ -127,8 +133,19 @@ function cleanTokenBars(raw: unknown): AgTokenBar[] | null {
 function cleanSteps(raw: unknown): AgActionStep[] {
   if (!Array.isArray(raw)) return [];
   const steps: AgActionStep[] = [];
+  const formula = (v: unknown, what: string) => {
+    const t = String(v ?? "").slice(0, 500);
+    if (t.trim()) { try { parseFormula(t); } catch (e) { fail(`${what}: ${(e as Error).message}`); } }
+    return t.trim() || undefined;
+  };
   for (const s of raw.slice(0, 30)) {
-    if (s?.type === "roll") {
+    const when = formula(s?.when, "“Only if”");
+    const before = steps.length;
+    if (s?.type === "choose") {
+      steps.push({ type: "choose", name: labelKey(s.name || "pick") || "pick", from: String(s.from ?? "").slice(0, 200), filter: formula(s.filter, "Choose filter"), prompt: s.prompt ? String(s.prompt).slice(0, 120) : undefined });
+    } else if (s?.type === "remove") {
+      steps.push({ type: "remove", target: labelKey(s.target || "self") || "self" });
+    } else if (s?.type === "roll") {
       const expr = String(s.expr ?? "").slice(0, 500);
       try { parseFormula(expr); } catch (e) { fail(`Roll "${s.name || "roll"}": ${(e as Error).message}`); }
       steps.push({ type: "roll", name: labelKey(s.name || "r") || "r", expr, label: s.label ? String(s.label).slice(0, 80) : undefined });
@@ -140,8 +157,23 @@ function cleanSteps(raw: unknown): AgActionStep[] {
     } else if (s?.type === "message") {
       steps.push({ type: "message", text: String(s.text ?? "").slice(0, 1000) });
     }
+    if (when && steps.length > before) steps[steps.length - 1].when = when;
   }
   return steps;
+}
+
+/** The sheets a "choose" step offers: its connection path, filtered, and only ones this viewer can see. */
+function chooseOptions(store: ScopeStore, action: AgAction, step: Extract<AgActionStep, { type: "choose" }>, roots: Record<string, string[]>, viewer: AgViewer, locals: Record<string, any> = {}): string[] {
+  const comp = store.computer();
+  const path = step.from.replace(/^@/, "").toLowerCase().split(".").filter(Boolean);
+  if (!path.length) return [];
+  const { noteIds } = comp.targetsOf(action.noteId, [...path, "_"], undefined, roots);
+  return noteIds.filter((id) => {
+    const n = store.notes.get(id);
+    if (!n || !canViewNote(n, viewer)) return false;
+    if (!step.filter) return true;
+    try { return isTruthy(comp.evalIn(id, step.filter, { locals, roots }).value as any); } catch { return false; }
+  });
 }
 
 function cleanLayout(raw: unknown): AgLayout {
@@ -259,7 +291,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         if (p.acl !== undefined) { note.acl = normalizeAcl(p.acl, true, { view: "everyone", edit: "gm" }); aclChanged = true; }
         if (p.bodyAcl !== undefined) { note.bodyAcl = normalizeAcl(p.bodyAcl, true); aclChanged = true; }
         if (p.tokenBars !== undefined) note.tokenBars = cleanTokenBars(p.tokenBars);
-        if (p.templateMeta !== undefined && note.isTemplate) note.templateMeta = { ...note.templateMeta!, description: cleanLabel(p.templateMeta?.description, 500) };
+        if (p.templateMeta !== undefined && note.isTemplate) {
+          note.templateMeta = {
+            ...note.templateMeta!,
+            ...(p.templateMeta?.description !== undefined ? { description: cleanLabel(p.templateMeta?.description, 500) } : {}),
+            ...(p.templateMeta?.playersCanCreate !== undefined ? { playersCanCreate: !!p.templateMeta.playersCanCreate } : {}),
+          };
+        }
         await store.putNote(note, cs, aclChanged);
         return { ok: true as const };
       });
@@ -295,6 +333,64 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         const componentIds = srcStore === store ? undefined : await snap.carryComponents(srcStore, store, s, cs);
         const copy = await snap.createFromSnapshot(store, { ...s, note: { ...s.note, isTemplate, templateMeta: isTemplate ? (s.note.templateMeta ?? { version: 1 }) : null, templateId: null, templateVersion: null, ownerIds: [] } }, {}, cs, { componentIds });
         return { noteId: copy.id };
+      });
+    }
+    case "kit.apply": {
+      requireGM(viewer);
+      if (body.kit !== "ca") fail("Unknown kit");
+      return store.run(async (cs) => {
+        try { return await applyCAKit(store, cs, { examples: body.examples !== false }); }
+        catch (e) { return fail((e as Error).message); }
+      });
+    }
+    case "note.creatableTemplates": {
+      const types = (body.types ?? []).map(labelKey).filter(Boolean);
+      const list = Array.from(store.notes.values())
+        .filter((n) => n.isTemplate && (!types.length || types.includes(n.type)) && (viewer.isGM || n.templateMeta?.playersCanCreate))
+        .map((n) => ({ id: n.id, name: n.name, type: n.type, portrait: n.portrait, description: n.templateMeta?.description ?? null }));
+      return { templates: list };
+    }
+    case "note.createLinked": {
+      const host = noteOf(store, body.hostNoteId);
+      const template = body.templateId ? noteOf(store, body.templateId) : null;
+      if (template && !template.isTemplate) fail("That isn't a template");
+      if (!viewer.isGM) {
+        // Players: only from templates the GM opened up, only onto sheets they can edit.
+        if (!template?.templateMeta?.playersCanCreate) fail("Only the GM can add that");
+        if (!canEditBody(host, viewer) && !host.ownerIds.includes(viewer.userId)) fail("You can't add to that sheet");
+      }
+      const label = labelKey(body.label) || "linked", reverse = labelKey(body.reverseLabel) || "link";
+      return store.run(async (cs) => {
+        let n: AgNote;
+        const init = { name: cleanLabel(body.name) || template?.name || "New", ownerIds: [...host.ownerIds], folder: null, portrait: template?.portrait ?? null };
+        if (template) {
+          const s = await snap.takeSnapshot(store, template.id);
+          n = await snap.createFromSnapshot(store, s, init, cs, { fromTemplateId: template.id });
+        } else {
+          n = newNote(store, { ...init, type: labelKey(body.type) || "note" });
+          await store.putNote(n, cs);
+        }
+        await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
+        return { noteId: n.id };
+      });
+    }
+    case "note.removeLinked": {
+      const host = noteOf(store, body.hostNoteId);
+      const n = noteOf(store, body.noteId);
+      if (!viewer.isGM) {
+        const t = n.templateId ? store.notes.get(n.templateId) : undefined;
+        if (!t?.templateMeta?.playersCanCreate || !n.ownerIds.includes(viewer.userId)) fail("Only the GM can remove that");
+        if (!canEditBody(host, viewer) && !host.ownerIds.includes(viewer.userId)) fail("You can't change that sheet");
+      }
+      return store.run(async (cs) => {
+        const links = store.linksOf(n.id).filter((l) => l.fromNoteId === host.id || l.toNoteId === host.id);
+        if (body.mode === "delete") {
+          await store.removeNote(n.id, cs);
+          if (store.scope.kind === "campaign") await ctx.host.deleteTokensForNote(store.scope.id, n.id).catch(() => {});
+        } else {
+          for (const l of links) await store.removeLink(l.id, cs);
+        }
+        return { ok: true as const };
       });
     }
     case "note.switchTemplate": {
@@ -479,13 +575,34 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       requireGM(viewer);
       return store.run(async (cs) => { await store.removeAction(body.id, cs); return { ok: true as const }; });
     }
+    case "action.prepare": {
+      // What the presser has to pick before the button can run (its "choose" steps).
+      const action = store.actions.get(body.id) ?? fail("That button no longer works — its action was deleted");
+      const note = noteOf(store, action.noteId);
+      if (!canRunAction(action, note, viewer)) fail("You can't use that");
+      const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
+      // @source = the sheet the button is on (so a choose filter can compare against it).
+      const roots: Record<string, string[]> = { target: targets, targets, source: [action.noteId] };
+      const choices: AgActionChoice[] = [];
+      for (const step of action.steps) {
+        if (step.type !== "choose") continue;
+        const ids = chooseOptions(store, action, step, roots, viewer);
+        choices.push({
+          name: step.name, prompt: step.prompt || `Choose for “${action.name}”`,
+          options: ids.map((id) => { const n = store.notes.get(id)!; return { id, name: n.name || "Untitled", portrait: n.portrait, sub: n.type }; }),
+        });
+        // Later choices can depend on this one only at run time; offer the full list now.
+        roots[step.name] = ids;
+      }
+      return { choices };
+    }
     case "action.run": {
       const action = store.actions.get(body.id) ?? fail("That button no longer works — its action was deleted");
       const note = noteOf(store, action.noteId);
       if (!canRunAction(action, note, viewer)) fail("You can't use that");
       const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
       return store.run(async (cs) => {
-        const result = await executeAction(store, action, targets, cs);
+        const result = await executeAction(store, action, targets, cs, { viewer, choices: body.choices ?? {}, host: ctx.host });
         return { result, noteName: note.name };
       });
     }
@@ -625,15 +742,51 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
 }
 
 /** Run an action's steps with the GM-authored authority of the action itself. */
-async function executeAction(store: ScopeStore, action: AgAction, targetNoteIds: string[], cs: ChangeSet): Promise<AgActionResult> {
+async function executeAction(
+  store: ScopeStore, action: AgAction, targetNoteIds: string[], cs: ChangeSet,
+  run: { viewer: AgViewer; choices: Record<string, string>; host: HostHooks },
+): Promise<AgActionResult> {
   const result: AgActionResult = { rolls: [], changes: [], messages: [] };
   const locals: Record<string, any> = {};
-  const roots = { target: targetNoteIds, targets: targetNoteIds };
+  const roots: Record<string, string[]> = { target: targetNoteIds, targets: targetNoteIds, source: [action.noteId] };
   for (const step of action.steps) {
     const comp = store.computer();
+    if (!store.notes.has(action.noteId)) break; // the button's own sheet was removed by an earlier step
+    if (step.when) {
+      let go = false;
+      try { go = isTruthy(comp.evalIn(action.noteId, step.when, { locals, roots }).value as any); } catch (e) { result.messages.push(`⚠ ${(e as Error).message}`); }
+      if (!go) continue;
+    }
+    if (step.type === "choose") {
+      const allowed = chooseOptions(store, action, step, roots, run.viewer, locals);
+      const picked = run.choices[step.name];
+      if (!allowed.length) { result.messages.push(step.prompt ? `Nothing to choose for “${step.prompt}”.` : "There was nothing to choose."); break; }
+      if (!picked || !allowed.includes(picked)) { result.messages.push("Nothing was chosen, so the rest didn't happen."); break; }
+      roots[step.name] = [picked];
+      continue;
+    }
+    if (step.type === "remove") {
+      const id = step.target === "self" ? action.noteId : roots[step.target]?.[0];
+      if (!id || !store.notes.has(id)) { result.messages.push("⚠ Nothing to remove."); continue; }
+      const name = store.notes.get(id)!.name;
+      await store.removeNote(id, cs);
+      if (store.scope.kind === "campaign") await run.host.deleteTokensForNote(store.scope.id, id).catch(() => {});
+      result.messages.push(`${name || "A sheet"} was removed.`);
+      continue;
+    }
     if (step.type === "roll") {
       try {
-        const r = comp.evalIn(action.noteId, step.expr, { rollDie, locals, roots });
+        // A roll that is just a dice value ("damage") rolls that value's own dice, so the breakdown shows them.
+        let expr = step.expr, at = action.noteId;
+        try {
+          const node = parseFormula(step.expr);
+          if (node.t === "ref") {
+            const { noteIds, key } = comp.targetsOf(action.noteId, node.path, node.abs, roots);
+            const f = noteIds.length === 1 ? store.fieldsByNote.get(noteIds[0])?.get(key) : undefined;
+            if (f?.type === "dice" && f.formula?.trim()) { expr = f.formula; at = f.noteId; }
+          }
+        } catch { /* fall through to the plain evaluation, which reports the error */ }
+        const r = comp.evalIn(at, expr, { rollDie, locals, roots });
         const total = asNumber(r.value as any);
         locals[step.name] = total;
         result.rolls.push({ name: step.name, label: step.label || action.name, expr: step.expr, total, breakdown: `${r.breakdown} = ${Math.round(total * 100) / 100}` });

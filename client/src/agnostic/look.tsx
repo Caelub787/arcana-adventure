@@ -5,6 +5,7 @@
 import React, { useRef, useState } from "react";
 import { RotateCcw, X, AlignLeft, AlignCenter, AlignRight, Paintbrush } from "lucide-react";
 import { AgPanel } from "./float";
+import { AgIcon, IconGrid } from "./icons";
 import type { AgLook } from "@shared/agnostic/types";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
 
@@ -12,7 +13,7 @@ export { mergeLook, defaultLabelPos };
 
 export type LookKind =
   | "bar" | "pips" | "dial" | "value" | "input" | "badge" | "label"
-  | "inlineValue" | "button" | "chart" | "links" | "component" | "canvas" | "section" | "columns" | "tokenBar" | "text";
+  | "inlineValue" | "button" | "chart" | "links" | "component" | "canvas" | "section" | "columns" | "tokenBar" | "text" | "tabs";
 
 /** Strip keys set back to their default so stored looks stay small. */
 function patchLook(look: AgLook, patch: Partial<AgLook>): AgLook {
@@ -51,6 +52,7 @@ function specFor(kind: LookKind, inCanvas: boolean): Spec {
     case "component": case "canvas": return { width: block, align: block, frame: block, radius: block, padding: block };
     case "section": return { width: true, align: true, frame: true, radius: true, padding: true };
     case "columns": return { width: true, align: true, frame: true, radius: true, padding: true, columns: true };
+    case "tabs": return { color: "Active tab", text: true, frame: true };
     case "text": return { text: true, font: true };
   }
 }
@@ -141,6 +143,7 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
 
       {(s.font || s.labelPos || s.numbers) && <div className="text-[10px] uppercase tracking-wide text-amber-400/80 pt-1.5">Text</div>}
       {s.font && row("Size", slider("fontSize", 6, 72, 0, "px"))}
+      {(kind === "value" || kind === "inlineValue" || kind === "badge") && row("After value", <input value={L.suffix ?? ""} placeholder="e.g. lbs, ft" onChange={(e) => set({ suffix: e.target.value || undefined })} className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" />)}
       {s.font && row("Weight", (
         <>
           <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!L.bold} onChange={(e) => set({ bold: e.target.checked || undefined })} /> Bold</label>
@@ -148,9 +151,16 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
         </>
       ))}
       {s.labelPos && row("Label", select("labelPos", s.labelPos.map((p) => [p, LABEL_POS[p]]), defaultLabelPos(kind)))}
+      {s.labelPos && row("Label text", (
+        <>
+          <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!L.labelUpper} onChange={(e) => set({ labelUpper: e.target.checked || undefined })} /> SMALL CAPS</label>
+          <input type="number" min={6} max={40} value={L.labelSize ?? ""} placeholder="size" onChange={(e) => set({ labelSize: e.target.value === "" ? undefined : clamp(Number(e.target.value), 6, 40) })} className="h-7 w-16 bg-stone-900 border border-stone-700 rounded px-1 text-xs" />
+        </>
+      ))}
       {s.numbers && row("Numbers", select("numbers", [["fraction", "Current / max"], ["value", "Current only"], ["percent", "Percent"], ["none", "None"]], "fraction"))}
 
       {(s.barStyle || s.shape || s.direction || s.icon) && <div className="text-[10px] uppercase tracking-wide text-amber-400/80 pt-1.5">Style</div>}
+      {(s.font || s.icon) && kind !== "tokenBar" && kind !== "text" && row("Icon", <IconPick value={L.iconName} color={L.iconColor} onChange={(iconName, iconColor) => set({ iconName, iconColor })} />)}
       {s.barStyle && row("Bar", select("barStyle", [["solid", "Solid"], ["gradient", "Shaded"], ["striped", "Striped"], ["segments", "Segments (one per point)"], ["glow", "Glowing"]], "solid"))}
       {s.direction && row("Fills", select("direction", [["right", "Left → right"], ["left", "Right → left"], ["up", "Bottom → top (tall bar)"]], "right"))}
       {s.shape && row("Shape", select("shape", [["circle", "Circles"], ["square", "Squares"], ["diamond", "Diamonds"], ["heart", "Hearts"], ["star", "Stars"]], "circle"))}
@@ -254,5 +264,20 @@ export function BlockFrame({ look, onLook, editable, height, children, testId }:
         </>
       )}
     </div>
+  );
+}
+
+/** Pick an icon (and its colour) shown before a value or on a button. */
+function IconPick({ value, color, onChange }: { value?: string; color?: string; onChange: (name: string | undefined, color: string | undefined) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className="h-7 px-2 rounded border border-stone-700 bg-stone-900 text-xs text-stone-200 inline-flex items-center gap-1.5" data-testid="ag-look-icon">
+        {value ? <AgIcon name={value} size={14} color={color ?? "#d4a24c"} /> : null}{value ?? "None"}
+      </button>
+      {value && <input type="color" value={color ?? "#d4a24c"} onChange={(e) => onChange(value, e.target.value)} className="h-6 w-7 bg-transparent" title="Icon colour" />}
+      {value && <button type="button" onClick={() => onChange(undefined, undefined)} className="h-6 w-5 grid place-items-center text-stone-500 hover:text-stone-200" title="No icon"><X className="h-3 w-3" /></button>}
+      {open && <AgPanel title="Choose an icon" onClose={() => setOpen(false)} width={340} height={420}><IconGrid value={value} onPick={(n) => { onChange(n, color); setOpen(false); }} /></AgPanel>}
+    </>
   );
 }
