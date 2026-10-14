@@ -304,7 +304,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
           onInsert={(attrs) => { editor?.chain().focus().insertContent({ type: configuring.type, attrs }).run(); setConfiguring(null); }}
         />
       )}
-      {picker === "image" && <ImageBrowser floating open onOpenChange={(o) => { if (!o) setPicker(null); }} onSelect={(src) => { editor?.chain().focus().setImage({ src }).run(); setPicker(null); }} />}
+      {picker === "image" && <ImageBrowser floating saveToFile open onOpenChange={(o) => { if (!o) setPicker(null); }} onSelect={(src) => { editor?.chain().focus().setImage({ src }).run(); setPicker(null); }} />}
       {picker === "note" && (
         <NotePickerDialog onClose={() => setPicker(null)} exclude={noteId} onPick={(id) => { editor?.chain().focus().insertContent({ type: "agNoteLink", attrs: { noteId: id } }).insertContent(" ").run(); setPicker(null); }} notes={[...Array.from(state.notes.values())].filter((n) => !n.isTemplate)} />
       )}

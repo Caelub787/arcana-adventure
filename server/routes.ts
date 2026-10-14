@@ -499,6 +499,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const removed = await db.delete(tokensTable).where(eq(tokensTable.agnosticNoteId, noteId)).returning({ id: tokensTable.id });
       for (const t of removed) broadcastToCampaign(campaignId, { type: "token_deleted", tokenId: t.id });
     },
+    // A whole image from the image library (or pasted) becomes a saved file.
+    saveImage: async (dataUrl) => {
+      const m = /^data:image\/[a-z0-9.+-]+;base64,(.+)$/i.exec(dataUrl);
+      if (!m) throw new Error("Not an image");
+      return processAndSaveImage(Buffer.from(m[1], "base64"), "agnostic");
+    },
     // An Agnostic sheet's "join initiative" step: one row per sheet, re-rolling replaces it.
     joinInitiative: async (campaignId, sheet, value) => {
       const existing = await db.select({ id: initiativeEntries.id }).from(initiativeEntries)

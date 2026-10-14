@@ -23,6 +23,8 @@ import * as repo from "./repo";
 export interface HostHooks {
   /** Remove battlemap tokens that stood for a deleted note. */
   deleteTokensForNote(campaignId: string, noteId: string): Promise<void>;
+  /** Save a pasted / library image (a data: URL) as a file and return its link. */
+  saveImage?(dataUrl: string): Promise<string>;
   /** Put a sheet into the campaign's initiative order (or update its place). */
   joinInitiative?(campaignId: string, sheet: { noteId: string; name: string; portrait: string | null }, value: number): Promise<void>;
 }
@@ -326,7 +328,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         let aclChanged = false;
         if (p.name !== undefined) note.name = cleanLabel(p.name) || note.name;
         if (p.portrait !== undefined) {
-          const s = p.portrait ? String(p.portrait) : null;
+          const s = p.portrait ? await storedImage(ctx.host, String(p.portrait)) : null;
           if (s && (s.length > 4096 || !/^(https?:\/\/|\/|data:image\/)/.test(s))) fail("Upload the image instead of pasting it");
           note.portrait = s;
         }
@@ -507,7 +509,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           if (!Number.isFinite(d)) fail("Bad amount");
           f.value = capToMax(store, f, coerceValue(f, asNumber((f.value as number) ?? 0) + await absorb(store, f, d, cs)));
         } else {
-          f.value = capToMax(store, f, coerceValue(f, body.value));
+          const raw = f.type === "image" && typeof body.value === "string" ? await storedImage(ctx.host, body.value) : body.value;
+          f.value = capToMax(store, f, coerceValue(f, raw));
         }
         delete f.eff; delete f.err;
         await store.putField(f, cs);
@@ -792,6 +795,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   }
   fail("Unknown operation");
   return { ok: true };
+}
+
+/** A whole image pasted in (a data: URL from the image library or the clipboard) is saved as a file; a link stays as it is. */
+async function storedImage(host: HostHooks, v: string): Promise<string> {
+  if (v.length <= 4096 || !/^data:image\//.test(v) || !host.saveImage) return v;
+  try { return await host.saveImage(v); } catch { fail("Couldn't save that image — try uploading it"); }
+  return v;
 }
 
 /**

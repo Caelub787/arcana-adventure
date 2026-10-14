@@ -126,7 +126,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
         setBusy(true);
         try { await setPortrait(await uploadImage(f)); } catch (err: any) { toast({ title: "Upload failed", description: err.message, variant: "destructive" }); } finally { setBusy(false); }
       }} />
-      {browse && <ImageBrowser floating open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setPortrait(src); setBrowse(false); }} />}
+      {browse && <ImageBrowser floating saveToFile open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setPortrait(src); setBrowse(false); }} />}
       <div className="min-w-0 flex-1">
         {canEditHeader
           ? <CommitInput value={note.name} onCommit={(name) => request({ op: "note.update", id: noteId, patch: { name } })} className="w-full h-9 text-lg font-semibold bg-transparent border-transparent hover:border-stone-700 text-amber-100" aria-label="Name" data-testid="ag-name" />
