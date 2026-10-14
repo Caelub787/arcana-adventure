@@ -18,6 +18,46 @@ export interface Computed {
   err: string | null;
 }
 
+/**
+ * Follow `label` from each sheet, then again from where it led, as far as it
+ * goes (at least once); the ends of the chains. Loops and very long chains stop.
+ */
+export function climb(start: string[], label: string, step: (ids: string[], label: string) => string[]): string[] {
+  const out = new Set<string>();
+  for (const id of start) {
+    let cur = step([id], label);
+    const seen = new Set<string>([id]);
+    for (let hop = 0; cur.length && hop < 12; hop++) {
+      const ends: string[] = [], more: string[] = [];
+      for (const c of cur) {
+        if (seen.has(c)) continue;
+        seen.add(c);
+        const n = step([c], label).filter((x) => !seen.has(x));
+        if (n.length) more.push(...n); else ends.push(c);
+      }
+      ends.forEach((e) => out.add(e));
+      cur = more;
+    }
+  }
+  return Array.from(out);
+}
+
+/** Every sheet reached by following `label` again and again (at least once), with the sheet it was reached from. */
+export function reachAll(start: string[], label: string, step: (ids: string[], label: string) => string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  let frontier = start.map((id) => id);
+  const seen = new Set(start);
+  for (let hop = 0; frontier.length && hop < 12; hop++) {
+    const next: string[] = [];
+    for (const from of frontier) for (const to of step([from], label)) {
+      if (seen.has(to)) continue;
+      seen.add(to); out.set(to, from); next.push(to);
+    }
+    frontier = next;
+  }
+  return out;
+}
+
 export class AgComputer {
   private out = new Map<string, Map<string, string[]>>();
   private incomingMods = new Map<string, AgModifier[]>();
@@ -51,6 +91,10 @@ export class AgComputer {
   /**
    * Notes reached from `noteId` via a connection label ("self" = itself), or a
    * path of them: "ability.holder" = the holder of this sheet's ability.
+   * A label ending in * is followed as far as it goes: "holder*" = the holder's
+   * holder's … holder (an ability inside an ability inside a character → the character).
+   * A label ending in + is every sheet along the way: "abilities+" = its abilities and
+   * the abilities inside those, at any depth.
    */
   follow(noteId: string, label: string): string[] {
     const l = label.toLowerCase();
@@ -58,9 +102,14 @@ export class AgComputer {
     let set = [noteId];
     for (const seg of l.split(".").filter(Boolean)) {
       if (seg === "self") continue;
-      const next = new Set<string>();
-      for (const id of set) for (const to of this.out.get(id)?.get(seg) ?? []) if (this.data.notes.has(to)) next.add(to);
-      set = Array.from(next);
+      const step = (ids: string[], name: string) => {
+        const next = new Set<string>();
+        for (const id of ids) for (const to of this.out.get(id)?.get(name) ?? []) if (this.data.notes.has(to)) next.add(to);
+        return Array.from(next);
+      };
+      if (seg.endsWith("*")) set = climb(set, seg.slice(0, -1), (ids, name) => step(ids, name));
+      else if (seg.endsWith("+")) set = Array.from(reachAll(set, seg.slice(0, -1), (ids, name) => step(ids, name)).keys());
+      else set = step(set, seg);
     }
     return set;
   }

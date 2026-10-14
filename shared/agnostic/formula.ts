@@ -157,12 +157,19 @@ export function parseFormula(src: string): FNode {
   }
   function parsePath(first: string): string[] {
     const path = [first];
+    // "holder*." — a connection followed as far as it goes (only when a .name comes right after the *).
+    const star = () => {
+      const a = toks[p] as any, b = toks[p + 1] as any, c = toks[p + 2] as any;
+      if (a?.k === "op" && (a.v === "*" || a.v === "+") && b?.k === "op" && b.v === "." && c?.k === "id") { p++; path[path.length - 1] += a.v; }
+    };
+    star();
     while (isOp(".")) {
       p++;
       const t = peek();
       if (t.k !== "id") throw new FormulaError("Expected a name after .");
       path.push(t.v.toLowerCase());
       p++;
+      star();
     }
     return path;
   }

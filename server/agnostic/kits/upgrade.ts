@@ -19,6 +19,7 @@ import {
   abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
   ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
   CA_COPIES_FOLDER, adoptCharacterCopies,
+  ASPECT_VIA, ALL_ABILITIES, ABILITY_LIST_COLUMNS as ABILITY_SET_COLUMNS, ASPECT_HELP, subAbilityNodes,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
@@ -28,7 +29,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 9;
+export const CA_KIT_LEVEL = 10;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -50,6 +51,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 7) await upgrade7(store, characterTemplates);
   if (level < 8) await upgrade8(store, characterTemplates);
   if (level < 9) await upgrade9(store, characterTemplates);
+  if (level < 10) await upgrade10(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -775,6 +777,66 @@ async function renameTechniquesToAspects(store: ScopeStore, characters: AgNote[]
         tab.delete(0, tab.length);
         appendNodes(tab, techniqueAbilityTab());
       }
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 10
+// Abilities inside abilities: an ability's page gets "Abilities within"; an
+// aspect rolls as whoever has its ability at the top of the chain
+// (ability.holder*); the character's Ability Aspects list shows the aspects of
+// the abilities inside its abilities too (abilities+.aspects).
+async function upgrade10(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const aspects = Array.from(store.notes.values()).filter((n) => n.type === "aspect");
+  const abilities = Array.from(store.notes.values()).filter((n) => n.type === "ability" && store.fieldsByNote.get(n.id)?.get("tag_color"));
+  const OLD = "ability.holder";
+  const up = (x: string) => (x ?? "").split(`@${OLD}.`).join(`@${ASPECT_VIA}.`);
+  await store.run(async (cs) => {
+    for (const n of aspects) {
+      for (const a of store.actionsOf(n.id)) {
+        const r = a.options?.roll;
+        const roll = r ? { ...r, via: r.via === OLD ? ASPECT_VIA : r.via, count: up(r.count), die: up(r.die), bonus: up(r.bonus), costs: r.costs.map((c) => ({ ...c, amount: up(c.amount) })) } : undefined;
+        const steps = JSON.parse(up(JSON.stringify(a.steps)));
+        if (JSON.stringify(roll) !== JSON.stringify(r) || JSON.stringify(steps) !== JSON.stringify(a.steps)) await store.putAction({ ...a, steps, ...(roll ? { options: { ...a.options, roll } } : {}) }, cs);
+      }
+      for (const f of Array.from(store.fieldsByNote.get(n.id)?.values() ?? [])) if (f.formula?.includes(`@${OLD}.`)) await store.putField({ ...f, formula: up(f.formula) }, cs);
+    }
+    for (const m of Array.from(store.modifiers.values())) {
+      const owner = store.notes.get(m.noteId);
+      if (owner?.type === "aspect" && m.via === OLD) await store.putModifier({ ...m, via: ASPECT_VIA }, cs);
+      if (owner?.type === "ability" && m.via === "holder") await store.putModifier({ ...m, via: "holder*" }, cs);
+    }
+  });
+  for (const n of aspects) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agRolls" || e.nodeName === "agEffects")) if (el.getAttribute("via") === OLD) el.setAttribute("via", ASPECT_VIA);
+    });
+  }
+  for (const n of abilities) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agEffects")) if (el.getAttribute("via") === "holder") el.setAttribute("via", "holder*");
+      replacePara(frag, "Passive changes this ability makes to its holder", [p(muted("Passive changes this ability makes to the character who has it (leave empty if none)."))]);
+      if (findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "abilities").length) return;
+      // "Abilities within" goes before the Effects heading (or the GM notes, or at the end).
+      const top = frag.toArray();
+      let at = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "heading" && textOf(c).trim() === "Effects");
+      if (at < 0) at = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "agRegion");
+      insertNodes(frag, at < 0 ? top.length : at, subAbilityNodes());
+    });
+  }
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks")) {
+        const label = String(el.getAttribute("label"));
+        if (label === "abilities.aspects") el.setAttribute("label", `${ALL_ABILITIES}.aspects`);
+        if (label === "abilities") {
+          const cols = (el.getAttribute("columns") ?? []) as any[];
+          if (Array.isArray(cols) && !cols.some((c) => c?.ref === "abilities")) el.setAttribute("columns", ABILITY_SET_COLUMNS as any);
+        }
+      }
+      replacePara(frag, "Every aspect from this character's abilities", [p(muted(ASPECT_HELP))]);
     });
   }
 }

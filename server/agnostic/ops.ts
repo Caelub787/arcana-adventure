@@ -114,7 +114,7 @@ function cleanLabel(s: unknown, max = 120) {
 }
 const labelKey = (s: unknown) => slugifyKey(String(s ?? "")).slice(0, 40);
 /** A connection label or a path of them ("ability.holder"). */
-const pathKey = (s: unknown) => String(s ?? "").split(".").map(labelKey).filter(Boolean).slice(0, 4).join(".");
+const pathKey = (s: unknown) => String(s ?? "").split(".").map((seg) => { const m = /[*+]$/.exec(seg.trim()); const k = labelKey(seg.trim().replace(/[*+]$/, "")); return k && m ? `${k}${m[0]}` : k; }).filter(Boolean).slice(0, 4).join(".");
 
 /** Presentation only — but still bounded: short strings, finite numbers, known keys. */
 function cleanLook(raw: unknown): AgLook | undefined {
@@ -438,6 +438,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const host = noteOf(store, body.hostNoteId);
       const n = noteOf(store, body.noteId);
       if (host.id === n.id) fail("A sheet can't go onto itself");
+      // Nor inside something that's inside it (an ability into one of its own sub-abilities).
+      const inside = (id: string, seen = new Set<string>()): boolean => store.linksOf(id).some((l) => l.toNoteId === id && !seen.has(l.fromNoteId) && (seen.add(l.fromNoteId), l.fromNoteId === host.id || inside(l.fromNoteId, seen)));
+      if (inside(n.id)) fail(`${host.name || "That sheet"} is inside ${n.name || "it"} — it can't also hold it`);
       if (n.isTemplate) fail("Drag a sheet, not a template — make one from it first");
       const fromHost = body.fromNoteId && body.fromNoteId !== host.id ? store.notes.get(body.fromNoteId) : undefined;
       // The GM, or a player putting their own sheet onto their own character (moving it off one of theirs).

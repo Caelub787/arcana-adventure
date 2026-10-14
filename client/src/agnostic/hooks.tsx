@@ -4,6 +4,7 @@
 // under it reads through useAg(), which already applies "preview as player":
 // when the GM previews, the same shared ACL rules the server uses filter what
 // is shown, and editing is limited to what that player could edit.
+import { climb, reachAll } from "@shared/agnostic/compute";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { AgField, AgLink, AgNote, AgScope, AgViewer, AgValue } from "@shared/agnostic/types";
 import { scopeKey, noteDocName, regionDocName, agLibrarySystem } from "@shared/agnostic/types";
@@ -175,7 +176,17 @@ export function followWithParents(state: ScopeState, noteId: string, label: stri
   for (const seg of path.length ? path : ["self"]) {
     if (seg === "self") continue;
     const next = new Map<string, string>();
-    for (const id of Array.from(set.keys())) for (const to of followOne(state, id, seg)) if (!next.has(to)) next.set(to, id);
+    const step = (ids: string[], l: string) => Array.from(new Set(ids.flatMap((x) => followOne(state, x, l))));
+    for (const id of Array.from(set.keys())) {
+      if (seg.endsWith("+")) {
+        // "abilities+": every one along the way, each with the sheet it hangs from.
+        for (const [to, from] of Array.from(reachAll([id], seg.slice(0, -1), step).entries())) if (!next.has(to)) next.set(to, from);
+        continue;
+      }
+      // "holder*": followed as far as it goes (the parent is where the chain started).
+      const reached = seg.endsWith("*") ? climb([id], seg.slice(0, -1), step) : followOne(state, id, seg);
+      for (const to of reached) if (!next.has(to)) next.set(to, id);
+    }
     set = next;
   }
   return set;

@@ -384,9 +384,9 @@ function characterTemplate(): AgSnapshot {
 // each tagged with the ability it belongs to.
 export const INVENTORY_HELP = "Each item's rolls are on its card (hold a roll for advantage, disadvantage or a modifier). Click an item to open it and set its rolls up. Equipped items' bonuses (and a backpack's extra carry weight) apply on their own. Items given here are this character's own copies (their own notes); the original stays to give again. Drag a copy onto someone else to move it; the remove button puts it away in “Player Owned Copies”.";
 export const ABILITY_HELP = "Each ability is a set of aspects. Open one to see its aspects and make new ones. GM: Add (or drag an ability here from the sidebar) gives this character their own copy of it, aspects and all; the remove button puts it away in “Player Owned Copies”.";
-export const ASPECT_HELP = "Every aspect from this character's abilities; the tag shows which ability it's from (click it to open the ability). Each roll shows what it rolls and costs; pressing it spends the cost first. Hold a roll for advantage, disadvantage or a modifier.";
+export const ASPECT_HELP = "Every aspect from this character's abilities (and the abilities inside them); the tag shows which ability it's from (click it to open the ability). Each roll shows what it rolls and costs; pressing it spends the cost first. Hold a roll for advantage, disadvantage or a modifier.";
 export const ABILITY_LIST_COLUMNS = [
-  { ref: "aspects", display: "connection", label: "Aspects" }, { ref: "description", display: "text" },
+  { ref: "aspects", display: "connection", label: "Aspects" }, { ref: "abilities", display: "connection", label: "Abilities within" }, { ref: "description", display: "text" },
 ];
 export const ABILITY_LIST_CONFIG = {
   layout: "cards", search: true, sortBy: "name", accentBy: "tag_color",
@@ -402,12 +402,21 @@ export const ASPECT_LIST_CONFIG = {
   layout: "cards", search: true, sortBy: "name", filterBy: "ability", accentBy: "ability",
   add: { types: ["aspect"], reverse: "ability", existing: true, ...COPY }, remove: "none", emptyText: "No aspects yet — open an ability to make one.",
 };
+/** Abilities inside an ability (a trapped creature's powers inside "Soul Prison"): their aspects are its holder's too. */
+export const SUB_ABILITY_CONFIG = {
+  layout: "cards", search: true, sortBy: "name", accentBy: "tag_color",
+  add: { types: ["ability"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "None — press Add, or drag an ability here (from the sidebar, or off another sheet).",
+};
+export const SUB_ABILITY_HELP = "Abilities inside this one: their aspects are the character's too, rolled and paid by them. Unlink one (the remove button) and all its aspects go with it; it stays in “Player Owned Copies” to put back later.";
 /** An ability's own list of its aspects. */
 export const ABILITY_ASPECTS_CONFIG = {
   layout: "cards", search: true, sortBy: "name", filterBy: "category", accentBy: "category",
   add: { types: ["aspect"], reverse: "ability", existing: true, ...COPY }, remove: "disconnect", emptyText: "No aspects yet — press Add to make one.",
 };
-export const ASPECT_VIA = "ability.holder";
+/** Who rolls and pays for an aspect: its ability's holder — and if that's another ability, its holder, up to the character. */
+export const ASPECT_VIA = "ability.holder*";
+/** Every ability a character has, and the abilities inside those. */
+export const ALL_ABILITIES = "abilities+";
 export const DEFAULT_ABILITY_COLOR = "#a78bfa";
 const ABILITY_TAG_COLORS = ["#a78bfa", "#f87171", "#34d399", "#60a5fa", "#fbbf24", "#f472b6", "#2dd4bf", "#fb923c"];
 /** A colour for the n-th ability (so a character's abilities don't all look alike). */
@@ -422,7 +431,7 @@ export function abilityTabContent(): DocNode[] {
     links("abilities", ABILITY_LIST_COLUMNS, ABILITY_LIST_CONFIG),
     p(muted(ABILITY_HELP)),
     h(3, icon("Swords", GILT, 18), " Ability Aspects"),
-    links("abilities.aspects", ASPECT_LIST_COLUMNS, ASPECT_LIST_CONFIG),
+    links(`${ALL_ABILITIES}.aspects`, ASPECT_LIST_COLUMNS, ASPECT_LIST_CONFIG),
     p(muted(ASPECT_HELP)),
   ];
 }
@@ -438,9 +447,15 @@ export function abilityPage(gmRegionId: string | null): DocNode[] {
     h(3, icon("Swords", GILT, 16), " Ability Aspects"),
     links("aspects", ASPECT_COLUMNS, ABILITY_ASPECTS_CONFIG),
     p(muted("Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.")),
-    ...effectsNodes("holder", "", "Passive changes this ability makes to its holder (leave empty if none)."),
+    ...subAbilityNodes(),
+    ...effectsNodes("holder*", "", "Passive changes this ability makes to the character who has it (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
+}
+
+/** An ability's "Abilities within" heading, list and help. */
+export function subAbilityNodes(): DocNode[] {
+  return [h(3, icon("Orbit", GILT, 16), " Abilities within"), links("abilities", ABILITY_LIST_COLUMNS, SUB_ABILITY_CONFIG), p(muted(SUB_ABILITY_HELP))];
 }
 
 /** The ability an aspect belongs to, as a card at the top of its page. */
@@ -802,9 +817,17 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     await connect(store, lance, embers, "ability", "aspects", cs);
     await connect(store, veil, embers, "ability", "aspects", cs);
     await connect(store, bulwark, oath, "ability", "aspects", cs);
+    // An ability inside an ability: whatever creature is trapped, its powers are the hero's.
+    const prison = await createFrom(store, made.ability, "Soul Prison", { description: "Trap a defeated creature's soul and wield its powers while it's held. Unlink the trapped ability to free it — its aspects go with it.", tag_color: "#2dd4bf" }, cs);
+    await connect(store, prison, hero, "holder", "abilities", cs);
+    const hexer = await createFrom(store, made.ability, "Goblin Shaman (trapped)", { description: "The hexes of the goblin shaman held in the Soul Prison.", tag_color: "#a3e635" }, cs);
+    await connect(store, hexer, prison, "holder", "abilities", cs);
+    const hex = await createFrom(store, made.aspect, "Hex Bolt", { category: "Attack", range: "60 ft", description: "A crackling green curse." }, cs);
+    await setRoll(store, hex, "Roll", { count: "2", die: "8", add: "", costs: [{ key: "energy", amount: "25" }, { key: "focus", amount: "1" }] }, cs);
+    await connect(store, hex, hexer, "ability", "aspects", cs);
     // What the example character has is theirs (in "Player Owned Copies").
     await adoptCharacterCopies(store, cs);
-    sheets = 16;
+    sheets = 19;
     if (store.scope.kind === "campaign" && store.settings) {
       const st = store.settings;
       if (!st.tracker.pinned.includes(hero.id)) await store.putSettings({ ...st, tracker: { ...st.tracker, pinned: [...st.tracker.pinned, hero.id] } }, cs);

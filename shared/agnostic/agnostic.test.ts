@@ -171,3 +171,33 @@ describe("base()", () => {
     expect(() => evaluate(parseFormula("base(1 + 2)"), ctx({}))).toThrow(FormulaError);
   });
 });
+
+describe("connection paths: * (as far as it goes) and + (everything along the way)", () => {
+  const ln = (id: string, from: string, to: string, label: string, reverseLabel: string): AgLink =>
+    ({ id, fromNoteId: from, toNoteId: to, label, reverseLabel, acl: { view: "inherit", edit: "inherit" }, createdAt: 0 });
+  // hero ← holder ← prison ← holder ← shaman ← ability ← hex;   hero ← holder ← embers ← ability ← lance
+  const c = data(
+    [note("hero"), note("prison", { type: "ability" }), note("shaman", { type: "ability" }), note("hex", { type: "aspect" }), note("embers", { type: "ability" }), note("lance", { type: "aspect" })],
+    [field("hero", "anemos_die", { value: 8 }), field("hero", "energy", { value: 100 })],
+    [
+      ln("l1", "prison", "hero", "holder", "abilities"), ln("l2", "shaman", "prison", "holder", "abilities"), ln("l3", "hex", "shaman", "ability", "aspects"),
+      ln("l4", "embers", "hero", "holder", "abilities"), ln("l5", "lance", "embers", "ability", "aspects"),
+    ],
+  );
+  it("holder* climbs to the top of the chain", () => {
+    expect(c.follow("hex", "ability.holder*")).toEqual(["hero"]);
+    expect(c.follow("lance", "ability.holder*")).toEqual(["hero"]);
+    expect(c.follow("hex", "ability.holder")).toEqual(["prison"]);
+  });
+  it("abilities+ reaches the abilities inside abilities", () => {
+    expect(c.follow("hero", "abilities+").sort()).toEqual(["embers", "prison", "shaman"]);
+    expect(c.follow("hero", "abilities+.aspects").sort()).toEqual(["hex", "lance"]);
+    expect(c.follow("hero", "abilities.aspects")).toEqual(["lance"]);
+  });
+  it("formulas read through * paths, and * is still multiplication elsewhere", () => {
+    expect(c.evalIn("hex", "sum(@ability.holder*.anemos_die)").value).toBe(8);
+    expect(c.evalIn("hex", "sum(@ability.holder*.anemos_die) * 2").value).toBe(16);
+    expect(c.evalIn("hero", "energy*2").value).toBe(200);
+    expect(c.evalIn("hero", "count(@abilities+.aspects.name)").value).toBe(2);
+  });
+});

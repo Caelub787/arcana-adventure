@@ -396,7 +396,7 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
   return (
     <div className="space-y-2 text-stone-200" data-testid="ag-links-config">
       {row("Connection", <>
-        <input list="ag-link-labels-cfg" value={value.label} placeholder="e.g. items" onChange={(e) => onChange({ ...value, label: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, "_") })} className="h-7 flex-1 min-w-[120px] bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-links-label" />
+        <input list="ag-link-labels-cfg" value={value.label} placeholder="e.g. items" onChange={(e) => onChange({ ...value, label: e.target.value.toLowerCase().replace(/[^a-z0-9_.*+]/g, "_") })} className="h-7 flex-1 min-w-[120px] bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-links-label" />
         <datalist id="ag-link-labels-cfg">{labels.map((l) => <option key={l} value={l} />)}</datalist>
       </>)}
       {row("Show as", (
