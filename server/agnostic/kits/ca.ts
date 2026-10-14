@@ -301,7 +301,7 @@ function characterTemplate(): AgSnapshot {
     hr(),
     framed(s, "focus", "Sparkles", "Focus", [val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })], [
       block("focus", { maxRef: "focus_max", display: "bar", showLabel: false, look: { color: "#8b5cf6", track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } }),
-      p(muted("6 to start, +1 per star. Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest.")),
+      p(muted(FOCUS_NOTE)),
     ]),
     hr(),
     framed(s, "wounds", "HeartPulse", "Wounds", [val("wounds_count", { look: { bold: true } })], [
@@ -693,14 +693,18 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
 }
 
 // --------------------------------------------------------------------------- wounds & traits
+/** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
+export const FOCUS_NOTE = "6 to start, +1 per star. Resets on a long rest.";
+/** A wound's severity and location, at the top of its page. */
+export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
+
 function woundTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("severity", "Severity", SEVERITIES, "Minor", SEVERITY_COLORS).choice("location", "Location", LOCATIONS, "Body", LOCATION_COLORS)
-    .calc("severity_rank", "Severity level", `if(severity == "Severe", 3, if(severity == "Moderate", 2, 1))`)
-    .calc("focus_cost", "Focus cost", `choose(if(location == "Head", 2, if(location == "Body", 0, 1)), 0, 2, 4)`);
+    .calc("severity_rank", "Severity level", `if(severity == "Severe", 3, if(severity == "Moderate", 2, 1))`);
   const treat = s.action("a_treat", "Treat", [{ type: "remove", target: "self" }], "#15803d");
   const page: DocNode[] = [
-    p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }), "  ", muted("Focus cost to aim here: "), val("focus_cost", { look: { bold: true } })),
+    woundBadges(),
     p(i("What happened — describe the wound here.")),
     ...effectsNodes("bearer", "", WOUND_EFFECTS_HELP),
     hr(),

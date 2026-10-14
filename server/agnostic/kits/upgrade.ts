@@ -18,7 +18,7 @@ import {
   LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
   abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
   ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
-  CA_COPIES_FOLDER, adoptCharacterCopies,
+  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges,
   ASPECT_VIA, ALL_ABILITIES, ABILITY_LIST_COLUMNS as ABILITY_SET_COLUMNS, ASPECT_HELP, subAbilityNodes,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
@@ -29,7 +29,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 11;
+export const CA_KIT_LEVEL = 12;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -53,6 +53,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 9) await upgrade9(store, characterTemplates);
   if (level < 10) await upgrade10(store, characterTemplates);
   if (level < 11) await upgrade11(store, characterTemplates);
+  if (level < 12) await upgrade12(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -861,4 +862,32 @@ async function upgrade11(store: ScopeStore, characterTemplates: AgNote[]) {
     for (const r of Array.from(store.regions.values()).filter((x) => x.noteId === n.id)) await editRegion(n, r.id, (frag) => addOnly(["items", "traits", "abilities"])(null as any, frag));
   }
   for (const n of abilities) await editPage(n, addOnly(["abilities"]));
+}
+
+// --------------------------------------------------------------------------- level 12
+// Focus has nothing to do with wounds (it's spent targeting an enemy, by hand):
+// wounds lose their "Focus cost to aim here", and the Focus section its note
+// about choosing where a wound lands — it keeps its current / max and bar.
+async function upgrade12(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const wounds = Array.from(store.notes.values()).filter((n) => n.type === "wound");
+  await store.run(async (cs) => {
+    for (const n of wounds) {
+      const f = store.fieldsByNote.get(n.id)?.get("focus_cost");
+      if (f) await store.removeField(f.id, cs);
+    }
+  });
+  for (const n of wounds) {
+    await editPage(n, (_doc, frag) => {
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && findAll(e, (x) => x.nodeName === "agField" && x.getAttribute("ref") === "focus_cost").length > 0)) {
+        const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [woundBadges()]);
+      }
+    });
+  }
+  const focusPara = (frag: Y.XmlFragment) => replacePara(frag, "6 to start, +1 per star. Choosing where a wound lands", [p(muted(FOCUS_NOTE))]);
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => focusPara(frag));
+    for (const r of Array.from(store.regions.values()).filter((x) => x.noteId === n.id)) await editRegion(n, r.id, focusPara);
+  }
 }
