@@ -62,6 +62,11 @@ export const FOCUS_FORMULA = "6 + rank_index";
 const focusAt = (idx: number) => 6 + idx;
 /** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
 export const USABLE_LADDER = THRESHOLDS.map((x) => Math.floor(x / 2));
+/** Point budgets: every star (rank_index step) adds one attribute point and one skill (modifier) point. */
+export const ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + rank_index";
+export const SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index";
+export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per 3 levels + one per star.";
+export const SKILL_BUDGET_NOTE = "8 + one per level + one per star; up to 6 back from skills below 0.";
 export const TEMP_HP_COLOR = "#22c55e";
 export const TEMP_ENERGY_COLOR = "#ec4899";
 export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
@@ -201,11 +206,11 @@ function characterTemplate(): AgSnapshot {
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
   const negatives = SKILLS.map((k) => `min(base(${k.key}), 0)`).join(" + ");
   const positives = SKILLS.map((k) => `max(base(${k.key}), 0)`).join(" + ");
-  s.calc("attr_budget", "Attribute budget", "4 + floor(level / 3)").calc("attr_used", "Attribute points used", attrSum)
+  s.calc("attr_budget", "Attribute budget", ATTR_BUDGET_FORMULA).calc("attr_used", "Attribute points used", attrSum)
     .calc("attr_points", "Attribute Points", `concat(attr_used, " / ", attr_budget, if(attr_used > attr_budget, " (too many)", ""))`, "text");
   for (const k of SKILLS) s.num(k.key, `${k.name} (${ABBR[k.parent]})`, 0, { min: -2, max: 10 });
   s.calc("skill_reclaimed", "Skill points reclaimed", `min(6, -(${negatives}))`)
-    .calc("skill_budget", "Skill budget", "8 + (level - 1) + skill_reclaimed").calc("skill_used", "Skill points used", positives)
+    .calc("skill_budget", "Skill budget", SKILL_BUDGET_FORMULA).calc("skill_used", "Skill points used", positives)
     .calc("skill_points", "Skill Points", `concat(skill_used, " / ", skill_budget, if(skill_used > skill_budget, " (too many)", ""))`, "text");
   // Cultivation (abilities are their own sheets — see the Ability tab)
   s.text("cultivation", "Cultivation", "");
@@ -290,8 +295,8 @@ function characterTemplate(): AgSnapshot {
   }
   const skillsTab: DocNode[] = [
     columns([
-      [p(b("Attribute Points  "), val("attr_points", { look: { color: GILT, bold: true } })), p(muted("Attributes can't go below 0. 4 + one per 3 levels."))],
-      [p(b("Skill Points  "), val("skill_points", { look: { color: GILT, bold: true } })), p(muted("8 + one per level; up to 6 back from skills below 0."))],
+      [p(b("Attribute Points  "), val("attr_points", { look: { color: GILT, bold: true } })), p(muted(ATTR_BUDGET_NOTE))],
+      [p(b("Skill Points  "), val("skill_points", { look: { color: GILT, bold: true } })), p(muted(SKILL_BUDGET_NOTE))],
     ], { gap: 12 }),
     canvas("cv_attributes", 652, 172),
     p(muted("Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.")),

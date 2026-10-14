@@ -16,11 +16,12 @@ import {
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES, ABILITY_HELP, INVENTORY_HELP,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
+  ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 4;
+export const CA_KIT_LEVEL = 5;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -37,6 +38,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 2) await upgrade2(store, characterTemplates);
   if (level < 3) await upgrade3(store, characterTemplates);
   if (level < 4) await upgrade4(store, characterTemplates);
+  if (level < 5) await upgrade5(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -482,6 +484,28 @@ async function upgrade4(store: ScopeStore, characterTemplates: AgNote[]) {
     await editRegion(n, energy.id, (frag) => {
       if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "temp_energy").length) return;
       appendNodes(frag, [TEMP_ENERGY_LINE]);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 5
+// Every star brings one more attribute point and one more skill (modifier) point.
+async function upgrade5(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const flat = (x: string | null | undefined) => (x ?? "").replace(/\s+/g, "");
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      const a = store.fieldsByNote.get(n.id)?.get("attr_budget");
+      if (a && flat(a.formula) === "4+floor(level/3)") await store.putField({ ...a, formula: ATTR_BUDGET_FORMULA }, cs);
+      const k = store.fieldsByNote.get(n.id)?.get("skill_budget");
+      if (k && flat(k.formula) === "8+(level-1)+skill_reclaimed") await store.putField({ ...k, formula: SKILL_BUDGET_FORMULA }, cs);
+    }
+  });
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      replacePara(frag, "Attributes can't go below 0. 4 + one per 3 levels.", [p(muted(ATTR_BUDGET_NOTE))]);
+      replacePara(frag, "8 + one per level; up to 6 back", [p(muted(SKILL_BUDGET_NOTE))]);
     });
   }
 }

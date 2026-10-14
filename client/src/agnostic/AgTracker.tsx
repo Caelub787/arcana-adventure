@@ -2,7 +2,8 @@
 // every card is a layout the GM designs (portrait, bars, values, buttons,
 // last roll…), placed where the GM wants it. Values are the live ones —
 // change HP anywhere and every card updates instantly.
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
@@ -66,9 +67,8 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   return (
     <>
       <div className="absolute z-30 pointer-events-none" style={pos} data-testid="ag-tracker">
-        {/* Room on the tray's side so a sliding roll isn't clipped by the scroll area. */}
         <div className={`flex ${vertical ? "flex-col overflow-y-auto" : "flex-row overflow-x-auto"} gap-2 no-scrollbar p-0.5`}
-          style={{ maxHeight: pos.maxHeight, maxWidth: pos.maxWidth, ...(tray ? (trayFrom === "below" ? { paddingBottom: TRAY_H + 10 } : trayFrom === "above" ? { paddingTop: TRAY_H + 10 } : trayFrom === "right" ? { paddingRight: TRAY_W + 10 } : { paddingLeft: TRAY_W + 10 }) : {}) }}>
+          style={{ maxHeight: pos.maxHeight, maxWidth: pos.maxWidth }}>
           {notes.map((n) => {
             const card = cardFor(settings, n.id, n.type);
             return (
@@ -150,6 +150,8 @@ function RollRow({ r, who, color = "#d4a24c" }: { r: RollFeedLike; who?: string 
 // Hover the card to peek at the last one; click it for the recent rolls.
 type TraySide = "below" | "above" | "left" | "right";
 const TRAY_W = 150, TRAY_H = 62, REVEAL_MS = 3200;
+/** Beside a card (tracker on the left / right) the tray is narrower. */
+const TRAY_SIDE_W = 112;
 
 /**
  * What the dice in a roll can show: "1d6" → 1–6, "2d6 + 3" → 2–12 (the dice,
@@ -201,14 +203,29 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
   }, [key(latest)]); // eslint-disable-line react-hooks/exhaustive-deps
   const color = accent && /^#|^rgb/.test(accent) ? accent : "#d4a24c";
   const open = tray && !!latest && (shown || history);
-  const sideStyle: React.CSSProperties =
-    side === "below" ? { top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 6 }
-    : side === "above" ? { bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6 }
-    : side === "right" ? { left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 6 }
-    : { right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: 6 };
+  // The tray is drawn over everything, placed beside the card, so the
+  // tracker's scrolling strip can never cut it off.
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => { if (slotRef.current) setRect(slotRef.current.getBoundingClientRect()); };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => { window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure, true); };
+  }, [open]);
+  const sideways = side === "left" || side === "right";
+  const trayW = sideways ? TRAY_SIDE_W : working && latest?.breakdown ? TRAY_W + 70 : TRAY_W;
+  const GAP = 6;
+  const trayPos: React.CSSProperties = !rect ? { left: -9999, top: -9999 }
+    : side === "below" ? { left: rect.left + rect.width / 2, top: rect.bottom + GAP, transform: "translateX(-50%)" }
+    : side === "above" ? { left: rect.left + rect.width / 2, top: rect.top - GAP, transform: "translate(-50%, -100%)" }
+    : side === "right" ? { left: rect.right + GAP, top: rect.top + rect.height / 2, transform: "translateY(-50%)" }
+    : { left: rect.left - GAP, top: rect.top + rect.height / 2, transform: "translate(-100%, -50%)" };
   const hidden = side === "below" ? "translateY(-12px)" : side === "above" ? "translateY(12px)" : side === "right" ? "translateX(-12px)" : "translateX(12px)";
   return (
-    <div className="relative shrink-0 pointer-events-auto"
+    <div ref={slotRef} className="relative shrink-0 pointer-events-auto"
       onMouseEnter={() => { hover.current = true; if (latest) setShown(true); }}
       onMouseLeave={() => { hover.current = false; if (rolling === null) timers.current.push(setTimeout(() => setShown(false), 400)); }}>
       {children}
@@ -218,17 +235,19 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
           <Dices className="h-3 w-3" />
         </button>
       )}
-      {tray && latest && (
-        <div className="absolute z-10" style={{ ...sideStyle, pointerEvents: open ? "auto" : "none" }}>
+      {tray && latest && createPortal(
+        <div className="fixed z-40" style={{ ...trayPos, pointerEvents: open ? "auto" : "none" }}
+          onMouseEnter={() => { hover.current = true; }} onMouseLeave={() => { hover.current = false; if (rolling === null) timers.current.push(setTimeout(() => setShown(false), 400)); }}>
           <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}
             className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 py-1 transition-all duration-300 ease-out"
-            style={{ width: working && latest.breakdown ? TRAY_W + 70 : TRAY_W, minHeight: TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
+            style={{ width: trayW, minHeight: sideways ? TRAY_H - 6 : TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
             title={latest.breakdown ? `${latest.text || latest.label || "Roll"}: ${latest.breakdown}` : "Recent rolls"} data-testid={`ag-dice-tray-${note.name}`}>
             <span className="text-[10px] text-stone-300 truncate max-w-full leading-tight">{latest.text || latest.label || "Roll"}</span>
             <span className={`text-xl font-bold leading-tight ${rolling !== null ? "animate-pulse" : ""}`} style={{ color }}>{rolling ?? latest.total ?? ""}</span>
-            {working && latest.breakdown && rolling === null && <span className="text-[9px] font-mono text-stone-400 leading-tight max-w-full line-clamp-2 text-center" data-testid="ag-dice-tray-working">{latest.breakdown}</span>}
+            {working && latest.breakdown && rolling === null && <span className={`text-[9px] font-mono text-stone-400 leading-tight max-w-full text-center ${sideways ? "line-clamp-3" : "line-clamp-2"}`} data-testid="ag-dice-tray-working">{latest.breakdown}</span>}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
       {history && (
         <AgPanel title={<span className="inline-flex items-center gap-1.5"><Dices className="h-4 w-4 text-amber-400" />{note.name || "Sheet"} — recent rolls</span>} onClose={() => setHistory(false)} width={320} height={360} testId="ag-dice-history">
