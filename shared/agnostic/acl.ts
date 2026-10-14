@@ -30,24 +30,30 @@ function childAudiences(acl: AgAcl, note: AgNote) {
   return { view: resolve(acl.view, b.view), edit: resolve(acl.edit, b.edit) };
 }
 
+/**
+ * Who counts as an owner when SEEING something (and pressing its buttons): its
+ * owners and its users. Changing anything is for owners only.
+ */
+const seers = (note: AgNote) => (note.userIds?.length ? [...note.ownerIds, ...note.userIds] : note.ownerIds);
+
 /** Templates are GM-authoring material: only the GM ever sees them. */
 const templateGuard = (note: AgNote, viewer: AgViewer) => !note.isTemplate || viewer.isGM;
 
 export function canViewNote(note: AgNote, viewer: AgViewer): boolean {
-  return templateGuard(note, viewer) && audienceIncludes(noteHeaderAudiences(note).view, viewer, note.ownerIds);
+  return templateGuard(note, viewer) && audienceIncludes(noteHeaderAudiences(note).view, viewer, seers(note));
 }
 export function canEditNoteHeader(note: AgNote, viewer: AgViewer): boolean {
   return canViewNote(note, viewer) && audienceIncludes(noteHeaderAudiences(note).edit, viewer, note.ownerIds);
 }
 export function canViewBody(note: AgNote, viewer: AgViewer): boolean {
-  return canViewNote(note, viewer) && audienceIncludes(noteBodyAudiences(note).view, viewer, note.ownerIds);
+  return canViewNote(note, viewer) && audienceIncludes(noteBodyAudiences(note).view, viewer, seers(note));
 }
 export function canEditBody(note: AgNote, viewer: AgViewer): boolean {
   return canViewBody(note, viewer) && audienceIncludes(noteBodyAudiences(note).edit, viewer, note.ownerIds);
 }
 
 export function canViewField(field: AgField, note: AgNote, viewer: AgViewer): boolean {
-  return canViewNote(note, viewer) && audienceIncludes(childAudiences(field.acl, note).view, viewer, note.ownerIds);
+  return canViewNote(note, viewer) && audienceIncludes(childAudiences(field.acl, note).view, viewer, seers(note));
 }
 export function canEditField(field: AgField, note: AgNote, viewer: AgViewer): boolean {
   if (field.type === "formula") return viewer.isGM && canViewField(field, note, viewer); // value is computed
@@ -55,25 +61,25 @@ export function canEditField(field: AgField, note: AgNote, viewer: AgViewer): bo
 }
 
 export function canViewRegion(region: AgRegion, note: AgNote, viewer: AgViewer): boolean {
-  return canViewNote(note, viewer) && audienceIncludes(childAudiences(region.acl, note).view, viewer, note.ownerIds);
+  return canViewNote(note, viewer) && audienceIncludes(childAudiences(region.acl, note).view, viewer, seers(note));
 }
 export function canEditRegion(region: AgRegion, note: AgNote, viewer: AgViewer): boolean {
   return canViewRegion(region, note, viewer) && audienceIncludes(childAudiences(region.acl, note).edit, viewer, note.ownerIds);
 }
 
-/** Action view = see the button; edit = press it. */
+/** Action view = see the button; edit = press it (a sheet's users may press its buttons too). */
 export function canSeeAction(action: AgAction, note: AgNote, viewer: AgViewer): boolean {
-  return canViewNote(note, viewer) && audienceIncludes(childAudiences(action.acl, note).view, viewer, note.ownerIds);
+  return canViewNote(note, viewer) && audienceIncludes(childAudiences(action.acl, note).view, viewer, seers(note));
 }
 export function canRunAction(action: AgAction, note: AgNote, viewer: AgViewer): boolean {
-  return canSeeAction(action, note, viewer) && audienceIncludes(childAudiences(action.acl, note).edit, viewer, note.ownerIds);
+  return canSeeAction(action, note, viewer) && audienceIncludes(childAudiences(action.acl, note).edit, viewer, seers(note));
 }
 
 /** A link is visible when its own audience allows it AND both ends are visible. */
 export function canViewLink(link: AgLink, from: AgNote | undefined, to: AgNote | undefined, viewer: AgViewer): boolean {
   if (!from || !to) return false;
   if (!canViewNote(from, viewer) || !canViewNote(to, viewer)) return false;
-  return audienceIncludes(resolve(link.acl.view, "everyone"), viewer, [...from.ownerIds, ...to.ownerIds]);
+  return audienceIncludes(resolve(link.acl.view, "everyone"), viewer, [...seers(from), ...seers(to)]);
 }
 
 /** Who may change a note's structure (fields/regions/actions/links/permissions). */

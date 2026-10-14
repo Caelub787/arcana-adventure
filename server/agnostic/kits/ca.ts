@@ -861,7 +861,7 @@ export async function adoptCharacterCopies(store: ScopeStore, cs: ChangeSet) {
     for (const l of held) {
       if (l === keep) continue;
       const who = store.notes.get(l.toNoteId)!;
-      const c = await copySheet(store, n.id, cs, { folder: CA_COPIES_FOLDER, ownerIds: who.ownerIds });
+      const c = await copySheet(store, n.id, cs, { folder: CA_COPIES_FOLDER, ownerIds: [] });
       await store.removeLink(l.id, cs);
       await store.putLink({ id: randomUUID(), fromNoteId: c.id, toNoteId: who.id, label: l.label, reverseLabel: l.reverseLabel, acl: { ...l.acl }, createdAt: Date.now() }, cs);
       await syncCopyOwners(store, c.id, cs);

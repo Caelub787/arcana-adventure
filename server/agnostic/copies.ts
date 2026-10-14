@@ -2,8 +2,9 @@
 // that character's copy (its own notes, its own wear and tear); the original
 // stays as it was, to give again. A copy:
 //   - remembers what it was copied from (note.copyOf),
-//   - is seen and edited by whoever has the sheets it's attached to (its owners
-//     follow them), and only the GM once it's attached to nothing,
+//   - is seen and used (its buttons and rolls) by whoever has the sheets it's
+//     attached to — its users follow them — but changed only by its owners,
+//     whom the GM picks; only the GM sees it once it's attached to nothing,
 //   - moves (rather than being copied again) when it's added somewhere else,
 //   - brings what's inside it along when it's made: an ability's aspects,
 //     a sword's runes, a bag's contents.
@@ -46,9 +47,10 @@ export async function markAsCopy(store: ScopeStore, noteId: string, cs: ChangeSe
 }
 
 /**
- * A copy is seen by whoever has the sheets it's attached to: its owners become
- * theirs (all of them, if it's on several), or nobody's (GM only) when it's on
- * nothing. Then the same for what's inside it.
+ * A copy is seen and used by whoever has the sheets it's attached to: its users
+ * become their owners and users (all of them, if it's on several), or nobody
+ * (GM only) when it's on nothing. Using isn't changing: only its owners (whom
+ * the GM picks) can change it. Then the same for what's inside it.
  */
 export async function syncCopyOwners(store: ScopeStore, noteId: string, cs: ChangeSet, seen = new Set<string>()) {
   const n = store.notes.get(noteId);
@@ -56,8 +58,8 @@ export async function syncCopyOwners(store: ScopeStore, noteId: string, cs: Chan
   seen.add(noteId);
   if (n.copyOf && !n.isTemplate) {
     const on = store.linksOf(noteId).filter((l) => l.fromNoteId === noteId).map((l) => store.notes.get(l.toNoteId)).filter((x): x is AgNote => !!x);
-    const owners = Array.from(new Set(on.flatMap((x) => x.ownerIds))).sort();
-    if (owners.join(",") !== [...n.ownerIds].sort().join(",")) await store.putNote({ ...n, ownerIds: owners }, cs, true);
+    const users = Array.from(new Set(on.flatMap((x) => [...x.ownerIds, ...(x.userIds ?? [])]))).filter((u) => !n.ownerIds.includes(u)).sort();
+    if (users.join(",") !== [...(n.userIds ?? [])].sort().join(",")) await store.putNote({ ...n, userIds: users }, cs, true);
   }
   for (const l of store.linksOf(noteId)) {
     if (l.toNoteId !== noteId) continue;

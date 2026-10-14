@@ -55,6 +55,7 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
             })}
             {!players.length && <span className="text-xs text-stone-500">No players have joined yet.</span>}
           </div>
+          <div className="text-[10px] text-stone-500 mt-1">Owners can change this sheet.{note.userIds?.length ? <> <b className="text-stone-300">{note.userIds.map((id) => players.find((m) => m.userId === id)?.name ?? "player").join(", ")}</b> can see it and use its buttons and rolls (it's on their sheet), but not change it unless you make them an owner.</> : null}</div>
         </Section>
       )}
 

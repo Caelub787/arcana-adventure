@@ -185,6 +185,12 @@ export interface AgNote {
   name: string;
   portrait: string | null;
   ownerIds: string[];
+  /**
+   * Can see it and press its buttons and rolls, but not change anything (unlike
+   * owners). Set from the sheets it's on: an item on a character is used by that
+   * character's players; the GM makes someone an owner to let them edit it.
+   */
+  userIds?: string[];
   /** Header (name, portrait, existence) visibility + note-level edit (rename, portrait). */
   acl: AgAcl;
   /** Sheet body (main document). "inherit" → acl. */

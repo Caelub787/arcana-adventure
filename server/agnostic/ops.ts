@@ -353,7 +353,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         }
         await store.putNote(note, cs, aclChanged);
         // Its own copies (items given to it…) are seen by whoever has it.
-        if (p.ownerIds !== undefined) await syncCopiesOn(store, note.id, cs);
+        if (p.ownerIds !== undefined) { await syncCopiesOn(store, note.id, cs); await syncCopyOwners(store, note.id, cs); }
         return { ok: true as const };
       });
     }
@@ -440,7 +440,12 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         }
         await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
         // A list that gives copies: what's made in it is this sheet's own, kept with the other copies.
-        if (listCfg?.add?.copy) { await markAsCopy(store, n.id, cs, copyFolderOf(listCfg)); await syncCopyOwners(store, n.id, cs); }
+        if (listCfg?.add?.copy) {
+          // The host's players use it; the GM decides who owns (can change) it.
+          await markAsCopy(store, n.id, cs, copyFolderOf(listCfg));
+          await store.putNote({ ...store.notes.get(n.id)!, ownerIds: [] }, cs, true);
+          await syncCopyOwners(store, n.id, cs);
+        }
         return { noteId: n.id };
       });
     }
@@ -481,7 +486,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           how = from.length ? "moved" : "linked";
         } else if (copies) {
           // An original: this sheet gets its own copy; the original stays as it was.
-          item = await copySheet(store, n.id, cs, { folder: copyFolderOf(list!.config), ownerIds: host.ownerIds });
+          item = await copySheet(store, n.id, cs, { folder: copyFolderOf(list!.config), ownerIds: [] });
           how = "copied";
         }
         await store.putLink({ id: randomUUID(), fromNoteId: item.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);

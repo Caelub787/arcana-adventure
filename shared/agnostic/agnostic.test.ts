@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseFormula, evaluate, FormulaError, parseCached, containsDice } from "./formula";
 import { AgComputer } from "./compute";
-import { canViewField, canEditField, canViewNote, canViewBody, canEditBody, canViewRegion } from "./acl";
+import { canViewField, canEditField, canViewNote, canViewBody, canEditBody, canViewRegion, canRunAction } from "./acl";
 import type { AgField, AgLink, AgModifier, AgNote, AgRegion } from "./types";
 
 const ctx = (vals: Record<string, any>) => ({ ref: (p: string[]) => { const k = p.join("."); if (!(k in vals)) throw new FormulaError(`Unknown ${k}`); return vals[k]; } });
@@ -199,5 +199,26 @@ describe("connection paths: * (as far as it goes) and + (everything along the wa
     expect(c.evalIn("hex", "sum(@ability.holder*.anemos_die) * 2").value).toBe(16);
     expect(c.evalIn("hero", "energy*2").value).toBe(200);
     expect(c.evalIn("hero", "count(@abilities+.aspects.name)").value).toBe(2);
+  });
+});
+
+describe("users: see and use a sheet, but don't change it", () => {
+  const sword = note("sword", { type: "item", ownerIds: [], userIds: ["p1"], acl: { view: "owners", edit: "owners" } });
+  const qty = field("sword", "qty", { value: 1 });
+  const strike = { id: "a1", noteId: "sword", name: "Strike", steps: [], acl: { view: "inherit", edit: "owners" }, color: null } as any;
+  const p1 = { userId: "p1", isGM: false }, p2 = { userId: "p2", isGM: false }, gm = { userId: "g", isGM: true };
+  it("a user sees it and can press its buttons", () => {
+    expect(canViewNote(sword, p1)).toBe(true);
+    expect(canViewField(qty, sword, p1)).toBe(true);
+    expect(canRunAction(strike, sword, p1)).toBe(true);
+  });
+  it("…but can't change anything", () => {
+    expect(canEditField(qty, sword, p1)).toBe(false);
+    expect(canEditBody(sword, p1)).toBe(false);
+  });
+  it("someone else can't even see it; the GM can do anything; an owner can edit", () => {
+    expect(canViewNote(sword, p2)).toBe(false);
+    expect(canEditField(qty, sword, gm)).toBe(true);
+    expect(canEditField(qty, { ...sword, ownerIds: ["p1"] }, p1)).toBe(true);
   });
 });

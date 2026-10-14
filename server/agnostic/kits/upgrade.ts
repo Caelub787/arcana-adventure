@@ -10,6 +10,7 @@ import type { ScopeStore } from "../store";
 import * as repo from "../repo";
 import * as docs from "../docs";
 import * as snap from "../snapshot";
+import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign } from "./doc";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -29,7 +30,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 12;
+export const CA_KIT_LEVEL = 13;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -54,6 +55,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 10) await upgrade10(store, characterTemplates);
   if (level < 11) await upgrade11(store, characterTemplates);
   if (level < 12) await upgrade12(store, characterTemplates);
+  if (level < 13) await upgrade13(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -890,4 +892,16 @@ async function upgrade12(store: ScopeStore, characterTemplates: AgNote[]) {
     await editPage(n, (_doc, frag) => focusPara(frag));
     for (const r of Array.from(store.regions.values()).filter((x) => x.noteId === n.id)) await editRegion(n, r.id, focusPara);
   }
+}
+
+// --------------------------------------------------------------------------- level 13
+// Players see and roll what's on their character but don't change it: copies
+// lose the owners they picked up from their character (the GM gives ownership
+// when they want someone to edit one) and get them as users instead.
+async function upgrade13(store: ScopeStore) {
+  const copies = Array.from(store.notes.values()).filter((n) => n.copyOf && !n.isTemplate);
+  await store.run(async (cs) => {
+    for (const n of copies) if (n.ownerIds.length) await store.putNote({ ...n, ownerIds: [] }, cs, true);
+    for (const n of copies) await syncCopyOwners(store, n.id, cs);
+  });
 }

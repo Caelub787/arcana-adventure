@@ -17,6 +17,8 @@ export const agnosticNotes = pgTable("agnostic_notes", {
   name: text("name").notNull().default(""),
   portrait: text("portrait"),
   ownerIds: text("owner_ids").array().notNull().default(sql`'{}'::text[]`),
+  /** Can see the sheet and use its buttons, not change it (set from the sheets it's on — an item on a character). */
+  userIds: text("user_ids").array().notNull().default(sql`'{}'::text[]`),
   acl: jsonb("acl").$type<AgAcl>().notNull(),
   bodyAcl: jsonb("body_acl").$type<AgAcl>().notNull(),
   tokenBars: jsonb("token_bars").$type<AgTokenBar[] | null>(),
@@ -151,6 +153,7 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
     name text NOT NULL DEFAULT '',
     portrait text,
     owner_ids text[] NOT NULL DEFAULT '{}'::text[],
+    user_ids text[] NOT NULL DEFAULT '{}'::text[],
     acl jsonb NOT NULL,
     body_acl jsonb NOT NULL,
     token_bars jsonb,
@@ -266,6 +269,8 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   `ALTER TABLE IF EXISTS agnostic_actions ADD COLUMN IF NOT EXISTS options jsonb`,
   // A sheet's own copy of another (an item given to a character).
   `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS copy_of varchar`,
+  // Who can see a sheet and use its buttons without changing it (an item on their character).
+  `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS user_ids text[] NOT NULL DEFAULT '{}'::text[]`,
   // Agnostic sheets in the campaign's initiative order (they aren't rows in characters).
   `ALTER TABLE IF EXISTS initiative_entries ALTER COLUMN character_id DROP NOT NULL`,
   `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,
