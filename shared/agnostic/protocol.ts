@@ -90,6 +90,8 @@ export type AgServerMsg =
   | { t: "upsert"; scope: string; kind: "action"; item: AgActionView }
   | { t: "upsert"; scope: string; kind: "component"; item: AgComponentDef }
   | { t: "remove"; scope: string; kind: AgEntityKind; id: string }
+  /** Everything one change touched, in one message (applied together, rendered once). */
+  | { t: "batch"; scope: string; items: Array<{ kind: AgEntityKind; item?: unknown; id?: string }>; settings?: AgCampaignSettings }
   | { t: "settings"; scope: string; settings: AgCampaignSettings }
   | { t: "doc.sync"; doc: string; u: string; readOnly: boolean }
   | { t: "doc.update"; doc: string; u: string }

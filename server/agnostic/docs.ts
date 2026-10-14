@@ -6,6 +6,7 @@
 // as base64 state, and released when nobody has them open.
 import * as Y from "yjs";
 import * as repo from "./repo";
+import { writeLater } from "./writeQueue";
 
 export interface DocListener {
   /** Called for every applied update with the origin that produced it. */
@@ -28,6 +29,33 @@ const RELEASE_AFTER_MS = 60_000;
 const entries = new Map<string, Entry>();
 const loading = new Map<string, Promise<Entry>>();
 
+// Saves go through the write queue (in order with the sheet rows they belong
+// to). Until one lands, its state is kept here so a load never reads stale.
+const unsaved = new Map<string, { noteId: string; state: string }>();
+function saveLater(name: string, noteId: string, state: string) {
+  unsaved.set(name, { noteId, state });
+  repo.later.doc(name, noteId, state, () => { if (unsaved.get(name)?.state === state) unsaved.delete(name); });
+}
+async function loadState(name: string): Promise<string | null> {
+  const u = unsaved.get(name);
+  return u ? u.state : repo.loadDoc(name);
+}
+/** Several docs at once (opening a sheet): one round trip for all that aren't in memory. */
+export async function preload(list: Array<{ name: string; noteId: string }>) {
+  const missing = list.filter((d) => !entries.has(d.name) && !loading.has(d.name) && !unsaved.has(d.name));
+  if (missing.length < 2) return;
+  const states = await repo.loadDocs(missing.map((d) => d.name));
+  for (const d of missing) {
+    if (entries.has(d.name) || loading.has(d.name)) continue;
+    const doc = new Y.Doc();
+    const st = states.get(d.name);
+    if (st) Y.applyUpdate(doc, fromB64(st));
+    entries.set(d.name, makeEntry(d.name, d.noteId, doc));
+    // Nobody may subscribe after all: let it go like any unused doc.
+    scheduleRelease(entries.get(d.name)!);
+  }
+}
+
 export const toB64 = (u: Uint8Array) => Buffer.from(u).toString("base64");
 export const fromB64 = (s: string) => new Uint8Array(Buffer.from(s, "base64"));
 
@@ -47,7 +75,7 @@ export async function getDoc(name: string, noteId: string): Promise<Entry> {
   if (pending) return pending;
   const p = (async () => {
     const doc = new Y.Doc();
-    const state = await repo.loadDoc(name);
+    const state = await loadState(name);
     if (state) Y.applyUpdate(doc, fromB64(state));
     const e = makeEntry(name, noteId, doc);
     entries.set(name, e);
@@ -63,12 +91,7 @@ function scheduleSave(e: Entry) {
 }
 
 async function flush(e: Entry) {
-  try {
-    await repo.saveDoc(e.name, e.noteId, toB64(Y.encodeStateAsUpdate(e.doc)));
-  } catch (err) {
-    // The note may have been deleted meanwhile (FK). Nothing to keep then.
-    console.warn(`[agnostic] failed to save doc ${e.name}:`, (err as Error).message);
-  }
+  saveLater(e.name, e.noteId, toB64(Y.encodeStateAsUpdate(e.doc)));
 }
 
 export function subscribe(e: Entry, sub: unknown) {
@@ -80,11 +103,16 @@ export function unsubscribe(name: string, sub: unknown) {
   const e = entries.get(name);
   if (!e) return;
   e.subs.delete(sub);
+  scheduleRelease(e);
+}
+
+function scheduleRelease(e: Entry) {
   if (e.subs.size === 0 && !e.releaseTimer) {
     e.releaseTimer = setTimeout(async () => {
+      e.releaseTimer = null;
       if (e.subs.size) return;
       if (e.saveTimer) { clearTimeout(e.saveTimer); e.saveTimer = null; await flush(e); }
-      entries.delete(e.name);
+      if (entries.get(e.name) === e) entries.delete(e.name);
       e.doc.destroy();
     }, RELEASE_AFTER_MS);
   }
@@ -103,17 +131,28 @@ export function addListener(e: Entry, l: DocListener) {
 export async function stateOf(name: string): Promise<string | null> {
   const e = entries.get(name);
   if (e) return toB64(Y.encodeStateAsUpdate(e.doc));
-  return repo.loadDoc(name);
+  return loadState(name);
 }
 
-/** Write a doc wholesale (new epoch, clone, import). Persists immediately. */
+/** Write a doc wholesale (new epoch, clone, import). Saved in order with its sheet. */
 export async function putState(name: string, noteId: string, state: string | null) {
   const existing = entries.get(name);
   if (existing) {
     existing.doc.destroy();
     entries.delete(name);
   }
-  if (state) await repo.saveDoc(name, noteId, state);
+  if (state) saveLater(name, noteId, state);
+}
+
+/** A sheet's documents other than `keep` are gone (new epoch, deleted sheet). */
+export function deleteDocsOfNote(noteId: string, keep: string[] = []) {
+  for (const [name, u] of Array.from(unsaved)) if (u.noteId === noteId && !keep.includes(name)) unsaved.delete(name);
+  writeLater("docs", "old documents", () => repo.deleteDocsOfNote(noteId, keep));
+}
+
+/** Everything still unsaved, saved now (shutdown). */
+export function flushAll() {
+  for (const e of Array.from(entries.values())) if (e.saveTimer) { clearTimeout(e.saveTimer); e.saveTimer = null; void flush(e); }
 }
 
 /** Flush every pending save — used before snapshots and at shutdown. */

@@ -5,7 +5,7 @@
 // when the GM previews, the same shared ACL rules the server uses filter what
 // is shown, and editing is limited to what that player could edit.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import type { AgField, AgNote, AgScope, AgViewer, AgValue } from "@shared/agnostic/types";
+import type { AgField, AgLink, AgNote, AgScope, AgViewer, AgValue } from "@shared/agnostic/types";
 import { scopeKey, noteDocName, regionDocName, agLibrarySystem } from "@shared/agnostic/types";
 import {
   canViewNote, canViewField, canViewRegion, canSeeAction, canViewLink, canEditField, canEditNoteHeader,
@@ -100,10 +100,46 @@ export function useNote(noteId: string | null | undefined): AgNote | undefined {
   return noteId ? state.notes.get(noteId) : undefined;
 }
 
+// Lookups by sheet, built once per change and shared by every widget (a big
+// sheet has hundreds of values on screen; scanning the whole campaign for each
+// one made every update slow).
+interface ScopeIndex {
+  fieldsByNote: Map<string, AgField[]>;
+  fieldByNoteKey: Map<string, Map<string, AgField[]>>;
+  linksByNote: Map<string, AgLink[]>;
+}
+const indexes = new WeakMap<ScopeState, ScopeIndex>();
+export function scopeIndex(state: ScopeState): ScopeIndex {
+  let ix = indexes.get(state);
+  if (ix) return ix;
+  ix = { fieldsByNote: new Map(), fieldByNoteKey: new Map(), linksByNote: new Map() };
+  for (const f of Array.from(state.fields.values())) {
+    let list = ix.fieldsByNote.get(f.noteId);
+    if (!list) { list = []; ix.fieldsByNote.set(f.noteId, list); }
+    list.push(f);
+    let byKey = ix.fieldByNoteKey.get(f.noteId);
+    if (!byKey) { byKey = new Map(); ix.fieldByNoteKey.set(f.noteId, byKey); }
+    const same = byKey.get(f.key);
+    if (same) same.push(f); else byKey.set(f.key, [f]);
+  }
+  for (const list of Array.from(ix.fieldsByNote.values())) list.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+  for (const l of Array.from(state.links.values())) {
+    for (const id of [l.fromNoteId, l.toNoteId]) {
+      let list = ix.linksByNote.get(id);
+      if (!list) { list = []; ix.linksByNote.set(id, list); }
+      if (!list.includes(l)) list.push(l);
+    }
+  }
+  indexes.set(state, ix);
+  return ix;
+}
+
 export function fieldsOf(state: ScopeState, noteId: string): AgField[] {
-  const out: AgField[] = [];
-  for (const f of Array.from(state.fields.values())) if (f.noteId === noteId) out.push(f);
-  return out.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+  return [...(scopeIndex(state).fieldsByNote.get(noteId) ?? [])];
+}
+/** Links touching a sheet (either end). */
+export function linksOfNote(state: ScopeState, noteId: string): AgLink[] {
+  return scopeIndex(state).linksByNote.get(noteId) ?? [];
 }
 
 export function useNoteFields(noteId: string): AgField[] {
@@ -116,7 +152,7 @@ export function follow(state: ScopeState, noteId: string, label: string): string
   const l = label.toLowerCase();
   if (l === "self" || !l) return [noteId];
   const out: string[] = [];
-  for (const link of Array.from(state.links.values())) {
+  for (const link of linksOfNote(state, noteId)) {
     if (link.fromNoteId === noteId && link.label === l) out.push(link.toNoteId);
     if (link.toNoteId === noteId && link.reverseLabel === l) out.push(link.fromNoteId);
   }
@@ -125,7 +161,7 @@ export function follow(state: ScopeState, noteId: string, label: string): string
 
 export function connectionLabels(state: ScopeState, noteId: string): string[] {
   const set = new Set<string>();
-  for (const link of Array.from(state.links.values())) {
+  for (const link of linksOfNote(state, noteId)) {
     if (link.fromNoteId === noteId) set.add(link.label);
     if (link.toNoteId === noteId) set.add(link.reverseLabel);
   }
@@ -153,7 +189,8 @@ export function resolveRef(state: ScopeState, noteId: string, ref: string | unde
   for (let i = 0; i < path.length - 1; i++) set = [...Array.from(new Set(set.flatMap((id) => follow(state, id, path[i]))))];
   const key = path[path.length - 1];
   const out: AgField[] = [];
-  for (const id of set) for (const f of Array.from(state.fields.values())) if (f.noteId === id && f.key === key) out.push(f);
+  const ix = scopeIndex(state);
+  for (const id of set) { const hit = ix.fieldByNoteKey.get(id)?.get(key); if (hit) out.push(...hit); }
   return out;
 }
 
@@ -196,6 +233,28 @@ export function useDoc(name: string | null): DocHandle | null {
     return () => { off(); agClient.closeDoc(name); };
   }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
   return handle;
+}
+
+/**
+ * Open every document of a sheet at once (its page and all its sections) while
+ * it's on screen. Sections otherwise only ask for their text once the page
+ * above them has drawn, one wave after another; this makes it one request.
+ */
+export function usePrefetchSheetDocs(noteId: string | null | undefined) {
+  const { scope, state } = useAg();
+  const note = noteId ? state.notes.get(noteId) : undefined;
+  const names: string[] = [];
+  if (note) {
+    names.push(noteDocName(note.id, note.docEpoch));
+    for (const r of Array.from(state.regions.values())) if (r.noteId === note.id) names.push(regionDocName(r.id, note.docEpoch));
+  }
+  const key = names.join("|");
+  useEffect(() => {
+    if (!key) return;
+    const list = key.split("|");
+    list.forEach((n) => agClient.openDoc(scope, n));
+    return () => list.forEach((n) => agClient.closeDoc(n));
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 export const docNames = { note: noteDocName, region: regionDocName };

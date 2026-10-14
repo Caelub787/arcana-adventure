@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AgPanel, AgSelector, PickField } from "./float";
 import { api } from "@/lib/api";
 import { pushUndo } from "./undo";
+import { agClient } from "./client";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
 import { LinksTable } from "./links";
 import { AgIcon } from "./icons";
@@ -27,24 +28,44 @@ export function setAgTargets(noteIds: string[]) {
 export function getAgTargets() { return currentTargets; }
 
 // --- field edits ------------------------------------------------------------------------
+/** What a value will look like once the server applies `value` (shown straight away). */
+function predictField(f: AgField, value: any): AgField {
+  if (f.type === "formula") return f;
+  let v = value;
+  if (f.type === "number" && typeof v === "number") {
+    const { min, max } = f.options ?? {};
+    if (typeof min === "number") v = Math.max(min, v);
+    if (typeof max === "number") v = Math.min(max, v);
+  }
+  // Changes from connected sheets (wounds, gear) only add or multiply; keep their offset.
+  const offset = typeof f.eff === "number" && typeof f.value === "number" && typeof v === "number" ? f.eff - f.value : 0;
+  return { ...f, value: v, eff: typeof v === "number" ? v + offset : v };
+}
+
 export function useFieldWriter() {
-  const { request, key } = useAg();
+  const { request, key, previewUserId } = useAg();
   const { toast } = useToast();
   return useMemo(() => {
     const fail = (e: any) => { toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }); throw e; };
+    // Shown at once; the server confirms (or it's put back if refused).
+    const optimistic = (f: AgField, value: any) => (previewUserId ? () => {} : agClient.optimisticField(key, f.id, (cur) => predictField(cur, value)));
     return {
       set: (f: AgField, value: any) => {
         const before = f.value;
+        const revert = optimistic(f, value);
         return request({ op: "field.set", id: f.id, value })
           .then(() => pushUndo(key, { label: `${f.label} change`, undo: () => request({ op: "field.set", id: f.id, value: before }) }))
-          .catch(fail).catch(() => {});
+          .catch((e) => { revert(); return fail(e); }).catch(() => {});
       },
-      adjust: (f: AgField, delta: number) =>
-        request({ op: "field.adjust", id: f.id, delta })
+      adjust: (f: AgField, delta: number) => {
+        const cur = typeof f.value === "number" ? f.value : Number(f.value) || 0;
+        const revert = optimistic(f, cur + delta);
+        return request({ op: "field.adjust", id: f.id, delta })
           .then(() => pushUndo(key, { label: `${f.label} ${delta > 0 ? "+" : ""}${delta}`, undo: () => request({ op: "field.adjust", id: f.id, delta: -delta }) }))
-          .catch(fail).catch(() => {}),
+          .catch((e) => { revert(); return fail(e); }).catch(() => {});
+      },
     };
-  }, [request, toast, key]);
+  }, [request, toast, key, previewUserId]);
 }
 
 const pct = (v: number, max: number) => (max > 0 ? Math.max(0, Math.min(100, (v / max) * 100)) : 0);

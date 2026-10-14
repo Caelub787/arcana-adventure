@@ -27,11 +27,11 @@ export function cardFor(settings: AgCampaignSettings, noteId: string, type: stri
 }
 
 /** Safe to mount before Agnostic has connected: renders nothing until then. */
-export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
+export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
   return useAgMaybe() ? <AgTrackerInner {...props} /> : null;
 }
 
-function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
+function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
   const { state, openNote, viewer } = useAg();
   const [designing, setDesigning] = useState(false);
   const play = usePlayView();
@@ -50,7 +50,8 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: Ro
     : t.placement === "bottom" ? { bottom: isMobile ? 132 : 104, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
     : t.placement === "left" ? { left: 16, top: leftOffset ?? 240, maxHeight: "calc(100vh - 300px)" }
     // On phones the map's tool buttons run down the right edge: sit beside them, not on them.
-    : { right: isMobile ? 64 : 16, top: 72, maxHeight: "calc(100vh - 200px)", maxWidth: isMobile ? "calc(100vw - 132px)" : undefined };
+    // …and on a desktop it sits left of the open side panel, never under it.
+    : { right: (isMobile ? 64 : 16) + rightInset, top: 72, maxHeight: "calc(100vh - 200px)", maxWidth: isMobile ? "calc(100vw - 132px)" : undefined };
   if (!notes.length && !viewer.isGM) return null;
   return (
     <>

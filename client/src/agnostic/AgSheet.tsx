@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AgPanel } from "./float";
 import { MemberPicker } from "./pickers";
 import { ImageBrowser } from "@/components/ImageBrowser";
-import { useAg, usePerms, useDoc } from "./hooks";
+import { useAg, usePerms, useDoc, usePrefetchSheetDocs } from "./hooks";
 import { agClient } from "./client";
 import { AgEditor, ActiveEditorProvider, EditorToolbar } from "./editor/AgEditor";
 import { FieldsPanel } from "./FieldsPanel";
@@ -158,6 +158,7 @@ function Presence({ noteId }: { noteId: string }) {
 
 function SheetBody({ noteId }: { noteId: string }) {
   const { note, canViewBody, canEditBody, isGM } = usePerms(noteId);
+  usePrefetchSheetDocs(canViewBody ? noteId : null);
   const { previewUserId } = useAg();
   const play = usePlayView();
   if (!note) return null;

@@ -12,6 +12,8 @@ import type {
 } from "@shared/agnostic/types";
 import { defaultCampaignSettings } from "@shared/agnostic/types";
 import { normalizeAcl } from "@shared/agnostic/acl";
+import { randomUUID } from "crypto";
+import { upsertLater, deleteLater, writeLater, writesSettled } from "./writeQueue";
 
 const ms = (d: Date | string | null | undefined) => (d ? new Date(d).getTime() : Date.now());
 
@@ -63,6 +65,8 @@ export interface ScopeRows {
 }
 
 export async function loadScope(scope: AgScope): Promise<ScopeRows> {
+  // Anything of this scope still on its way to the database lands first.
+  await writesSettled(`${scope.kind}:${scope.id}`);
   const noteRows = await db.select().from(agnosticNotes).where(and(eq(agnosticNotes.scope, scope.kind), eq(agnosticNotes.scopeId, scope.id)));
   const notes = noteRows.map(rowToNote);
   const ids = notes.map((n) => n.id);
@@ -139,6 +143,47 @@ export async function upsertComponent(c: AgComponentDef) {
 }
 export async function deleteComponent(id: string) { await db.delete(agnosticComponents).where(eq(agnosticComponents.id, id)); }
 
+// --- write-behind (store.ts) -----------------------------------------------------
+// Same rows as the functions above, queued: the change is already live in
+// memory and on every screen; the database follows in order, in batches.
+const NOTE_UPDATE = ["scope", "scopeId", "type", "isTemplate", "templateMeta", "templateId", "templateVersion", "name", "portrait", "ownerIds", "acl", "bodyAcl", "tokenBars", "folder", "sortOrder", "docEpoch", "updatedAt"];
+const FIELD_UPDATE = ["noteId", "key", "label", "type", "value", "formula", "options", "acl", "sortOrder", "templateFieldId"];
+const REGION_UPDATE = ["acl", "inline", "label", "templateRegionId"];
+const LINK_UPDATE = ["label", "reverseLabel", "acl"];
+const MODIFIER_UPDATE = ["via", "targetKey", "op", "amount", "condition", "label"];
+const ACTION_UPDATE = ["name", "steps", "acl", "color"];
+const COMPONENT_UPDATE = ["name", "params", "layout", "updatedAt"];
+const DOC_UPDATE = ["state", "updatedAt"];
+const regionRow = (r: AgRegion) => ({ id: r.id, noteId: r.noteId, acl: r.acl, inline: r.inline, label: r.label, templateRegionId: r.templateRegionId });
+const linkRow = (l: AgLink) => ({ id: l.id, fromNoteId: l.fromNoteId, toNoteId: l.toNoteId, label: l.label, reverseLabel: l.reverseLabel, acl: l.acl, createdAt: new Date(l.createdAt) });
+const modifierRow = (m: AgModifier) => ({ id: m.id, noteId: m.noteId, via: m.via, targetKey: m.targetKey, op: m.op, amount: m.amount, condition: m.condition, label: m.label });
+const actionRow = (a: AgAction) => ({ id: a.id, noteId: a.noteId, name: a.name, steps: a.steps, acl: a.acl, color: a.color });
+const componentRow = (c: AgComponentDef) => ({ id: c.id, scope: c.scope, scopeId: c.scopeId, name: c.name, params: c.params, layout: c.layout, updatedAt: new Date(c.updatedAt) });
+
+export const later = {
+  note: (scope: string, n: AgNote) => upsertLater(scope, agnosticNotes, noteRow(n), NOTE_UPDATE, { rank: 0 }),
+  deleteNote: (scope: string, id: string) => deleteLater(scope, agnosticNotes, id),
+  field: (scope: string, f: AgField) => upsertLater(scope, agnosticFields, fieldRow(f), FIELD_UPDATE),
+  deleteField: (scope: string, id: string) => deleteLater(scope, agnosticFields, id),
+  region: (scope: string, r: AgRegion) => upsertLater(scope, agnosticRegions, regionRow(r), REGION_UPDATE),
+  deleteRegion: (scope: string, id: string) => deleteLater(scope, agnosticRegions, id),
+  link: (scope: string, l: AgLink) => upsertLater(scope, agnosticLinks, linkRow(l), LINK_UPDATE),
+  deleteLink: (scope: string, id: string) => deleteLater(scope, agnosticLinks, id),
+  modifier: (scope: string, m: AgModifier) => upsertLater(scope, agnosticModifiers, modifierRow(m), MODIFIER_UPDATE),
+  deleteModifier: (scope: string, id: string) => deleteLater(scope, agnosticModifiers, id),
+  action: (scope: string, a: AgAction) => upsertLater(scope, agnosticActions, actionRow(a), ACTION_UPDATE),
+  deleteAction: (scope: string, id: string) => deleteLater(scope, agnosticActions, id),
+  component: (scope: string, c: AgComponentDef) => upsertLater(scope, agnosticComponents, componentRow(c), COMPONENT_UPDATE, { rank: 0 }),
+  deleteComponent: (scope: string, id: string) => deleteLater(scope, agnosticComponents, id),
+  /** A sheet document's state; a sheet deleted meanwhile just drops it. */
+  doc: (name: string, noteId: string, state: string, done: () => void) =>
+    upsertLater("docs", agnosticDocs, { name, noteId, state, updatedAt: new Date() }, DOC_UPDATE, { target: "name", retry: false, rank: 2, done }),
+  settings: (scope: string, campaignId: string, s: AgCampaignSettings) => {
+    const copy = JSON.parse(JSON.stringify(s)) as AgCampaignSettings;
+    writeLater(scope, "settings", () => saveSettings(campaignId, copy));
+  },
+};
+
 export async function saveSettings(campaignId: string, settings: AgCampaignSettings) {
   await db.insert(agnosticSettings).values({ campaignId, settings, updatedAt: new Date() })
     .onConflictDoUpdate({ target: agnosticSettings.campaignId, set: { settings, updatedAt: new Date() } });
@@ -159,6 +204,11 @@ export async function loadDoc(name: string): Promise<string | null> {
   const [row] = await db.select({ state: agnosticDocs.state }).from(agnosticDocs).where(eq(agnosticDocs.name, name));
   return row?.state ?? null;
 }
+export async function loadDocs(names: string[]): Promise<Map<string, string>> {
+  if (!names.length) return new Map();
+  const rows = await db.select({ name: agnosticDocs.name, state: agnosticDocs.state }).from(agnosticDocs).where(inArray(agnosticDocs.name, names));
+  return new Map(rows.map((r) => [r.name, r.state]));
+}
 export async function saveDoc(name: string, noteId: string, state: string) {
   await db.insert(agnosticDocs).values({ name, noteId, state, updatedAt: new Date() })
     .onConflictDoUpdate({ target: agnosticDocs.name, set: { state, updatedAt: new Date() } });
@@ -171,34 +221,44 @@ export async function deleteDocsOfNote(noteId: string, exceptNames: string[] = [
 
 // --- versions ------------------------------------------------------------------
 export async function insertVersion(noteId: string, reason: string, label: string | null, snapshot: AgSnapshot, createdBy: string | null): Promise<AgVersionMeta> {
-  const [row] = await db.insert(agnosticVersions).values({ noteId, reason, label, snapshot, createdBy }).returning();
-  // Keep history bounded: the newest 100 per note.
-  const old = await db.select({ id: agnosticVersions.id }).from(agnosticVersions).where(eq(agnosticVersions.noteId, noteId)).orderBy(desc(agnosticVersions.createdAt)).offset(100);
-  if (old.length) await db.delete(agnosticVersions).where(inArray(agnosticVersions.id, old.map((o) => o.id)));
-  return { id: row.id, noteId, reason, label, createdAt: ms(row.createdAt), createdBy };
+  // Queued like every other write (it may belong to a sheet that's still on its way).
+  const id = randomUUID();
+  const createdAt = new Date();
+  writeLater("versions", "version", async () => {
+    await db.insert(agnosticVersions).values({ id, noteId, reason, label, snapshot, createdBy, createdAt });
+    // Keep history bounded: the newest 100 per note.
+    const old = await db.select({ id: agnosticVersions.id }).from(agnosticVersions).where(eq(agnosticVersions.noteId, noteId)).orderBy(desc(agnosticVersions.createdAt)).offset(100);
+    if (old.length) await db.delete(agnosticVersions).where(inArray(agnosticVersions.id, old.map((o) => o.id)));
+  });
+  return { id, noteId, reason, label, createdAt: createdAt.getTime(), createdBy };
 }
 export async function listVersions(noteId: string): Promise<AgVersionMeta[]> {
+  await writesSettled();
   const rows = await db.select({ id: agnosticVersions.id, noteId: agnosticVersions.noteId, reason: agnosticVersions.reason, label: agnosticVersions.label, createdAt: agnosticVersions.createdAt, createdBy: agnosticVersions.createdBy })
     .from(agnosticVersions).where(eq(agnosticVersions.noteId, noteId)).orderBy(desc(agnosticVersions.createdAt)).limit(100);
   return rows.map((r) => ({ ...r, createdAt: ms(r.createdAt) }));
 }
 export async function getVersion(id: string): Promise<{ noteId: string; snapshot: AgSnapshot } | null> {
+  await writesSettled();
   const [row] = await db.select().from(agnosticVersions).where(eq(agnosticVersions.id, id));
   return row ? { noteId: row.noteId, snapshot: row.snapshot } : null;
 }
 export async function latestVersionOfReason(noteId: string, reason: string) {
+  await writesSettled();
   const [row] = await db.select().from(agnosticVersions).where(and(eq(agnosticVersions.noteId, noteId), eq(agnosticVersions.reason, reason))).orderBy(desc(agnosticVersions.createdAt)).limit(1);
   return row ?? null;
 }
 
 /** A note from any scope (for cross-scope copies, e.g. library → campaign). */
 export async function findNoteScope(noteId: string): Promise<AgScope | null> {
+  await writesSettled();
   const [row] = await db.select({ scope: agnosticNotes.scope, scopeId: agnosticNotes.scopeId }).from(agnosticNotes).where(eq(agnosticNotes.id, noteId));
   return row ? { kind: row.scope as AgScope["kind"], id: row.scopeId } : null;
 }
 
 /** A campaign was deleted: its notes (cascading to fields/docs/versions…) and settings go too. */
 export async function deleteAgnosticCampaignData(campaignId: string) {
+  await writesSettled();
   await db.delete(agnosticNotes).where(and(eq(agnosticNotes.scope, "campaign"), eq(agnosticNotes.scopeId, campaignId)));
   await db.delete(agnosticComponents).where(and(eq(agnosticComponents.scope, "campaign"), eq(agnosticComponents.scopeId, campaignId)));
   await db.delete(agnosticSettings).where(eq(agnosticSettings.campaignId, campaignId));

@@ -20,10 +20,11 @@ import {
 } from "@shared/agnostic/acl";
 import type { AgClientMsg, AgServerMsg, AgActionView, AgEntityKind } from "@shared/agnostic/protocol";
 import { getStore, peekStore, sweepStores, type ChangeSet, type ScopeStore } from "./store";
-import { resolveScopeAccess, scopeMembers } from "./access";
+import { resolveScopeAccess, resolveScopeAccessCached, scopeMembers } from "./access";
 import { runOp, OpError, type HostHooks } from "./ops";
 import * as docs from "./docs";
 import { recordVersion } from "./snapshot";
+import { flushOnShutdown } from "./writeQueue";
 
 type Kind = AgEntityKind;
 
@@ -49,6 +50,8 @@ interface Conn {
   ws: WebSocket;
   userId: string;
   scopes: Map<string, ScopeSub>;
+  /** Scope subscriptions still being set up (doc subscriptions wait for them). */
+  scopeReady: Map<string, Promise<unknown>>;
   docs: Map<string, DocSub>;
   alive: boolean;
 }
@@ -99,16 +102,19 @@ function visible(store: ScopeStore, kind: Kind, id: string, viewer: AgViewer): u
   }
 }
 
-function pushEntity(c: Conn, sub: ScopeSub, kind: Kind, id: string) {
+type BatchItem = { kind: Kind; item?: unknown; id?: string };
+/** What `id` now is for this viewer: an upsert, a removal, or nothing to say. */
+function entityChange(sub: ScopeSub, kind: Kind, id: string): BatchItem | null {
   const item = visible(sub.store, kind, id, sub.viewer);
-  const key = sub.store.key;
   if (item) {
     sub.sent[kind].add(id);
-    send(c, { t: "upsert", scope: key, kind, item } as AgServerMsg);
-  } else if (sub.sent[kind].has(id)) {
-    sub.sent[kind].delete(id);
-    send(c, { t: "remove", scope: key, kind, id });
+    return { kind, item };
   }
+  if (sub.sent[kind].has(id)) {
+    sub.sent[kind].delete(id);
+    return { kind, id };
+  }
+  return null;
 }
 
 /** Expand a ChangeSet so permission changes re-evaluate everything beneath them. */
@@ -129,15 +135,14 @@ function fanOut(store: ScopeStore, cs: ChangeSet) {
   for (const c of Array.from(conns)) {
     const sub = c.scopes.get(store.key);
     if (!sub) continue;
+    // One message per change: the client applies it all at once and renders once.
     // Removed notes are removed before their children are re-evaluated.
-    for (const id of Array.from(cs.notes)) pushEntity(c, sub, "note", id);
-    for (const id of Array.from(cs.fields)) pushEntity(c, sub, "field", id);
-    for (const id of Array.from(cs.regions)) pushEntity(c, sub, "region", id);
-    for (const id of Array.from(cs.links)) pushEntity(c, sub, "link", id);
-    for (const id of Array.from(cs.modifiers)) pushEntity(c, sub, "modifier", id);
-    for (const id of Array.from(cs.actions)) pushEntity(c, sub, "action", id);
-    for (const id of Array.from(cs.components)) pushEntity(c, sub, "component", id);
-    if (cs.settings && store.settings) send(c, { t: "settings", scope: store.key, settings: store.settings });
+    const items: BatchItem[] = [];
+    const add = (kind: Kind, ids: Set<string>) => { for (const id of Array.from(ids)) { const ch = entityChange(sub, kind, id); if (ch) items.push(ch); } };
+    add("note", cs.notes); add("field", cs.fields); add("region", cs.regions); add("link", cs.links);
+    add("modifier", cs.modifiers); add("action", cs.actions); add("component", cs.components);
+    const settings = cs.settings && store.settings ? store.settings : undefined;
+    if (items.length || settings) send(c, { t: "batch", scope: store.key, items, ...(settings ? { settings } : {}) } as AgServerMsg);
     // Open documents whose permissions may have moved.
     if (cs.aclNotes.size || cs.regions.size || cs.notes.size) recheckDocs(c, store, cs);
   }
@@ -179,9 +184,9 @@ function recheckDocs(c: Conn, store: ScopeStore, cs: ChangeSet) {
 // --- message handling ------------------------------------------------------------
 async function subscribeScope(c: Conn, scope: AgScope) {
   const key = scopeKey(scope);
-  const viewer = await resolveScopeAccess(c.userId, scope);
+  const viewer = await resolveScopeAccessCached(c.userId, scope);
   if (!viewer) { send(c, { t: "scope.denied", scope: key, reason: "You don't have access to this." }); return; }
-  const store = await getStore(scope);
+  const [store, members] = await Promise.all([getStore(scope), scopeMembers(scope)]);
   c.scopes.get(key)?.off();
   // Fan-out is one listener per store (ensureFanout), not one per connection.
   const sub: ScopeSub = { scope, viewer, store, sent: emptySent(), off: () => {} };
@@ -194,7 +199,7 @@ async function subscribeScope(c: Conn, scope: AgScope) {
   };
   send(c, {
     t: "scope.snapshot", scope: key, isGM: viewer.isGM, userId: c.userId,
-    members: await scopeMembers(scope),
+    members,
     notes: pick("note", store.notes.keys()),
     fields: pick("field", store.fields.keys()),
     regions: pick("region", store.regions.keys()),
@@ -215,6 +220,7 @@ function ensureFanout(store: ScopeStore) {
 
 async function subscribeDoc(c: Conn, scope: AgScope, name: string) {
   const key = scopeKey(scope);
+  await c.scopeReady.get(key);
   const sub = c.scopes.get(key);
   if (!sub) { send(c, { t: "doc.denied", doc: name, reason: "Not subscribed" }); return; }
   const a = docAccess(sub.store, sub.viewer, name);
@@ -276,7 +282,13 @@ function relayAwareness(c: Conn, name: string, u: string) {
 async function handle(c: Conn, msg: AgClientMsg) {
   switch (msg.t) {
     case "ping": send(c, { t: "pong" }); return;
-    case "scope.sub": return subscribeScope(c, msg.scope);
+    case "scope.sub": {
+      const p = subscribeScope(c, msg.scope);
+      const key = scopeKey(msg.scope);
+      c.scopeReady.set(key, p.catch(() => undefined));
+      try { await p; } finally { if (c.scopeReady.get(key)) c.scopeReady.delete(key); }
+      return;
+    }
     case "scope.unsub": {
       const key = scopeKey(msg.scope);
       c.scopes.get(key)?.off();
@@ -297,7 +309,7 @@ async function handle(c: Conn, msg: AgClientMsg) {
       }
       if (!sub) { send(c, { t: "op.ack", rid: msg.rid, ok: false, error: "You don't have access to this." }); return; }
       // Membership/role can change mid-session (kicked, promoted): re-check on every write.
-      const fresh = await resolveScopeAccess(c.userId, msg.scope);
+      const fresh = await resolveScopeAccessCached(c.userId, msg.scope);
       if (!fresh) {
         send(c, { t: "op.ack", rid: msg.rid, ok: false, error: "You no longer have access to this." });
         sub.off();
@@ -326,6 +338,23 @@ async function handle(c: Conn, msg: AgClientMsg) {
   }
 }
 
+async function openDocs(c: Conn, list: Array<{ scope: AgScope; doc: string }>) {
+  try {
+    // One database round trip for every document not already in memory.
+    const want: Array<{ name: string; noteId: string }> = [];
+    for (const { scope, doc } of list) {
+      const key = scopeKey(scope);
+      await c.scopeReady.get(key);
+      const sub = c.scopes.get(key);
+      if (!sub) continue;
+      const a = docAccess(sub.store, sub.viewer, doc);
+      if (a.ok) want.push({ name: doc, noteId: a.noteId });
+    }
+    await docs.preload(want).catch((e) => console.warn("[agnostic] preload failed", (e as Error).message));
+  } catch { /* each doc still loads on its own below */ }
+  await Promise.all(list.map(({ scope, doc }) => subscribeDoc(c, scope, doc).catch((e) => console.error("[agnostic] doc.sub", e))));
+}
+
 function closeDoc(c: Conn, name: string) {
   const d = c.docs.get(name);
   if (!d) return;
@@ -338,16 +367,33 @@ function closeDoc(c: Conn, name: string) {
 export function initAgnosticRealtime(session: any, hooks: HostHooks) {
   sessionMiddleware = session;
   host = hooks;
+  // Restarts and deploys finish saving what's queued (documents included) first.
+  flushOnShutdown(async () => docs.flushAll());
   wss = new WebSocketServer({ noServer: true, maxPayload: 8 * 1024 * 1024 });
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const userId = (req as any).session?.userId as string;
-    const c: Conn = { ws, userId, scopes: new Map(), docs: new Map(), alive: true };
+    const c: Conn = { ws, userId, scopes: new Map(), scopeReady: new Map(), docs: new Map(), alive: true };
     conns.add(c);
     // Messages from one connection are handled strictly in order.
+    // Opening documents doesn't wait in that line: a sheet's documents load
+    // side by side (and in one batch), and a slow load never holds up a change.
     let chain: Promise<unknown> = Promise.resolve();
+    // Opening/closing documents has its own line, so a close never overtakes its open.
+    let docChain: Promise<unknown> = Promise.resolve();
+    let docBatch: Array<{ scope: AgScope; doc: string }> = [];
     ws.on("message", (data) => {
       let msg: AgClientMsg;
       try { msg = JSON.parse(data.toString()); } catch { return; }
+      if (msg.t === "doc.sub") {
+        if (!docBatch.length) setTimeout(() => { const b = docBatch; docBatch = []; docChain = docChain.then(() => openDocs(c, b)).catch(() => undefined); }, 4);
+        docBatch.push({ scope: msg.scope, doc: msg.doc });
+        return;
+      }
+      if (msg.t === "doc.unsub") {
+        const name = msg.doc;
+        docChain = docChain.then(() => closeDoc(c, name)).catch(() => undefined);
+        return;
+      }
       chain = chain.then(() => handle(c, msg)).catch((e) => console.error("[agnostic] ws handler", e));
     });
     ws.on("pong", () => { c.alive = true; });

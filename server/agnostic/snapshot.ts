@@ -104,7 +104,7 @@ export async function writeContent(
     await docs.putState(name, noteId, content.docs[`region:${r.id}`] ?? null);
   }
   for (const open of docs.openDocNames(noteId)) if (!names.includes(open)) docs.discard(open);
-  await repo.deleteDocsOfNote(noteId, names);
+  docs.deleteDocsOfNote(noteId, names);
   note.docEpoch = epoch;
   await store.putNote(note, cs, true);
   cs.epochNotes.add(noteId);

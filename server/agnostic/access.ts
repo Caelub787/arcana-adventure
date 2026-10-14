@@ -34,6 +34,34 @@ export async function resolveScopeAccess(userId: string, scope: AgScope): Promis
   return null;
 }
 
+// Every write re-checks access (people get kicked or promoted mid-session).
+// The answer is remembered so that check never sits on the live path: fresh
+// for a few seconds; after that the remembered answer is used while a new one
+// is fetched in the background, so a kick or promotion lands within a moment
+// and nobody waits on the database to change a value.
+const ACCESS_FRESH_MS = 5_000;
+const ACCESS_STALE_MS = 120_000;
+const accessCache = new Map<string, { at: number; viewer: AgViewer | null; refreshing?: boolean }>();
+export async function resolveScopeAccessCached(userId: string, scope: AgScope): Promise<AgViewer | null> {
+  const key = `${userId}|${scope.kind}:${scope.id}`;
+  const hit = accessCache.get(key);
+  const age = hit ? Date.now() - hit.at : Infinity;
+  if (hit && age < ACCESS_FRESH_MS) return hit.viewer;
+  if (hit && hit.viewer && age < ACCESS_STALE_MS) {
+    if (!hit.refreshing) {
+      hit.refreshing = true;
+      resolveScopeAccess(userId, scope)
+        .then((viewer) => accessCache.set(key, { at: Date.now(), viewer }))
+        .catch(() => { hit.refreshing = false; });
+    }
+    return hit.viewer;
+  }
+  const viewer = await resolveScopeAccess(userId, scope);
+  accessCache.set(key, { at: Date.now(), viewer });
+  if (accessCache.size > 5000) for (const [k, v] of Array.from(accessCache)) if (Date.now() - v.at > ACCESS_STALE_MS) accessCache.delete(k);
+  return viewer;
+}
+
 export interface MemberInfo {
   userId: string;
   name: string;

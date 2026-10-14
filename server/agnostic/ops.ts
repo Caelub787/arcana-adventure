@@ -307,7 +307,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       return store.run(async (cs) => {
         noteOf(store, body.id);
         await store.removeNote(body.id, cs);
-        if (store.scope.kind === "campaign") await ctx.host.deleteTokensForNote(store.scope.id, body.id).catch(() => {});
+        if (store.scope.kind === "campaign") void ctx.host.deleteTokensForNote(store.scope.id, body.id).catch(() => {}); // map tokens follow; nobody waits on it
         return { ok: true as const };
       });
     }
@@ -386,7 +386,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         const links = store.linksOf(n.id).filter((l) => l.fromNoteId === host.id || l.toNoteId === host.id);
         if (body.mode === "delete") {
           await store.removeNote(n.id, cs);
-          if (store.scope.kind === "campaign") await ctx.host.deleteTokensForNote(store.scope.id, n.id).catch(() => {});
+          if (store.scope.kind === "campaign") void ctx.host.deleteTokensForNote(store.scope.id, n.id).catch(() => {});
         } else {
           for (const l of links) await store.removeLink(l.id, cs);
         }
@@ -770,7 +770,7 @@ async function executeAction(
       if (!id || !store.notes.has(id)) { result.messages.push("⚠ Nothing to remove."); continue; }
       const name = store.notes.get(id)!.name;
       await store.removeNote(id, cs);
-      if (store.scope.kind === "campaign") await run.host.deleteTokensForNote(store.scope.id, id).catch(() => {});
+      if (store.scope.kind === "campaign") void run.host.deleteTokensForNote(store.scope.id, id).catch(() => {});
       result.messages.push(`${name || "A sheet"} was removed.`);
       continue;
     }

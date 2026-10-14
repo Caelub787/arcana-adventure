@@ -11221,7 +11221,7 @@ export default function Campaign() {
             heights regardless of device. */}
         {isAgnostic ? (
           // Agnostic: the GM-designed tracker (its own placement, cards and values).
-          <AgTracker rollFeed={rollFeed as any} isMobile={isMobile} leftOffset={(leftToolbarBottom ?? (selectionToolsTop + 88 + 8 + 5 * 40 + 4 * 8)) + 8} />
+          <AgTracker rollFeed={rollFeed as any} isMobile={isMobile} leftOffset={(leftToolbarBottom ?? (selectionToolsTop + 88 + 8 + 5 * 40 + 4 * 8)) + 8} rightInset={sidePanelOpen && !isMobile ? effectivePanelWidth + 8 : 0} />
         ) : PLAYER_TRACKER_LAYOUT === 'vertical-left' ? (
           // "Below the left toolbar" means below ALL of it, not just the
           // Select/Ruler pair - BattleMap stacks a second column right under

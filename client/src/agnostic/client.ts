@@ -172,6 +172,24 @@ class AgnosticClient {
     s.listeners.forEach((l) => l());
   }
 
+  /**
+   * Show a value change at once, before the server confirms it. The server's
+   * own update replaces it moments later; `revert()` puts the old one back if
+   * the change was refused (unless something newer arrived meanwhile).
+   */
+  optimisticField(key: string, fieldId: string, next: (f: AgField) => AgField): () => void {
+    const s = this.scopes.get(key);
+    const prev = s?.state.fields.get(fieldId);
+    if (!s || !prev) return () => {};
+    const mine = next(prev);
+    s.state.fields.set(fieldId, mine);
+    this.bump(key);
+    return () => {
+      const cur = this.scopes.get(key);
+      if (cur && cur.state.fields.get(fieldId) === mine) { cur.state.fields.set(fieldId, prev); this.bump(key); }
+    };
+  }
+
   // --- ops ----------------------------------------------------------------------
   request<T = any>(scope: AgScope, body: AgOp): Promise<T> {
     const rid = this.rid++;
@@ -317,6 +335,19 @@ class AgnosticClient {
         const s = this.scopes.get(msg.scope);
         if (!s) return;
         mapFor(s.state, msg.kind).delete(msg.id);
+        this.bump(msg.scope);
+        return;
+      }
+      case "batch": {
+        // Everything one change touched: apply it all, then render once.
+        const s = this.scopes.get(msg.scope);
+        if (!s) return;
+        for (const it of msg.items) {
+          const map = mapFor(s.state, it.kind);
+          if (it.item) map.set((it.item as any).id, it.item as any);
+          else if (it.id) map.delete(it.id);
+        }
+        if (msg.settings) s.state.settings = msg.settings;
         this.bump(msg.scope);
         return;
       }

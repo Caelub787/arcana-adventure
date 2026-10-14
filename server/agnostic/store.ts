@@ -140,9 +140,11 @@ export class ScopeStore {
   linksOf(noteId: string) { return [...Array.from(this.links.values())].filter((l) => l.fromNoteId === noteId || l.toNoteId === noteId); }
 
   // --- writes (call inside run()) --------------------------------------------------
+  // Memory first (what everyone sees, at once); the database follows in the
+  // background, in order (writeQueue.ts).
   async putNote(n: AgNote, cs: ChangeSet, aclChanged = false) {
     n.updatedAt = Date.now();
-    await repo.upsertNote(n);
+    repo.later.note(this.key, n);
     this.notes.set(n.id, n);
     cs.notes.add(n.id);
     if (aclChanged) cs.aclNotes.add(n.id);
@@ -158,82 +160,82 @@ export class ScopeStore {
     for (const l of this.linksOf(id)) { this.links.delete(l.id); cs.links.add(l.id); }
     this.notes.delete(id);
     cs.notes.add(id);
-    await repo.deleteNote(id); // cascades children + docs + versions
+    repo.later.deleteNote(this.key, id); // cascades children + docs + versions
     if (this.settings) {
       const t = this.settings.tracker;
       if (t.pinned.includes(id) || id in t.cardByNote) {
         t.pinned = t.pinned.filter((x) => x !== id);
         delete t.cardByNote[id];
-        await repo.saveSettings(this.scope.id, this.settings);
+        repo.later.settings(this.key, this.scope.id, this.settings);
         cs.settings = true;
       }
     }
   }
   async putField(f: AgField, cs: ChangeSet) {
-    await repo.upsertField(f);
+    repo.later.field(this.key, f);
     this.indexField(f);
     cs.fields.add(f.id);
   }
   async removeField(id: string, cs: ChangeSet) {
     if (!this.fields.has(id)) return;
-    await repo.deleteField(id);
+    repo.later.deleteField(this.key, id);
     this.unindexField(id);
     cs.fields.add(id);
   }
   async putRegion(r: AgRegion, cs: ChangeSet) {
-    await repo.upsertRegion(r);
+    repo.later.region(this.key, r);
     this.regions.set(r.id, r);
     cs.regions.add(r.id);
   }
   async removeRegion(id: string, cs: ChangeSet) {
-    await repo.deleteRegion(id);
+    repo.later.deleteRegion(this.key, id);
     this.regions.delete(id);
     cs.regions.add(id);
   }
   async putLink(l: AgLink, cs: ChangeSet) {
-    await repo.upsertLink(l);
+    repo.later.link(this.key, l);
     this.links.set(l.id, l);
     cs.links.add(l.id);
   }
   async removeLink(id: string, cs: ChangeSet) {
-    await repo.deleteLink(id);
+    repo.later.deleteLink(this.key, id);
     this.links.delete(id);
     cs.links.add(id);
   }
   async putModifier(m: AgModifier, cs: ChangeSet) {
-    await repo.upsertModifier(m);
+    repo.later.modifier(this.key, m);
     this.modifiers.set(m.id, m);
     cs.modifiers.add(m.id);
   }
   async removeModifier(id: string, cs: ChangeSet) {
-    await repo.deleteModifier(id);
+    repo.later.deleteModifier(this.key, id);
     this.modifiers.delete(id);
     cs.modifiers.add(id);
   }
   async putAction(a: AgAction, cs: ChangeSet) {
-    await repo.upsertAction(a);
+    repo.later.action(this.key, a);
     this.actions.set(a.id, a);
     cs.actions.add(a.id);
   }
   async removeAction(id: string, cs: ChangeSet) {
-    await repo.deleteAction(id);
+    repo.later.deleteAction(this.key, id);
     this.actions.delete(id);
     cs.actions.add(id);
   }
   async putComponent(c: AgComponentDef, cs: ChangeSet) {
     c.updatedAt = Date.now();
-    await repo.upsertComponent(c);
+    repo.later.component(this.key, c);
     this.components.set(c.id, c);
     cs.components.add(c.id);
   }
   async removeComponent(id: string, cs: ChangeSet) {
-    await repo.deleteComponent(id);
+    repo.later.deleteComponent(this.key, id);
     this.components.delete(id);
     cs.components.add(id);
   }
   async putSettings(s: AgCampaignSettings, cs: ChangeSet) {
     if (this.scope.kind !== "campaign") return;
-    await repo.saveSettings(this.scope.id, s);
+    repo.later.settings(this.key, this.scope.id, s);
     this.settings = s;
     cs.settings = true;
   }
