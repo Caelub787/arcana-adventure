@@ -302,3 +302,54 @@ function stripUsers<T extends { view: any; edit: any }>(acl: T): T {
   const fix = (a: any) => (a && typeof a === "object" ? (a.owners ? "owners" : "gm") : a);
   return { ...acl, view: fix(acl.view), edit: fix(acl.edit) };
 }
+
+/**
+ * Copy many sheets from one scope into another in one go, keeping everything
+ * that points between them: which template a sheet came from, links to other
+ * sheets on the page, and the components they use. Every id is new.
+ * Returns old id → new id (sheets, values, sections, buttons, changes, components).
+ */
+export async function copyNotes(
+  source: ScopeStore, store: ScopeStore, noteIds: string[], cs: ChangeSet,
+  opts: { keepOwners?: boolean } = {},
+): Promise<Map<string, string>> {
+  const snaps = new Map<string, AgSnapshot>();
+  for (const id of noteIds) if (source.notes.has(id)) snaps.set(id, await takeSnapshot(source, id));
+  const idMap = new Map<string, string>();
+  for (const s of Array.from(snaps.values())) {
+    for (const [k, v] of Array.from((await carryComponents(source, store, s, cs)).entries())) idMap.set(k, v);
+  }
+  for (const [oldId, s] of Array.from(snaps.entries())) {
+    idMap.set(oldId, randomUUID());
+    for (const x of [...s.fields, ...s.regions, ...s.actions, ...s.modifiers]) idMap.set(x.id, randomUUID());
+  }
+  const mapped = (id: string | null | undefined) => (id ? idMap.get(id) ?? null : null);
+  for (const [oldId, s] of Array.from(snaps.entries())) {
+    const id = idMap.get(oldId)!;
+    const now = Date.now();
+    const note: AgNote = {
+      ...(s.note as AgNote),
+      id, scope: store.scope.kind, scopeId: store.scope.id, docEpoch: -1, createdAt: now, updatedAt: now,
+      // A sheet whose template didn't come along is no longer locked to one.
+      templateId: mapped(s.note.templateId),
+      templateVersion: mapped(s.note.templateId) ? s.note.templateVersion : null,
+      ownerIds: opts.keepOwners ? [...s.note.ownerIds] : [],
+    };
+    await store.putNote(note, cs);
+    const docStates: Record<string, string> = {};
+    for (const [k, v] of Object.entries(s.docs)) {
+      const remapped = docs.remapState(v, idMap);
+      if (!remapped) continue;
+      if (k === "note") docStates.note = remapped;
+      else if (k.startsWith("region:")) { const nid = idMap.get(k.slice(7)); if (nid) docStates[`region:${nid}`] = remapped; }
+    }
+    await writeContent(store, id, {
+      fields: s.fields.map((f) => ({ ...f, id: idMap.get(f.id)!, noteId: id, templateFieldId: mapped(f.templateFieldId) })),
+      regions: s.regions.map((r) => ({ ...r, id: idMap.get(r.id)!, noteId: id, templateRegionId: mapped(r.templateRegionId) })),
+      actions: s.actions.map((a) => ({ ...a, id: idMap.get(a.id)!, noteId: id })),
+      modifiers: s.modifiers.map((m) => ({ ...m, id: idMap.get(m.id)!, noteId: id })),
+      docs: docStates,
+    }, cs);
+  }
+  return idMap;
+}

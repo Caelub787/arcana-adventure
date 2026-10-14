@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Lock, History, RotateCcw, Save, Copy, Trash2, Plus, Library, Dices, Pencil, RefreshCw, AlertTriangle } from "lucide-react";
 import type { AgAcl, AgTokenBar, AgVersionMeta } from "@shared/agnostic/types";
-import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
+import { AG_BUILTIN_TYPES, agTypeLabel, agLibraryScope } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, AgSelector, agConfirm } from "./float";
 import { useAuth } from "@/lib/AuthContext";
@@ -22,7 +22,7 @@ const Section = ({ title, icon, children }: { title: string; icon?: React.ReactN
 );
 
 export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted: () => void }) {
-  const { state, request, scope } = useAg();
+  const { state, request, scope, system } = useAg();
   const { note } = usePerms(noteId);
   const { toast } = useToast();
   const { user } = useAuth() as any;
@@ -75,7 +75,7 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
         <div className="flex flex-wrap gap-1.5">
           <button type="button" onClick={() => request<{ noteId: string }>({ op: "note.duplicate", id: noteId }).then(() => toast({ title: "Duplicated" }))} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
           {scope.kind !== "library" && user && (
-            <button type="button" onClick={() => agClient.request({ kind: "library", id: user.id }, { op: "note.copyFrom", sourceNoteId: noteId, sourceScope: scope }).then(() => toast({ title: "Saved to My Library" })).catch((e) => toast({ title: "Couldn't copy", description: e.message, variant: "destructive" }))}
+            <button type="button" onClick={() => agClient.request(agLibraryScope("library", user.id, system), { op: "note.copyFrom", sourceNoteId: noteId, sourceScope: scope }).then(() => toast({ title: "Saved to My Library" })).catch((e) => toast({ title: "Couldn't copy", description: e.message, variant: "destructive" }))}
               className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1" data-testid="ag-save-to-library"><Library className="h-3.5 w-3.5" /> Save to My Library</button>
           )}
           <button type="button" onClick={() => { agConfirm(`Delete “${note.name}” for everyone? Its version history goes too.`, { title: "Delete this sheet?", confirm: "Delete" }).then((ok) => { if (ok) request({ op: "note.delete", id: noteId }).then(onDeleted); }); }} className="h-8 px-2.5 rounded text-xs text-red-300 hover:bg-red-950 inline-flex items-center gap-1 ml-auto" data-testid="ag-note-delete"><Trash2 className="h-3.5 w-3.5" /> Delete</button>

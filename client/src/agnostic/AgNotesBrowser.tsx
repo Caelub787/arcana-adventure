@@ -5,12 +5,13 @@ import {
   Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock, Flame, Loader2,
 } from "lucide-react";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
-import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
+import { AG_BUILTIN_TYPES, agTypeLabel, agLibraryScope } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, agConfirm } from "./float";
 import { NotePicker } from "./pickers";
 import { useAuth } from "@/lib/AuthContext";
 import { useAg, AgScopeProvider } from "./hooks";
+import { usePlayView } from "./viewMode";
 import { Portrait } from "./widgets";
 import { agClient } from "./client";
 import { ComponentsManager } from "./ComponentsManager";
@@ -30,7 +31,10 @@ export interface BrowserOptions {
 
 export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const { state, viewer, openNote } = useAg();
-  const [tab, setTab] = useState<Tab>("sheets");
+  const [tabState, setTab] = useState<Tab>("sheets");
+  const play = usePlayView();
+  // Player view: just the sheets — templates, components and imports are building tools.
+  const tab: Tab = play ? "sheets" : tabState;
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [creating, setCreating] = useState<null | { template: boolean }>(null);
@@ -57,7 +61,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
 
   return (
     <div className="h-full flex flex-col text-stone-200" data-testid="ag-browser">
-      {isGM && (
+      {isGM && !play && (
         <div className="flex items-center gap-1 px-2 pt-2 shrink-0">
           {([["sheets", "Sheets"], ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
@@ -82,7 +86,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
                 <button key={t} type="button" onClick={() => setTypeFilter(typeFilter === t ? "" : t)} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${typeFilter === t ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>{AG_BUILTIN_TYPES.find((x) => x.id === t)?.plural ?? agTypeLabel(t)}</button>
               ))}
             </div>
-            {isGM && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
+            {isGM && !play && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
             {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
@@ -192,14 +196,16 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
 
 /** Copy sheets/templates from My Library or Admin into this campaign. */
 function ImportFromLibraryDialog({ onClose }: { onClose: () => void }) {
-  const { scope } = useAg();
+  const { scope, system } = useAg();
   const { user, isAdmin } = useAuth() as any;
-  const [source, setSource] = useState<AgScope>({ kind: "library", id: user?.id ?? "" });
+  // This system's own libraries (C.A. Agnostic's are separate from plain Agnostic's).
+  const lib = (kind: "library" | "admin") => agLibraryScope(kind, user?.id ?? "", system);
+  const [source, setSource] = useState<AgScope>(lib("library"));
   return (
     <AgPanel title="Bring in from My Library / Admin" onClose={onClose} width={480} height={620} testId="ag-bring-in">
         <div className="flex gap-1">
-          <button type="button" onClick={() => setSource({ kind: "library", id: user?.id ?? "" })} className={`h-8 px-3 rounded text-xs ${source.kind === "library" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>My Library</button>
-          {isAdmin && <button type="button" onClick={() => setSource({ kind: "admin", id: "admin" })} className={`h-8 px-3 rounded text-xs ${source.kind === "admin" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>Admin</button>}
+          <button type="button" onClick={() => setSource(lib("library"))} className={`h-8 px-3 rounded text-xs ${source.kind === "library" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>My Library</button>
+          {isAdmin && <button type="button" onClick={() => setSource(lib("admin"))} className={`h-8 px-3 rounded text-xs ${source.kind === "admin" ? "bg-amber-600 text-white" : "bg-stone-800 text-stone-300"}`}>Admin</button>}
         </div>
         <div>
           <AgScopeProvider key={`${source.kind}:${source.id}`} scope={source}>

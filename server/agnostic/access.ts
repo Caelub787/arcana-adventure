@@ -5,6 +5,8 @@
 import { storage } from "../storage";
 import { isAdminUser } from "../lib/library-acl";
 import type { AgScope, AgViewer } from "@shared/agnostic/types";
+import { agLibraryOwner, agLibrarySystem } from "@shared/agnostic/types";
+import { isAgnosticSystem } from "@shared/systems";
 
 export interface ScopeAccess {
   viewer: AgViewer;
@@ -13,15 +15,17 @@ export interface ScopeAccess {
 
 export async function resolveScopeAccess(userId: string, scope: AgScope): Promise<AgViewer | null> {
   if (!userId) return null;
-  if (scope.kind === "library") {
-    return scope.id === userId ? { userId, isGM: true } : null;
-  }
-  if (scope.kind === "admin") {
+  if (scope.kind === "library" || scope.kind === "admin") {
+    // Each Agnostic-built system has its own libraries ("<owner>:<system>").
+    if (!isAgnosticSystem(agLibrarySystem(scope))) return null;
+    const owner = agLibraryOwner(scope);
+    if (scope.kind === "library") return owner === userId ? { userId, isGM: true } : null;
+    if (owner !== "admin") return null;
     return (await isAdminUser(userId)) ? { userId, isGM: true } : null;
   }
   const campaign = await storage.getCampaign(scope.id);
   if (!campaign) return null;
-  if ((campaign as any).system !== "agnostic") return null;
+  if (!isAgnosticSystem((campaign as any).system)) return null;
   if (campaign.gmUserId === userId) return { userId, isGM: true };
   const membership = await storage.getCampaignMembership(userId, scope.id);
   if (membership?.role === "gm" || membership?.role === "assistant_gm") return { userId, isGM: true };

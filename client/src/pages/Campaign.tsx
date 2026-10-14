@@ -33,6 +33,7 @@ import { SoundscapePanel } from "@/components/game/SoundscapePanel";
 import { AgRoot } from "@/agnostic/AgRoot";
 import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
 import { AgTracker } from "@/agnostic/AgTracker";
+import { AgViewModeButton } from "@/agnostic/viewMode";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
@@ -7766,8 +7767,9 @@ export default function Campaign() {
   // Agnostic: fully notes-based, GM-built system (its own data layer + live channel).
   const isAgnostic = isAgnosticSystem((campaign as any)?.system);
 
-  // Search always; Swampy also gets the Working Ledger and the Deck of Houses.
-  const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0);
+  // Search always; Swampy also gets the Working Ledger and the Deck of Houses;
+  // Agnostic the GM view / Player view switch.
+  const leftToolbarButtons = 1 + (isSwampy && !isSandbox ? 2 : 0) + (isAgnostic && effectiveCampaignId ? 1 : 0);
   const selectionToolsTop =
     LEFT_TOOLBAR_TOP + leftToolbarButtons * (LEFT_TOOLBAR_BUTTON + LEFT_TOOLBAR_GAP);
   // BattleMap's own left button column reports its real (measured) bottom
@@ -10977,7 +10979,7 @@ export default function Campaign() {
   }
 
   return (
-    <AgRoot scope={isAgnostic && effectiveCampaignId ? { kind: "campaign", id: effectiveCampaignId } : null}>
+    <AgRoot scope={isAgnostic && effectiveCampaignId ? { kind: "campaign", id: effectiveCampaignId } : null} system={(campaign as any)?.system}>
     <div data-section="campaign" className="relative h-dvh w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
       {/* Roll Notification Container */}
@@ -11203,6 +11205,11 @@ export default function Campaign() {
                 </Tooltip>
               </TooltipProvider>
             </>
+          )}
+
+          {/* Agnostic: GM view (build the sheets) / Player view (play with them). */}
+          {isAgnostic && effectiveCampaignId && (
+            <AgViewModeButton scope={{ kind: "campaign", id: effectiveCampaignId }} isGM={role === 'gm'} />
           )}
         </div>
 

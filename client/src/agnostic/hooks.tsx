@@ -6,7 +6,7 @@
 // is shown, and editing is limited to what that player could edit.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { AgField, AgNote, AgScope, AgViewer, AgValue } from "@shared/agnostic/types";
-import { scopeKey, noteDocName, regionDocName } from "@shared/agnostic/types";
+import { scopeKey, noteDocName, regionDocName, agLibrarySystem } from "@shared/agnostic/types";
 import {
   canViewNote, canViewField, canViewRegion, canSeeAction, canViewLink, canEditField, canEditNoteHeader,
   canEditBody, canViewBody, canEditRegion, canRunAction,
@@ -18,6 +18,8 @@ import { useAuth } from "@/lib/AuthContext";
 interface AgCtx {
   scope: AgScope;
   key: string;
+  /** The game system this scope belongs to ("agnostic" or a system built on it): picks its libraries. */
+  system: string;
   /** Filtered for the effective viewer (preview-aware). */
   state: ScopeState;
   /** Who we're rendering for. */
@@ -51,7 +53,8 @@ export function filterState(st: ScopeState, viewer: AgViewer): ScopeState {
   return { ...st, notes, fields, regions, actions, links, modifiers: new Map(), isGM: false };
 }
 
-export function AgScopeProvider({ scope, children, onOpenNote, blocking = true }: { scope: AgScope; children: React.ReactNode; onOpenNote?: (noteId: string) => void; blocking?: boolean }) {
+export function AgScopeProvider({ scope, children, onOpenNote, blocking = true, system: systemProp }: { scope: AgScope; children: React.ReactNode; onOpenNote?: (noteId: string) => void; blocking?: boolean; system?: string | null }) {
+  const system = systemProp || agLibrarySystem(scope) || "agnostic";
   const raw = useScopeState(scope);
   const { user } = useAuth() as any;
   useEffect(() => {
@@ -67,8 +70,8 @@ export function AgScopeProvider({ scope, children, onOpenNote, blocking = true }
   }, [raw, previewUserId, realViewer.isGM]); // eslint-disable-line react-hooks/exhaustive-deps
   const request = useCallback(<T,>(op: AgOp) => agClient.request<T>(scope, op), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const openNote = useCallback((id: string) => onOpenNote?.(id), [onOpenNote]);
-  const value = useMemo<AgCtx | null>(() => state ? ({ scope, key, state, viewer, realViewer, previewUserId, setPreviewUserId, request, openNote }) : null,
-    [state, viewer.userId, viewer.isGM, realViewer, previewUserId, request, openNote]); // eslint-disable-line react-hooks/exhaustive-deps
+  const value = useMemo<AgCtx | null>(() => state ? ({ scope, key, system, state, viewer, realViewer, previewUserId, setPreviewUserId, request, openNote }) : null,
+    [state, viewer.userId, viewer.isGM, realViewer, previewUserId, request, openNote, system]); // eslint-disable-line react-hooks/exhaustive-deps
   const usable = !!value && value.state.ready && !value.state.denied;
   // Non-blocking mounts (a whole campaign page) keep the same tree shape and
   // just expose no context until Agnostic is ready — nothing remounts.

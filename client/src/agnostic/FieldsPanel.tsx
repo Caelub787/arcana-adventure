@@ -8,6 +8,7 @@ import { slugifyKey } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useNoteFields, usePerms, useMemberName } from "./hooks";
+import { usePlayView } from "./viewMode";
 import { FieldInput, CommitInput } from "./widgets";
 import { FormulaInput } from "./FormulaBuilder";
 import { AclEditor } from "./pickers";
@@ -26,7 +27,9 @@ const TYPES: Array<[AgFieldType, string, string]> = [
 export function FieldsPanel({ noteId }: { noteId: string }) {
   const { request } = useAg();
   const fields = useNoteFields(noteId);
-  const { isGM } = usePerms(noteId);
+  // Player view: values can still be changed, but not added, removed or reconfigured.
+  const play = usePlayView();
+  const isGM = usePerms(noteId).isGM && !play;
   const { toast } = useToast();
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<string | null>(null);

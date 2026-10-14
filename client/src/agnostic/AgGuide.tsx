@@ -163,6 +163,13 @@ const TOPICS: Topic[] = [
           <li>Use the <Ui>View as</Ui> picker at the top of a sheet to check exactly what the player sees.</li>
         </Steps>
         <Tip>Everything is live. When anyone changes HP (on the sheet, the tracker card or the token) every screen updates at once.</Tip>
+        <H>GM view and Player view</H>
+        <P>The button under Search on the left of the map switches between them (just for you, in this campaign).</P>
+        <Bullets>
+          <li><b>GM view</b> (hammer): build. Edit the pages, insert and resize things, and use Values, Links, Settings, Templates and Components. GMs start here.</li>
+          <li><b>Player view</b> (controller): play. Pages are locked and the building tools are hidden, but values, bars, buttons, items and wounds still work. Players start here; a player who owns a sheet can switch to edit its layout if the GM allows it.</li>
+          <li>To see exactly what one player can see (hidden things removed), use <Ui>View as …</Ui> instead. See <Go to="privacy">Who sees what</Go>.</li>
+        </Bullets>
         <H>Where things are</H>
         <Bullets>
           <li><b>Campaign panel</b>: <Ui>Sheets</Ui>, <Ui>Templates</Ui> and <Ui>Components</Ui> tabs, the import/export button, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>.</li>
@@ -432,6 +439,7 @@ const TOPICS: Topic[] = [
     id: "kits", title: "Starter kits (C.A.)", icon: <Package className="h-4 w-4" />, words: "starter kit cultivator adventure ca rank wounds items potion rune backpack example",
     body: (
       <>
+        <P><b>C.A. Agnostic</b> is also a system of its own: choose it when creating a campaign and the campaign starts with all of these templates. It has its own Admin and My Library (pick “C.A. Agnostic” there), separate from plain Agnostic. The C.A. Agnostic <b>admin library</b> is the system's master copy: change a template there and campaigns made afterwards start with your version.</P>
         <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the top of the <Ui>Templates</Ui> tab (GM only).</P>
         <H>Cultivator's Adventure</H>
         <Table rows={[

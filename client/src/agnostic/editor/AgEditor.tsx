@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
+import { usePlayView } from "../viewMode";
 import { CANVAS_ORIGIN } from "../client";
 import { AG_NODES, AgDocContext, FieldConfig, lookKindFor } from "./nodes";
 import { LookEditor } from "../look";
@@ -64,10 +65,14 @@ const AgImage = Image.extend({
 // --------------------------------------------------------------------------- editor
 export function AgEditor({ docName, noteId, nested, inline, placeholder }: { docName: string; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string }) {
   const handle = useDoc(docName);
+  const play = usePlayView();
+  const { previewUserId } = useAg();
   if (!handle) return null;
   if (handle.revoked) return null; // no longer allowed: nothing to show
   if (!handle.synced) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;
-  return <BoundEditor key={`${docName}#${handle.generation}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
+  // Blocks draw their tools once, for the editability they started with: switching
+  // GM / Player view (or previewing a player) builds the editor afresh.
+  return <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
 }
 
 function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeholder }: {
@@ -75,8 +80,10 @@ function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeho
 }) {
   const { viewer, previewUserId } = useAg();
   const active = useActiveEditor();
+  const play = usePlayView();
   // Preview-as-player: the GM sees exactly what the player could change.
-  const editable = !readOnly && !previewUserId;
+  // Player view: the page is locked (its values, bars and buttons still work).
+  const editable = !readOnly && !previewUserId && !play;
   const undoManager = useMemo(() => new Y.UndoManager([doc.getXmlFragment("default"), doc.getMap("canvases")], {
     trackedOrigins: new Set([ySyncPluginKey, CANVAS_ORIGIN]),
     captureTransaction: (tr) => tr.meta.get("addToHistory") !== false,

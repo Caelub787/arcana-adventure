@@ -14,7 +14,8 @@ export type SystemSlug =
   | "aa-v3"
   | "ca"
   | "swampy"
-  | "agnostic";
+  | "agnostic"
+  | "ca-agnostic";
 
 export const SYSTEM_SLUGS: SystemSlug[] = [
   "arcana-adventure",
@@ -23,6 +24,7 @@ export const SYSTEM_SLUGS: SystemSlug[] = [
   "ca",
   "swampy",
   "agnostic",
+  "ca-agnostic",
 ];
 
 export const SYSTEM_LABELS: Record<SystemSlug, string> = {
@@ -32,6 +34,7 @@ export const SYSTEM_LABELS: Record<SystemSlug, string> = {
   ca: "C.A.",
   swampy: "Swampy",
   agnostic: "Agnostic",
+  "ca-agnostic": "C.A. Agnostic",
 };
 
 /** Longer name shown in tooltips next to the short label. */
@@ -39,6 +42,7 @@ export const SYSTEM_FULL_NAMES: Partial<Record<SystemSlug, string>> = {
   ca: "Cultivator's Adventure",
   swampy: "Swampy",
   agnostic: "Agnostic — build your own system",
+  "ca-agnostic": "Cultivator's Adventure, built in Agnostic — every part of it can be changed",
 };
 
 const LABEL_TO_SLUG: Record<string, SystemSlug> = Object.entries(SYSTEM_LABELS)
@@ -69,11 +73,23 @@ export function systemSlug(label?: string | null): SystemSlug {
 // systems; admins still see everything so existing campaigns stay editable.
 // ---------------------------------------------------------------------------
 
-export const PUBLIC_SYSTEM_SLUGS: SystemSlug[] = ["ca", "swampy", "agnostic"];
+export const PUBLIC_SYSTEM_SLUGS: SystemSlug[] = ["ca", "swampy", "agnostic", "ca-agnostic"];
 
-/** True for Agnostic — the fully notes-based, GM-built system. */
+/**
+ * Systems that run on the Agnostic engine. "agnostic" starts empty; the others
+ * are ready-made systems built in it: every campaign starts with that system's
+ * templates, and each has its own Admin library and My Library.
+ */
+export const AGNOSTIC_SYSTEM_SLUGS: SystemSlug[] = ["agnostic", "ca-agnostic"];
+
+/** True for Agnostic and every system built on it — the fully notes-based, GM-built systems. */
 export function isAgnosticSystem(slug?: string | null): boolean {
-  return slug === "agnostic";
+  return AGNOSTIC_SYSTEM_SLUGS.includes(slug as SystemSlug);
+}
+
+/** The starter kit an Agnostic-built system is made from (none for plain Agnostic). */
+export function agnosticSystemKit(slug?: string | null): "ca" | null {
+  return slug === "ca-agnostic" ? "ca" : null;
 }
 
 export function isPublicSystem(slug?: string | null): boolean {

@@ -26,7 +26,7 @@ describe("system registry", () => {
   });
 
   it("only offers the live systems to non-admins", () => {
-    expect(selectableSystemSlugs(false)).toEqual(["ca", "swampy", "agnostic"]);
+    expect(selectableSystemSlugs(false)).toEqual(["ca", "swampy", "agnostic", "ca-agnostic"]);
     expect(selectableSystemSlugs(true)).toEqual(SYSTEM_SLUGS);
     for (const slug of ["arcana-adventure", "aa-v2", "aa-v3"]) {
       expect(isPublicSystem(slug)).toBe(false);

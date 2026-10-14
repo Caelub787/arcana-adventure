@@ -480,20 +480,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
 
-  // The tracker and tokens show HP and Energy the C.A. way.
-  if (store.scope.kind === "campaign" && store.settings) {
-    const st = store.settings;
-    const cards = [...st.tracker.cards.filter((c) => c.id !== CA_TRACKER_CARD.id), CA_TRACKER_CARD];
-    await store.putSettings({
-      ...st,
-      tracker: { ...st.tracker, cards, cardByType: { ...st.tracker.cardByType, character: CA_TRACKER_CARD.id, npc: CA_TRACKER_CARD.id } },
-      tokenBarsByType: {
-        ...st.tokenBarsByType,
-        character: [{ id: "hp", value: "hp", max: "hp_max", color: "#f43f5e" }, { id: "en", value: "energy", max: "usable_energy", color: "#06b6d4" }],
-        npc: [{ id: "hp", value: "hp", max: "hp_max", color: "#dc2626" }],
-      },
-    }, cs);
-  }
+  await applyCATrackerSettings(store, cs);
 
   let sheets = 0;
   if (opts.examples) {
@@ -527,4 +514,21 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     }
   }
   return { templates: Object.keys(made).length, sheets };
+}
+
+/** The tracker and tokens show HP and Energy the C.A. way (campaigns only). */
+export async function applyCATrackerSettings(store: ScopeStore, cs: ChangeSet) {
+  if (store.scope.kind === "campaign" && store.settings) {
+    const st = store.settings;
+    const cards = [...st.tracker.cards.filter((c) => c.id !== CA_TRACKER_CARD.id), CA_TRACKER_CARD];
+    await store.putSettings({
+      ...st,
+      tracker: { ...st.tracker, cards, cardByType: { ...st.tracker.cardByType, character: CA_TRACKER_CARD.id, npc: CA_TRACKER_CARD.id } },
+      tokenBarsByType: {
+        ...st.tokenBarsByType,
+        character: [{ id: "hp", value: "hp", max: "hp_max", color: "#f43f5e" }, { id: "en", value: "energy", max: "usable_energy", color: "#06b6d4" }],
+        npc: [{ id: "hp", value: "hp", max: "hp_max", color: "#dc2626" }],
+      },
+    }, cs);
+  }
 }

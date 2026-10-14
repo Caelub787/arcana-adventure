@@ -16,6 +16,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { Portrait, CommitInput, uploadImage } from "./widgets";
 import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
 import { GuideButton } from "./AgGuide";
+import { usePlayView } from "./viewMode";
 
 type Tab = "sheet" | "fields" | "links" | "settings";
 
@@ -23,7 +24,10 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
   const { state, realViewer, previewUserId, key: scopeKeyStr } = useAg();
   const perms = usePerms(noteId);
   const note = perms.note;
-  const [tab, setTab] = useState<Tab>("sheet");
+  const [tabState, setTab] = useState<Tab>("sheet");
+  const play = usePlayView();
+  // Player view: no Links / Settings (building tools); fall back to the page.
+  const tab: Tab = play && (tabState === "links" || tabState === "settings") ? "sheet" : tabState;
   const rootRef = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   useEffect(() => onUndoChange(() => force((n) => n + 1)), []);
@@ -51,7 +55,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
   const tabs: Array<[Tab, string, React.ReactNode]> = [
     ["sheet", "Sheet", <FileText key="s" className="h-3.5 w-3.5" />],
     ["fields", "Values", <Hash key="f" className="h-3.5 w-3.5" />],
-    ...(isGM ? ([["links", "Links", <Link2 key="l" className="h-3.5 w-3.5" />], ["settings", "Settings", <Settings key="g" className="h-3.5 w-3.5" />]] as Array<[Tab, string, React.ReactNode]>) : []),
+    ...(isGM && !play ? ([["links", "Links", <Link2 key="l" className="h-3.5 w-3.5" />], ["settings", "Settings", <Settings key="g" className="h-3.5 w-3.5" />]] as Array<[Tab, string, React.ReactNode]>) : []),
   ];
   const lastUndo = peekUndo(scopeKeyStr);
 
@@ -155,13 +159,15 @@ function Presence({ noteId }: { noteId: string }) {
 function SheetBody({ noteId }: { noteId: string }) {
   const { note, canViewBody, canEditBody, isGM } = usePerms(noteId);
   const { previewUserId } = useAg();
+  const play = usePlayView();
   if (!note) return null;
   if (!canViewBody) return <div className="p-6 text-sm text-stone-400 flex items-center gap-2"><Eye className="h-4 w-4" /> Only the name and portrait are shared with you.</div>;
-  const showToolbar = canEditBody && !previewUserId;
+  const showToolbar = canEditBody && !previewUserId && !play;
   return (
     <div>
-      {showToolbar && <div className="sticky top-0 z-20 bg-stone-950/95 backdrop-blur border-b border-stone-800 px-2"><EditorToolbar noteId={noteId} isGM={isGM} /></div>}
-      <div className="px-4 py-3 sm:px-6">
+      {showToolbar && <div className="sticky top-0 z-30 bg-stone-950/95 backdrop-blur border-b border-stone-800 px-2"><EditorToolbar noteId={noteId} isGM={isGM} /></div>}
+      {/* isolate: nothing on the page (block tools, canvas layers) can rise above the toolbar. */}
+      <div className="relative isolate px-4 py-3 sm:px-6">
         <AgEditor docName={noteDocName(noteId, note.docEpoch)} noteId={noteId} />
       </div>
     </div>

@@ -249,7 +249,13 @@ export async function getStore(scope: AgScope): Promise<ScopeStore> {
   if (hit) { hit.touchedAt = Date.now(); return hit; }
   const pending = loadingStores.get(key);
   if (pending) return pending;
-  const p = ScopeStore.load(scope).then((s) => { stores.set(key, s); return s; });
+  const p = ScopeStore.load(scope).then(async (s) => {
+    // Systems built on Agnostic fill a new campaign / library with their templates.
+    const { seedSystemContent } = await import("./systemSeed");
+    await seedSystemContent(s).catch((e) => console.error("[agnostic] couldn't add the system's templates", e));
+    stores.set(key, s);
+    return s;
+  });
   loadingStores.set(key, p);
   try { return await p; } finally { loadingStores.delete(key); }
 }

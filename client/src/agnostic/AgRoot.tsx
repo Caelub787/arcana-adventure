@@ -7,10 +7,10 @@ import { AgWindowsProvider, AgWindowStack, useAgWindows } from "./AgWindows";
 import { AgGuideHost } from "./AgGuide";
 import { AgConfirmHost } from "./float";
 
-function Inner({ scope, children }: { scope: AgScope; children: React.ReactNode }) {
+function Inner({ scope, system, children }: { scope: AgScope; system?: string | null; children: React.ReactNode }) {
   const win = useAgWindows();
   return (
-    <AgScopeProvider scope={scope} onOpenNote={win?.open} blocking={false}>
+    <AgScopeProvider scope={scope} system={system} onOpenNote={win?.open} blocking={false}>
       {children}
       <AgWindowStack />
       <AgGuideHost />
@@ -19,11 +19,11 @@ function Inner({ scope, children }: { scope: AgScope; children: React.ReactNode 
   );
 }
 
-export function AgRoot({ scope, enabled = true, children }: { scope: AgScope | null; enabled?: boolean; children: React.ReactNode }) {
+export function AgRoot({ scope, system, enabled = true, children }: { scope: AgScope | null; system?: string | null; enabled?: boolean; children: React.ReactNode }) {
   if (!enabled || !scope) return <>{children}</>;
   return (
     <AgWindowsProvider>
-      <Inner scope={scope}>{children}</Inner>
+      <Inner scope={scope} system={system}>{children}</Inner>
     </AgWindowsProvider>
   );
 }

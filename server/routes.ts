@@ -18,7 +18,7 @@ import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } fr
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 import { registerCanvasRealmsRoutes } from "./canvasrealms";
 import { isAdminUser } from "./lib/library-acl";
-import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG } from "@shared/systems";
+import { systemLabel, isPublicSystem, DEFAULT_SYSTEM_SLUG, isAgnosticSystem } from "@shared/systems";
 import { SWAMPY_WARREN_CONDITION_KEYS, swampyReadingSpread, clampSwampyFear } from "@shared/swampy";
 import { isWoundSystem } from "@shared/systemRules";
 import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
@@ -4074,7 +4074,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteCampaign(req.params.id);
       // Agnostic data hangs off the campaign by scope id (no FK) — remove it too.
       // Only Agnostic campaigns have any; nothing runs for other systems.
-      if ((campaign as any).system === "agnostic") {
+      if (isAgnosticSystem((campaign as any).system)) {
         await deleteAgnosticCampaignData(req.params.id).catch((e) => console.warn("[agnostic] campaign cleanup failed", e));
       }
       console.log(`[DELETE] Campaign ${req.params.id} deleted successfully`);

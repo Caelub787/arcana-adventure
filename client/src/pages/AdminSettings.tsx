@@ -68,7 +68,8 @@ import { LibraryItemSheet } from '@/components/admin/LibraryItemSheet';
 import { isWoundSystem } from "@shared/systemRules";
 import { CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS } from "@shared/ca";
 import { SWAMPY_WARREN_CONDITIONS, swampyWarrenCondition } from "@shared/swampy";
-import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS } from "@shared/systems";
+import { systemLabel, systemSlug as toSystemSlug, selectableSystemSlugs, SYSTEM_SLUGS, isAgnosticSystem } from "@shared/systems";
+import { agLibraryScope } from "@shared/agnostic/types";
 import { AgLibrary } from "@/agnostic/AgLibrary";
 
 type AdminView = 'swampy-warrens' | 'swampy-deck' | 'dashboard' | 'items' | 'item-templates' | 'crafter-recipe-templates' | 'species' | 'spells' | 'skills' | 'traits' | 'ca-abilities' | 'feat-trees' | 'classes' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells' | 'v3-spells' | 'element-requirements' | 'techniques' | 'technique-groups' | 'action-tokens' | 'advanced-item-types' | 'ammunition-types';
@@ -296,7 +297,7 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
   // one - the rest are half-built.
   const pickableSystems = selectableSystemSlugs(isAdmin);
   // Agnostic has one page (its own library), not the per-type views.
-  useEffect(() => { if (systemSlug === 'agnostic' && currentView !== 'dashboard') setCurrentView('dashboard'); }, [systemSlug, currentView]);
+  useEffect(() => { if (isAgnosticSystem(systemSlug) && currentView !== 'dashboard') setCurrentView('dashboard'); }, [systemSlug, currentView]);
   const isPersonalLibSystem = systemSlug === 'aa-v2' || systemSlug === 'aa-v3';
   // C.A. and Swampy also use the new @arcana/library-dialogs ItemDialog (a
   // blank customizable sheet) rather than the legacy form, which is built
@@ -1288,12 +1289,12 @@ export default function AdminSettings({ embedded = false, forcePersonal = false,
           {renderLibraryModeTabs()}
         </div>
 
-        {/* Agnostic keeps its own, entirely separate libraries. */}
-        {systemSlug === 'agnostic' && user && (
-          <AgLibrary scope={personalMode ? { kind: 'library', id: user.id } : { kind: 'admin', id: 'admin' }} />
+        {/* Agnostic (and each system built on it) keeps its own, entirely separate libraries. */}
+        {isAgnosticSystem(systemSlug) && user && (
+          <AgLibrary key={systemSlug} system={systemSlug} scope={agLibraryScope(personalMode ? 'library' : 'admin', user.id, systemSlug)} />
         )}
 
-        {currentView === 'dashboard' && systemSlug !== 'agnostic' && (
+        {currentView === 'dashboard' && !isAgnosticSystem(systemSlug) && (
           <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} isAdmin={isAdmin} personalMode={personalMode} />
         )}
 

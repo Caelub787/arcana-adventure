@@ -22,6 +22,27 @@ export interface AgScope {
   id: string;
 }
 export const scopeKey = (s: AgScope) => `${s.kind}:${s.id}`;
+
+/**
+ * Libraries per system. Plain Agnostic keeps the original ids (the user's id,
+ * "admin"); each system built on Agnostic gets its own, e.g. "<user>:ca-agnostic"
+ * and "admin:ca-agnostic", so their items never mix.
+ */
+export function agLibraryScope(kind: "library" | "admin", userId: string, system?: string | null): AgScope {
+  const base = kind === "admin" ? "admin" : userId;
+  return { kind, id: !system || system === "agnostic" ? base : `${base}:${system}` };
+}
+/** Which system a library belongs to ("agnostic" for the original ones); null for campaigns. */
+export function agLibrarySystem(scope: AgScope): string | null {
+  if (scope.kind === "campaign") return null;
+  const i = scope.id.lastIndexOf(":");
+  return i < 0 ? "agnostic" : scope.id.slice(i + 1);
+}
+/** The user (or "admin") a library belongs to. */
+export function agLibraryOwner(scope: AgScope): string {
+  const i = scope.id.lastIndexOf(":");
+  return i < 0 ? scope.id : scope.id.slice(0, i);
+}
 export function parseScopeKey(key: string): AgScope | null {
   const i = key.indexOf(":");
   if (i < 0) return null;

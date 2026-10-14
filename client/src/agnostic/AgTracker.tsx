@@ -10,6 +10,7 @@ import { AgPanel, AgSelector, PickField } from "./float";
 import { NotePicker, noteItems } from "./pickers";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useAgMaybe } from "./hooks";
+import { usePlayView } from "./viewMode";
 import { LayoutView } from "./widgets";
 import { LayoutEditor } from "./LayoutEditor";
 import { ColorInput, RefPicker } from "./pickers";
@@ -33,6 +34,7 @@ export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean
 function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number }) {
   const { state, openNote, viewer } = useAg();
   const [designing, setDesigning] = useState(false);
+  const play = usePlayView();
   const settings = state.settings;
   if (!settings) return null;
   const t = settings.tracker;
@@ -72,7 +74,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset }: { rollFeed?: Ro
               </div>
             );
           })}
-          {viewer.isGM && (
+          {viewer.isGM && !play && (
             <button type="button" onClick={() => setDesigning(true)} className="shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-400 hover:text-amber-300" title="Design the tracker" data-testid="ag-tracker-design"><Settings2 className="h-4 w-4" /></button>
           )}
         </div>
