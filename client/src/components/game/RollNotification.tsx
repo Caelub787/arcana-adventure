@@ -305,6 +305,13 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
   );
 }
 
+/**
+ * Characters shown on another tracker (CA Agnostic's player tracker, whose card's
+ * dice tray already shows their rolls): their corner popups are skipped too.
+ */
+let trackerPinnedNames = new Set<string>();
+export function setTrackerPinnedCharacterNames(names: Iterable<string>) { trackerPinnedNames = new Set(names); }
+
 export function RollNotificationContainer({ pinnedUsernames, pinnedCharacterNames }: {
   // A roll already showing live in the top-of-screen pinned-player bar
   // (matched by username, or by character name for a roll made as a
@@ -322,7 +329,8 @@ export function RollNotificationContainer({ pinnedUsernames, pinnedCharacterName
 
   const addNotification = useCallback((notification: RollNotification) => {
     const isPinned = !!pinnedUsernamesRef.current?.has(notification.username)
-      || !!(notification.characterName && pinnedCharacterNamesRef.current?.has(notification.characterName));
+      || !!(notification.characterName && pinnedCharacterNamesRef.current?.has(notification.characterName))
+      || !!(notification.characterName && trackerPinnedNames.has(notification.characterName));
     if (isPinned) return;
     setNotifications(prev => {
       const maxNotifications = style === 'compact' ? 6 : 4;

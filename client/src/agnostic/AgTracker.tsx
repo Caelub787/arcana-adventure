@@ -18,6 +18,7 @@ import { LayoutEditor } from "./LayoutEditor";
 import { ColorInput, RefPicker } from "./pickers";
 import { LookButton } from "./look";
 import { GuideButton } from "./AgGuide";
+import { setTrackerPinnedCharacterNames } from "@/components/game/RollNotification";
 import type { AgTokenBar } from "@shared/agnostic/types";
 
 /** A roll as the campaign's roll feed carries it (newest first). */
@@ -42,6 +43,13 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   const ca = system === "ca-agnostic";
   const play = usePlayView();
   const settings = state.settings;
+  // CA Agnostic: a character on the tracker shows its rolls in its card's dice tray,
+  // so the corner roll popups skip it.
+  const pinnedNames = ca ? (settings?.tracker.pinned ?? []).map((id) => state.notes.get(id)?.name).filter(Boolean).join("\u0001") : "";
+  useEffect(() => {
+    setTrackerPinnedCharacterNames(pinnedNames ? pinnedNames.split("\u0001") : []);
+    return () => setTrackerPinnedCharacterNames([]);
+  }, [pinnedNames]);
   if (!settings) return null;
   const t = settings.tracker;
   const notes = t.pinned.map((id) => state.notes.get(id)).filter(Boolean) as NonNullable<ReturnType<typeof state.notes.get>>[];
