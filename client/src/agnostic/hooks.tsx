@@ -148,9 +148,8 @@ export function useNoteFields(noteId: string): AgField[] {
   return useMemo(() => fieldsOf(state, noteId), [state, noteId]);
 }
 
-/** Notes reached from noteId by a connection label (client-visible links only). */
-export function follow(state: ScopeState, noteId: string, label: string): string[] {
-  const l = label.toLowerCase();
+/** Notes reached from noteId by one connection label (client-visible links only). */
+function followOne(state: ScopeState, noteId: string, l: string): string[] {
   if (l === "self" || !l) return [noteId];
   const out: string[] = [];
   for (const link of linksOfNote(state, noteId)) {
@@ -159,6 +158,31 @@ export function follow(state: ScopeState, noteId: string, label: string): string
   }
   return out.filter((id) => state.notes.has(id));
 }
+
+/**
+ * Notes reached from noteId by a connection label, or a path of them:
+ * "ability.holder" = the holder of this sheet's ability; "abilities.techniques"
+ * = every technique of every ability this sheet has.
+ */
+export function follow(state: ScopeState, noteId: string, label: string): string[] {
+  return Array.from(followWithParents(state, noteId, label).keys());
+}
+
+/** Like follow, with the sheet each one was reached from (its direct connection: what to disconnect it from). */
+export function followWithParents(state: ScopeState, noteId: string, label: string): Map<string, string> {
+  const path = label.toLowerCase().split(".").filter(Boolean);
+  let set = new Map<string, string>([[noteId, noteId]]);
+  for (const seg of path.length ? path : ["self"]) {
+    if (seg === "self") continue;
+    const next = new Map<string, string>();
+    for (const id of Array.from(set.keys())) for (const to of followOne(state, id, seg)) if (!next.has(to)) next.set(to, id);
+    set = next;
+  }
+  return set;
+}
+
+/** Is this connection label a path through other sheets ("abilities.techniques")? */
+export const isLinkPath = (label: string) => label.split(".").filter((x) => x && x !== "self").length > 1;
 
 export function connectionLabels(state: ScopeState, noteId: string): string[] {
   const set = new Set<string>();

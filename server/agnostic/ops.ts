@@ -6,7 +6,7 @@ import type {
   AgAcl, AgAction, AgActionChoice, AgActionOptions, AgActionResult, AgActionStep, AgCampaignSettings, AgRollMods, AgRollSpec, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
   AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
 } from "@shared/agnostic/types";
-import { defaultCampaignSettings, isValidKey, slugifyKey } from "@shared/agnostic/types";
+import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
   canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
@@ -16,6 +16,7 @@ import type { AgOp, AgOpResult } from "@shared/agnostic/protocol";
 import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
 import * as snap from "./snapshot";
+import * as docs from "./docs";
 import { applyCAKit } from "./kits/ca";
 import { systemOfScope } from "./systemSeed";
 import * as repo from "./repo";
@@ -64,6 +65,7 @@ function cleanOptions(raw: unknown): AgFieldOptions {
   if (typeof o.tooltip === "string" && o.tooltip.trim()) out.tooltip = o.tooltip.slice(0, 8000);
   if (typeof o.follows === "string" && isValidKey(o.follows)) out.follows = o.follows;
   if (typeof o.shield === "string" && isValidKey(o.shield)) out.shield = o.shield;
+  if (o.isColor === true) out.isColor = true;
   return out;
 }
 
@@ -110,6 +112,8 @@ function cleanLabel(s: unknown, max = 120) {
   return v;
 }
 const labelKey = (s: unknown) => slugifyKey(String(s ?? "")).slice(0, 40);
+/** A connection label or a path of them ("ability.holder"). */
+const pathKey = (s: unknown) => String(s ?? "").split(".").map(labelKey).filter(Boolean).slice(0, 4).join(".");
 
 /** Presentation only — but still bounded: short strings, finite numbers, known keys. */
 function cleanLook(raw: unknown): AgLook | undefined {
@@ -189,7 +193,7 @@ function cleanActionOptions(raw: unknown): AgActionOptions | undefined {
   if (o.roll && typeof o.roll === "object") {
     const r = o.roll;
     out.roll = {
-      via: labelKey(r.via ?? "") || "",
+      via: pathKey(r.via ?? "") || "",
       count: formula(r.count, "Dice", "1"),
       die: formula(r.die, "Die", "20"),
       add: typeof r.add === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.add) ? r.add : "",
@@ -422,6 +426,25 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         return { noteId: n.id };
       });
     }
+    case "note.attach": {
+      const host = noteOf(store, body.hostNoteId);
+      const n = noteOf(store, body.noteId);
+      if (host.id === n.id) fail("A sheet can't go onto itself");
+      if (n.isTemplate) fail("Drag a sheet, not a template — make one from it first");
+      // The GM, or a player putting their own sheet onto their own character.
+      if (!viewer.isGM && !(n.ownerIds.includes(viewer.userId) && host.ownerIds.includes(viewer.userId))) fail("Only the GM can do that");
+      // The host's lists say where that kind of sheet goes (its page, and its sections).
+      const names = [noteDocName(host.id, host.docEpoch), ...Array.from(store.regions.values()).filter((r) => r.noteId === host.id).map((r) => regionDocName(r.id, host.docEpoch))];
+      const list = (await docs.linkListsOf(names)).find((l) => !l.label.includes(".") && Array.isArray(l.config?.add?.types) && l.config.add.types.includes(n.type));
+      if (!list) fail(`${host.name || "That sheet"} has no list for ${n.type} sheets`);
+      const label = labelKey(list!.label), reverse = labelKey(list!.config.add.reverse) || "owner";
+      return store.run(async (cs) => {
+        const already = store.linksOf(n.id).some((l) => (l.fromNoteId === n.id && l.toNoteId === host.id && l.label === reverse) || (l.toNoteId === n.id && l.fromNoteId === host.id && l.label === label));
+        if (already) return { ok: true as const, label, already: true };
+        await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
+        return { ok: true as const, label };
+      });
+    }
     case "note.removeLinked": {
       const host = noteOf(store, body.hostNoteId);
       const n = noteOf(store, body.noteId);
@@ -588,7 +611,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         noteOf(store, m.noteId);
         const mod: AgModifier = {
           id: m.id && store.modifiers.has(m.id) ? m.id : randomUUID(), noteId: m.noteId,
-          via: labelKey(m.via) || "self", targetKey: labelKey(m.targetKey), op: m.op === "multiply" ? "multiply" : "add",
+          via: pathKey(m.via) || "self", targetKey: labelKey(m.targetKey), op: m.op === "multiply" ? "multiply" : "add",
           amount: String(m.amount ?? "0").slice(0, 500), condition: m.condition ? String(m.condition).slice(0, 500) : null,
           label: m.label ? cleanLabel(m.label, 80) : null,
         };
@@ -836,8 +859,23 @@ async function absorb(store: ScopeStore, f: AgField, delta: number, cs: ChangeSe
 const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
 /** The character a sheet stands for: itself, or the character/NPC it hangs off (a sword's owner). */
 function personOf(store: ScopeStore, note: AgNote): AgNote | undefined {
-  if (isPerson(note)) return note;
-  for (const l of Array.from(store.links.values())) if (l.fromNoteId === note.id && isPerson(store.notes.get(l.toNoteId))) return store.notes.get(l.toNoteId);
+  // The nearest character up its connections: a sword's owner, a technique's ability's holder.
+  let level = [note.id];
+  const seen = new Set(level);
+  for (let depth = 0; depth < 4 && level.length; depth++) {
+    const n = store.notes.get(level[0]);
+    if (depth === 0 && isPerson(n)) return n;
+    const next: string[] = [];
+    for (const id of level) {
+      for (const l of store.linksOf(id)) {
+        if (l.fromNoteId !== id || seen.has(l.toNoteId)) continue;
+        const to = store.notes.get(l.toNoteId);
+        if (isPerson(to)) return to;
+        seen.add(l.toNoteId); next.push(l.toNoteId);
+      }
+    }
+    level = next;
+  }
   return undefined;
 }
 

@@ -164,7 +164,7 @@ const TOPICS: Topic[] = [
         </Steps>
         <Tip>Everything is live. When anyone changes HP (on the sheet, the player tracker card or the token) every screen updates at once.</Tip>
         <H>GM view and Player view</H>
-        <P>The button under Search on the left of the map switches between them (just for you, in this campaign).</P>
+        <P>The button under Search on the left of the map — or <Ui>Ctrl+K</Ui> (<Ui>⌘K</Ui> on a Mac) — switches between them (just for you, in this campaign).</P>
         <Bullets>
           <li><b>GM view</b> (hammer): build. Edit the pages, insert and resize things, and use Values, Links, Settings, Templates and Components. GMs start here.</li>
           <li><b>Player view</b> (controller): play. Pages are locked and the building tools are hidden, but values, bars, buttons, items and wounds still work. Players start here; a player who owns a sheet can switch to edit its layout if the GM allows it.</li>
@@ -434,6 +434,14 @@ const TOPICS: Topic[] = [
           <li><b>Add button</b>: which templates it offers (e.g. only <Code>item</Code> sheets), what the new sheet calls this one (<Code>owner</Code>) and whether existing sheets can be picked too.</li>
           <li><b>Remove</b>: disconnect only, delete the sheet, or no remove button.</li>
         </Steps>
+        <H>Through other sheets</H>
+        <Bullets>
+          <li>A connection can be a <b>path</b>: <Code>abilities.techniques</Code> lists every technique of every ability this sheet has. Its <Ui>Add</Ui> asks which ability first; remove takes a row off the sheet it hangs from.</li>
+          <li>A column shown as <Ui>Sheets it's connected to (tags)</Ui> names a connection of each row (e.g. <Code>ability</Code>) and shows those sheets as tags — click one to open it. Filter chips and edge colours can use it too.</li>
+          <li>Tags are coloured by the connected sheet's colour value: a text value with <Ui>It's a colour</Ui> ticked in Values (edited with a colour picker).</li>
+          <li>Paths work everywhere a connection goes: a Rolls block's <Ui>Who rolls</Ui> (<Code>ability.holder</Code>), an Effects block, and formulas (<Code>@ability.holder.anemos_die</Code>).</li>
+        </Bullets>
+        <Tip>Drag a sheet from the sidebar onto an open sheet to put it in that sheet's list for its kind — an item into the inventory, a trait into the traits. It's connected the way that list's <Ui>Add</Ui> would.</Tip>
         <Tip>Players only see <Ui>Add</Ui> templates that have <Ui>Settings → Players can add this</Ui> ticked. Everything else stays GM-only.</Tip>
         <H>Totals and bonuses</H>
         <Bullets>
@@ -462,7 +470,7 @@ const TOPICS: Topic[] = [
           <li>Rank: <Code>tier(energy_pool, 0, 20, 30, …)</Code> finds the step on the ladder; <Code>choose(rank_index, 20, 25, …)</Code> reads Max HP off a list.</li>
           <li>Skill rolls: <Code>roll(1, might_die) + athletics</Code>.</li>
           <li>Points spent use <Code>base(athletics)</Code>, so a wound's −2 doesn't give points back.</li>
-          <li>Abilities are their own sheets (<b>CA Ability</b>) held by a character, listed on the Ability tab with search and filters. Each ability has <b>Rolls</b>: as many as you like (an attack and its damage, two with different costs…), each with its own name, dice, die (fixed or the holder's attribute die), a value it adds (a skill), a bonus and an Energy / Focus cost. Pressing one spends the cost first — or says why it can't. Tick <Ui>Button on the character sheet</Ui> for the ones that show on the Ability tab. Items have the same Rolls (a weapon starts with Strike and Damage).</li>
+          <li><b>Abilities</b> (<b>CA Ability</b>) are sets — gravity control, ember arts — each with a tag colour; their single uses are <b>Techniques</b> (<b>CA Technique</b>). Open an ability to see its techniques and <Ui>Add</Ui> new ones. The character's Ability tab lists the abilities, then every technique of every ability, tagged with (and filterable by) its ability. Drag an ability, item or trait from the sidebar onto a character to give it to them; the remove button only takes it off that character. Each technique has <b>Rolls</b>: as many as you like (an attack and its damage, two with different costs…), each with its own name, dice, die (fixed or the character's attribute die), a value it adds (a skill), a bonus and an Energy / Focus cost. Pressing one spends the cost first — or says why it can't. Tick <Ui>Button on the character sheet</Ui> for the ones that show on the Ability tab. The character who has its ability rolls and pays (<Code>ability.holder</Code>). Items have the same Rolls (a weapon starts with Strike and Damage).</li>
           <li>Usable Energy is <Code>choose(rank_index, …)</Code> — a set amount per star, so it only rises on a breakthrough. Max Focus is <Code>6 + rank_index</Code> (+1 per star). Every main rank (Silver, Gold…) adds one Attribute Point and every star one Skill Point (<Code>attr_budget</Code>, <Code>skill_budget</Code>).</li>
           <li><b>CA Training Item</b> (manuals, pills, elixirs): pick what it <b>Raises</b> and by how much, and/or the points it grants. <Ui>Use</Ui> raises that value for good on its owner (with a matching bonus point, so earned points aren't used up), adds granted points to <Code>bonus_attr_points</Code> / <Code>bonus_skill_points</Code>, and uses one up. Its “Change a value” step targets <Code>@owner.{"{raise_key}"}</Code> — a target worked out from the sheet, which any button can use.</li>
           <li>HP, Energy and Focus <b>go up with</b> their maximum (a value setting): a rank up adds its extra HP to your current HP instead of refilling it. HP's <b>temporary points</b> are Temp HP — taken first, shown in green on the bar (and on the token).</li>
@@ -514,7 +522,7 @@ const TOPICS: Topic[] = [
           <li>Edit the card design with the layout editor: portrait, name, bars, values, buttons, last roll, components. Make several cards and choose which kind of sheet (or which sheet) uses which.</li>
         </Steps>
         <P>Clicking a card opens the sheet; bars and buttons on the card work directly.</P>
-        <P><b>It's the dice tray.</b> Every roll made as that sheet — its buttons, its items' and abilities' buttons, its owner's own rolls — slides out from its card, tumbles, settles on the total and tucks away. Hover the card to see the last roll again; click the roll for the recent ones. In CA Agnostic each roll shows its working (the dice, what was added, the total) here, in chat and in the tracker's <Ui>Roll history</Ui> button. Turn the tray off in <Ui>Design the player tracker</Ui> → <Ui>Dice tray</Ui>.</P>
+        <P><b>It's the dice tray.</b> Every roll made as that sheet — its buttons, its items' and abilities' buttons, its owner's own rolls — slides out from its card, tumbles, settles on the total and tucks away. Hover the card to see the last roll again; click the roll for the recent ones. Each roll's working (the dice, what was added, the total) is in chat and in the roll history (click the roll; in CA Agnostic also the tracker card's <Ui>Roll history</Ui> button). Turn the tray off in <Ui>Design the player tracker</Ui> → <Ui>Dice tray</Ui>.</P>
         <H>Tokens</H>
         <Bullets>
           <li>Drag a sheet from the list onto the map, or right-click it → <Ui>Place on battlemap</Ui>. Any sheet can be a token; double-click a token to open its sheet.</li>

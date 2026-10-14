@@ -48,11 +48,21 @@ export class AgComputer {
     m.set(key, arr);
   }
 
-  /** Notes reached from `noteId` via a connection label ("self" = itself). */
+  /**
+   * Notes reached from `noteId` via a connection label ("self" = itself), or a
+   * path of them: "ability.holder" = the holder of this sheet's ability.
+   */
   follow(noteId: string, label: string): string[] {
     const l = label.toLowerCase();
     if (l === "self" || l === "") return [noteId];
-    return (this.out.get(noteId)?.get(l) ?? []).filter((id) => this.data.notes.has(id));
+    let set = [noteId];
+    for (const seg of l.split(".").filter(Boolean)) {
+      if (seg === "self") continue;
+      const next = new Set<string>();
+      for (const id of set) for (const to of this.out.get(id)?.get(seg) ?? []) if (this.data.notes.has(to)) next.add(to);
+      set = Array.from(next);
+    }
+    return set;
   }
 
   labelsFrom(noteId: string): string[] {

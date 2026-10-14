@@ -261,3 +261,24 @@ export function plainText(state: string | null): string {
   doc.destroy();
   return text;
 }
+
+/** Every connections list (agLinks) on these docs: its connection and its settings. */
+export async function linkListsOf(names: string[]): Promise<Array<{ label: string; config: any }>> {
+  const out: Array<{ label: string; config: any }> = [];
+  for (const name of names) {
+    const state = await stateOf(name);
+    if (!state) continue;
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, fromB64(state));
+    const walk = (node: Y.XmlFragment | Y.XmlElement) => {
+      for (const child of node.toArray()) {
+        if (!(child instanceof Y.XmlElement)) continue;
+        if (child.nodeName === "agLinks") out.push({ label: String(child.getAttribute("label") ?? ""), config: child.getAttribute("config") ?? {} });
+        walk(child);
+      }
+    };
+    walk(doc.getXmlFragment("default"));
+    doc.destroy();
+  }
+  return out;
+}

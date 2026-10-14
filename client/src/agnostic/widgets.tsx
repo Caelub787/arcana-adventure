@@ -330,6 +330,7 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
   if (!editable) {
     if (field.type === "image") return v ? <img src={String(v)} alt={field.label} className={`max-w-full rounded ${className}`} /> : <span className="text-stone-500">—</span>;
     if (field.type === "boolean") return <span className={className}>{v ? "✓" : "✗"}</span>;
+    if (field.options.isColor && typeof v === "string") return <span className={`inline-block h-4 w-6 rounded border border-stone-700 align-middle ${className}`} style={{ background: v }} title={v} />;
     return <span className={className}>{formatValue(v, field.options.decimals)}</span>;
   }
   switch (field.type) {
@@ -360,6 +361,12 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
       );
     case "image":
       return <ImageFieldInput field={field} className={className} />;
+    case "text":
+      if (field.options.isColor) {
+        const c = typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : "#d4a24c";
+        return <input type="color" value={c} onChange={(e) => w.set(field, e.target.value)} className={`h-7 w-10 bg-transparent border border-stone-700 rounded cursor-pointer ${className}`} aria-label={field.label} title={field.label} />;
+      }
+      return <CommitInput value={String(v ?? "")} className={`h-7 sm:h-6 ${className}`} onCommit={(s) => w.set(field, s)} aria-label={field.label} />;
     default:
       return <CommitInput value={String(v ?? "")} className={`h-7 sm:h-6 ${className}`} onCommit={(s) => w.set(field, s)} aria-label={field.label} />;
   }

@@ -19,6 +19,12 @@ export type AgOp =
   | { op: "note.createLinked"; hostNoteId: string; templateId?: string | null; type?: string; name?: string; label: string; reverseLabel: string }
   /** Take a connected sheet out of a table: disconnect it, or delete it. */
   | { op: "note.removeLinked"; hostNoteId: string; noteId: string; mode: "disconnect" | "delete" }
+  /**
+   * Put an existing sheet onto another (dragged from the sidebar onto a character):
+   * connected the way the host's list for that kind of sheet adds them (an item into
+   * the inventory, an ability into the abilities, a technique into an ability).
+   */
+  | { op: "note.attach"; hostNoteId: string; noteId: string }
   /** Templates this viewer may add from (players only see ones the GM allowed). */
   | { op: "note.creatableTemplates"; types?: string[] }
   /** Add a ready-made starter kit (templates, and optionally example sheets) to this scope. */

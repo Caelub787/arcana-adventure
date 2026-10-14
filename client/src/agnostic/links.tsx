@@ -9,7 +9,7 @@ import type { AgField, AgLinkColumn, AgLinksConfig, AgLook, AgNote } from "@shar
 import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useToast } from "@/hooks/use-toast";
-import { useAg, follow, resolveRef, effOf, usePerms } from "./hooks";
+import { useAg, follow, followWithParents, isLinkPath, resolveRef, effOf, usePerms } from "./hooks";
 import { Portrait, FieldInput, ResourceBar, useFieldWriter, EditOnDoubleClick, CommitInput, ActionButton } from "./widgets";
 import { RollsList } from "./rolls";
 import { EffectsList } from "./effects";
@@ -20,6 +20,36 @@ export const normCol = (c: string | AgLinkColumn): AgLinkColumn => (typeof c ===
 
 function colLabel(c: AgLinkColumn, sample?: AgField) {
   return c.label || sample?.label || c.ref.replace(/_/g, " ");
+}
+
+type State = ReturnType<typeof useAg>["state"];
+/** A sheet's own colour: its first value marked "is a colour" (e.g. an ability's tag colour). */
+export function noteColor(state: State, noteId: string): string | undefined {
+  for (const f of Array.from(state.fields.values())) {
+    if (f.noteId === noteId && f.options.isColor && typeof f.value === "string" && /^#[0-9a-f]{3,8}$/i.test(f.value)) return f.value;
+  }
+  return undefined;
+}
+
+/** Sheets a row is connected to (a "connection" column), as small coloured tags; click one to open it. */
+function ConnectionTags({ noteId, label, color }: { noteId: string; label: string; color?: string }) {
+  const { state, openNote } = useAg();
+  const ids = follow(state, noteId, label);
+  if (!ids.length) return <span className="text-stone-600">—</span>;
+  return (
+    <span className="inline-flex flex-wrap gap-1" data-no-open>
+      {ids.map((id) => {
+        const col = noteColor(state, id) ?? color ?? "#d4a24c";
+        return (
+          <button key={id} type="button" onClick={(e) => { e.stopPropagation(); openNote(id); }}
+            className="inline-flex items-center gap-1 h-5 px-1.5 rounded-full border text-[10.5px] font-semibold hover:brightness-125"
+            style={{ borderColor: col, color: col, background: `color-mix(in srgb, ${col} 14%, transparent)` }} data-testid={`ag-conn-tag-${state.notes.get(id)?.name}`}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: col }} />{state.notes.get(id)?.name || "Untitled"}
+          </button>
+        );
+      })}
+    </span>
+  );
 }
 
 export function LinksTable({ noteId, label, columns: rawColumns, config = {}, look }: {
@@ -35,14 +65,35 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const [sort, setSort] = useState(config.sortBy ?? "name");
   const [desc, setDesc] = useState(false);
   const [adding, setAdding] = useState<null | SelItem[]>(null);
-  const ids = follow(state, noteId, label);
+  // Adding to a path list: first which sheet it goes on (e.g. which ability), then what.
+  const [addHost, setAddHost] = useState<string>(noteId);
+  const [pickingHost, setPickingHost] = useState<null | SelItem[]>(null);
+  // A path ("abilities.techniques") lists the sheets reached through others; parents = what each hangs off.
+  const parents = followWithParents(state, noteId, label);
+  const ids = Array.from(parents.keys());
+  const viaPath = isLinkPath(label);
   const fieldOf = (id: string, ref: string) => resolveRef(state, id, ref)[0];
-  const sortVal = (id: string) => (sort === "name" ? (state.notes.get(id)?.name ?? "").toLowerCase() : (() => { const v = effOf(fieldOf(id, sort)); return typeof v === "number" ? v : String(v ?? "").toLowerCase(); })());
-  const chipValues = config.filterBy ? Array.from(new Set(ids.map((id) => String(effOf(fieldOf(id, config.filterBy!)) ?? "")).filter(Boolean))).sort() : [];
-  const chipColor = (v: string) => (config.filterBy ? ids.map((id) => fieldOf(id, config.filterBy!)).find((f) => f?.options.choiceColors?.[v])?.options.choiceColors?.[v] : undefined);
+  // A "connection" column's value is the names of the sheets it shows (filter / sort / colour by ability…).
+  const connCol = (ref: string) => columns.find((c) => c.ref === ref && c.display === "connection");
+  const textOf = (id: string, ref: string) => connCol(ref) ? follow(state, id, ref).map((x) => state.notes.get(x)?.name ?? "").join(", ") : String(effOf(fieldOf(id, ref)) ?? "");
+  const sortVal = (id: string) => (sort === "name" ? (state.notes.get(id)?.name ?? "").toLowerCase() : connCol(sort) ? textOf(id, sort).toLowerCase() : (() => { const v = effOf(fieldOf(id, sort)); return typeof v === "number" ? v : String(v ?? "").toLowerCase(); })());
+  const chipValues = config.filterBy ? Array.from(new Set(ids.flatMap((id) => connCol(config.filterBy!) ? follow(state, id, config.filterBy!).map((x) => state.notes.get(x)?.name ?? "") : [textOf(id, config.filterBy!)]).filter(Boolean))).sort() : [];
+  const chipColor = (v: string) => {
+    if (!config.filterBy) return undefined;
+    if (connCol(config.filterBy)) { const hit = ids.flatMap((id) => follow(state, id, config.filterBy!)).find((x) => state.notes.get(x)?.name === v); return hit ? noteColor(state, hit) : undefined; }
+    return ids.map((id) => fieldOf(id, config.filterBy!)).find((f) => f?.options.choiceColors?.[v])?.options.choiceColors?.[v];
+  };
+  const accentOf = (id: string): string | undefined => {
+    if (!config.accentBy) return undefined;
+    if (connCol(config.accentBy)) { const hit = follow(state, id, config.accentBy)[0]; return hit ? noteColor(state, hit) : undefined; }
+    const f = fieldOf(id, config.accentBy);
+    // A colour value (an ability's tag colour) is the colour itself.
+    if (f?.options.isColor) { const v = effOf(f); return typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v) ? v : undefined; }
+    return f?.options.choiceColors?.[String(effOf(f) ?? "")];
+  };
   const rows = ids
     .filter((id) => !q.trim() || (state.notes.get(id)?.name ?? "").toLowerCase().includes(q.trim().toLowerCase()))
-    .filter((id) => !chip || String(effOf(fieldOf(id, config.filterBy!)) ?? "") === chip)
+    .filter((id) => !chip || (connCol(config.filterBy!) ? follow(state, id, config.filterBy!).some((x) => state.notes.get(x)?.name === chip) : textOf(id, config.filterBy!) === chip))
     .sort((a, b) => { const x = sortVal(a), y = sortVal(b); const r = x < y ? -1 : x > y ? 1 : 0; return desc ? -r : r; });
   const sample = ids.length ? ids[0] : undefined;
 
@@ -56,14 +107,21 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     return !!n && n.ownerIds.includes(viewer.userId);
   };
 
-  const openAdd = async () => {
+  const lastLabel = label.split(".").filter(Boolean).pop() ?? label;
+  const openAddPath = () => {
+    const hosts = follow(state, noteId, label.split(".").filter(Boolean).slice(0, -1).join("."));
+    if (hosts.length === 1) { setAddHost(hosts[0]); void openAdd(hosts[0]); return; }
+    if (!hosts.length) { toast({ title: "Nothing to add to yet", description: "Add the sheets these go on first." }); return; }
+    setPickingHost(hosts.map((id) => { const n = state.notes.get(id)!; return { id, name: n.name || "Untitled", image: n.portrait, sub: `Add to ${n.name || "this"}` }; }));
+  };
+  const openAdd = async (hostId = noteId) => {
     try {
       const types = config.add?.types?.length ? config.add.types : undefined;
       const { templates } = await request<{ templates: Array<{ id: string; name: string; type: string; portrait: string | null; description: string | null }> }>({ op: "note.creatableTemplates", types });
       const items: SelItem[] = templates.map((t) => ({ id: `t:${t.id}`, name: t.name, image: t.portrait, group: "New", sub: t.description || `New ${agTypeLabel(t.type)}`, badge: agTypeLabel(t.type), icon: <Package className="h-4 w-4" /> }));
       if (viewer.isGM && config.add?.existing !== false) {
         for (const n of Array.from(state.notes.values())) {
-          if (n.isTemplate || n.id === noteId || ids.includes(n.id) || (types && !types.includes(n.type))) continue;
+          if (n.isTemplate || n.id === hostId || n.id === noteId || ids.includes(n.id) || (types && !types.includes(n.type))) continue;
           items.push({ id: `n:${n.id}`, name: n.name || "Untitled", image: n.portrait, group: "Existing sheets", sub: `Connect this ${agTypeLabel(n.type).toLowerCase()}`, badge: agTypeLabel(n.type) });
         }
         if (types) for (const t of types) items.push({ id: `b:${t}`, name: `Blank ${agTypeLabel(t)}`, group: "New", sub: "An empty sheet to fill in", icon: <Plus className="h-4 w-4" /> });
@@ -73,10 +131,11 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   };
   const pick = async (id: string) => {
     const reverse = config.add?.reverse || "owner";
+    const host = viaPath ? addHost : noteId;
     try {
-      if (id.startsWith("n:")) await request({ op: "link.create", fromNoteId: id.slice(2), toNoteId: noteId, label: reverse, reverseLabel: label });
-      else if (id.startsWith("t:")) await request({ op: "note.createLinked", hostNoteId: noteId, templateId: id.slice(2), label, reverseLabel: reverse });
-      else if (id.startsWith("b:")) await request({ op: "note.createLinked", hostNoteId: noteId, type: id.slice(2), name: `New ${agTypeLabel(id.slice(2))}`, label, reverseLabel: reverse });
+      if (id.startsWith("n:")) await request({ op: "link.create", fromNoteId: id.slice(2), toNoteId: host, label: reverse, reverseLabel: lastLabel });
+      else if (id.startsWith("t:")) await request({ op: "note.createLinked", hostNoteId: host, templateId: id.slice(2), label: lastLabel, reverseLabel: reverse });
+      else if (id.startsWith("b:")) await request({ op: "note.createLinked", hostNoteId: host, type: id.slice(2), name: `New ${agTypeLabel(id.slice(2))}`, label: lastLabel, reverseLabel: reverse });
       toast({ title: "Added" });
     } catch (e: any) { toast({ title: "Couldn't add it", description: e.message, variant: "destructive" }); }
   };
@@ -84,7 +143,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     const n = state.notes.get(id);
     const del = removeMode === "delete";
     agConfirm(del ? `“${n?.name}” is deleted for everyone.` : `“${n?.name}” stays as a sheet, just no longer connected here.`, { title: del ? `Delete “${n?.name}”?` : `Remove “${n?.name}” from this list?`, confirm: del ? "Delete" : "Remove" })
-      .then((ok) => ok && request({ op: "note.removeLinked", hostNoteId: noteId, noteId: id, mode: del ? "delete" : "disconnect" }).catch((e: any) => toast({ title: "Couldn't remove it", description: e.message, variant: "destructive" })));
+      .then((ok) => ok && request({ op: "note.removeLinked", hostNoteId: parents.get(id) ?? noteId, noteId: id, mode: del ? "delete" : "disconnect" }).catch((e: any) => toast({ title: "Couldn't remove it", description: e.message, variant: "destructive" })));
   };
 
   const fontStyle: React.CSSProperties = { fontSize: look?.fontSize, color: look?.textColor };
@@ -106,7 +165,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           <button type="button" onClick={() => setDesc(!desc)} className="h-8 w-7 grid place-items-center rounded-md border border-stone-700 bg-stone-900 text-stone-400" title={desc ? "Descending" : "Ascending"}>{desc ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}</button>
         </span>
       )}
-      {mayAdd && <button type="button" onClick={openAdd} className="ml-auto h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1" data-testid="ag-links-add"><Plus className="h-3.5 w-3.5" /> Add</button>}
+      {mayAdd && <button type="button" onClick={() => (viaPath ? openAddPath() : openAdd())} className="ml-auto h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1" data-testid="ag-links-add"><Plus className="h-3.5 w-3.5" /> Add</button>}
       {chipValues.length > 1 && (
         <div className="w-full flex gap-1 overflow-x-auto no-scrollbar">
           {["", ...chipValues].map((v) => (
@@ -120,6 +179,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const cell = (id: string, c: AgLinkColumn, compact = false) => {
     if (c.display === "rolls") return <RollsList noteId={id} compact={compact} />;
     if (c.display === "effects") return <EffectsList noteId={id} />;
+    if (c.display === "connection") return <ConnectionTags noteId={id} label={c.ref} color={c.color} />;
     if (c.display === "button") {
       // A button on the connected sheet, found by its name ("Use", "Strike"…).
       const want = c.ref.trim().toLowerCase();
@@ -169,13 +229,13 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     const buttons = columns.filter((c) => c.display === "button");
     const rollCols = columns.filter((c) => c.display === "rolls");
     const effectCols = columns.filter((c) => c.display === "effects");
+    const connCols = columns.filter((c) => c.display === "connection");
     return (
       <div className="space-y-2" style={fontStyle} data-testid="ag-links">
         {toolbar}
         {rows.map((id) => {
           const n = state.notes.get(id)!;
-          const accentF = config.accentBy ? fieldOf(id, config.accentBy) : undefined;
-          const accent = accentF?.options.choiceColors?.[String(effOf(accentF) ?? "")];
+          const accent = accentOf(id);
           return (
             <div key={id} role="button" tabIndex={0} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a, [data-no-open]")) openNote(id); }} onKeyDown={(e) => { if (e.key === "Enter") openNote(id); }}
               className="flex items-center gap-3 p-2.5 rounded-lg bg-stone-900/80 border hover:brightness-110 cursor-pointer" style={{ borderColor: accent ?? look?.border ?? "#44403c" }} data-testid={`ag-links-row-${n.name}`}>
@@ -184,6 +244,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <RowName note={n} />
                   {badges.map((c) => <React.Fragment key={c.ref}>{cell(id, c)}</React.Fragment>)}
+                  {connCols.map((c) => <React.Fragment key={`c-${c.ref}`}>{cell(id, c)}</React.Fragment>)}
                 </div>
                 {(stats.length > 0 || bars.length > 0) && (
                   <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-stone-400" data-no-open>
@@ -202,7 +263,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           );
         })}
         {!rows.length && empty}
-        {adding && <AgSelector title={`Add to ${label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
       </div>
     );
   }
@@ -214,7 +276,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
         <table className="w-full text-sm" style={{ ...fontStyle, fontStyle: look?.italic ? "italic" : undefined }}>
           <thead className={`${look?.color ? "" : "bg-stone-800/80"} text-stone-300 sticky top-0`} style={{ background: look?.color, color: look?.textColor, fontWeight: look?.bold ? 700 : undefined }}>
             <tr>
-              <th className="text-left px-2 py-1 font-medium">{label.replace(/_/g, " ") || "Connected"}</th>
+              <th className="text-left px-2 py-1 font-medium">{lastLabel.replace(/_/g, " ") || "Connected"}</th>
               {columns.map((c) => { const f = sample ? fieldOf(sample, c.ref) : undefined; return <th key={c.ref} className="text-left px-2 py-1 font-medium"><span className="inline-flex items-center gap-1">{colLabel(c, f)}{f?.options.tooltip && <TipIcon text={f.options.tooltip} size={11} />}</span></th>; })}
               {removeMode !== "none" && <th className="w-8" />}
             </tr>
@@ -234,7 +296,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           </tbody>
         </table>
       </div>
-      {adding && <AgSelector title={`Add to ${label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+      {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+      {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
     </div>
   );
 }
@@ -279,7 +342,7 @@ function ToggleCell({ field, label }: { field: AgField; label: string }) {
 // --------------------------------------------------------------------------- settings
 export interface LinksSettings { label: string; columns: Array<string | AgLinkColumn>; config?: AgLinksConfig }
 
-const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"], ["text", "Text (in full)"], ["button", "Its button (by name)"], ["rolls", "Its rolls (all shown ones)"], ["effects", "Its effects (what it changes)"]];
+const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"], ["text", "Text (in full)"], ["button", "Its button (by name)"], ["rolls", "Its rolls (all shown ones)"], ["effects", "Its effects (what it changes)"], ["connection", "Sheets it's connected to (tags)"]];
 
 /** Everything a connections table can do, in one panel. */
 export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string; value: LinksSettings; onChange: (v: LinksSettings) => void }) {
@@ -316,7 +379,7 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
   return (
     <div className="space-y-2 text-stone-200" data-testid="ag-links-config">
       {row("Connection", <>
-        <input list="ag-link-labels-cfg" value={value.label} placeholder="e.g. items" onChange={(e) => onChange({ ...value, label: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="h-7 flex-1 min-w-[120px] bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-links-label" />
+        <input list="ag-link-labels-cfg" value={value.label} placeholder="e.g. items" onChange={(e) => onChange({ ...value, label: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, "_") })} className="h-7 flex-1 min-w-[120px] bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-links-label" />
         <datalist id="ag-link-labels-cfg">{labels.map((l) => <option key={l} value={l} />)}</datalist>
       </>)}
       {row("Show as", (

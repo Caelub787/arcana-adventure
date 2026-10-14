@@ -12,8 +12,13 @@ import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign } from "./doc";
 import {
-  CA_KIT_FOLDER, rankTooltip, abilityTabContent, abilityTemplateSnapshot, abilityPage, itemRollsNodes, ABILITY_LIST_COLUMNS,
-  FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES, ABILITY_HELP, INVENTORY_HELP,
+  CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
+  // Levels 1–7 built the single-use abilities that level 8 turns into techniques.
+  legacyAbilityTabContent as abilityTabContent, legacyAbilityTemplateSnapshot as abilityTemplateSnapshot, legacyAbilityPage as abilityPage,
+  LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
+  abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, techniqueAbilityNode,
+  TECHNIQUE_VIA, TECHNIQUE_TEMPLATE_DESCRIPTION, INVENTORY_HELP, abilityColor,
+  FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
@@ -22,7 +27,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 7;
+export const CA_KIT_LEVEL = 8;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -42,6 +47,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 5) await upgrade5(store, characterTemplates);
   if (level < 6) await upgrade6(store, characterTemplates);
   if (level < 7) await upgrade7(store, characterTemplates);
+  if (level < 8) await upgrade8(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -256,7 +262,7 @@ async function upgrade2(store: ScopeStore, characterTemplates: AgNote[]) {
         }
       }
       // The help lines under the lists describe the rolls now.
-      for (const [starts, text] of [["Use spends the ability", ABILITY_HELP], ["Click an item to open it: its Use, Strike", INVENTORY_HELP]] as const) {
+      for (const [starts, text] of [["Use spends the ability", ABILITY_HELP], ["Click an item to open it: its Use, Strike", LEGACY_INVENTORY_HELP]] as const) {
         for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).startsWith(starts))) {
           const parent = para.parent as Y.XmlElement | Y.XmlFragment;
           const i = parent.toArray().indexOf(para);
@@ -574,6 +580,96 @@ async function upgrade7(store: ScopeStore, characterTemplates: AgNote[]) {
       }
       for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).startsWith("8 + one per level") && textOf(e) !== SKILL_BUDGET_NOTE)) {
         const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(SKILL_BUDGET_NOTE))]);
+      }
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 8
+// Abilities become sets of techniques. Each single-use ability sheet becomes a
+// Technique (same sheet: its rolls, costs, effects, hotbar slots all carry on),
+// put inside a new Ability of the same name that the character has. Its rolls
+// and effects now reach the character through its ability (ability.holder).
+// The character's Ability tab lists the abilities, then all their techniques
+// tagged by ability. Items, abilities and traits removed from a character
+// stay in the campaign (they're only disconnected).
+async function upgrade8(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const isCharacter = (n?: AgNote) => !!n && (charIds.has(n.id) || (!!n.templateId && charIds.has(n.templateId)) || n.type === "character" || n.type === "npc");
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  // Single-use abilities: ability sheets without a tag colour (the new Ability sets have one).
+  const legacy = Array.from(store.notes.values()).filter((n) => n.type === "ability" && !store.fieldsByNote.get(n.id)?.get("tag_color"));
+  const fix = (x: string) => (x ?? "").replace(/@holder\./g, `@${TECHNIQUE_VIA}.`);
+  await store.run(async (cs) => {
+    // 1. They become techniques: type, and every route to the character goes through the ability.
+    for (const n of legacy) {
+      const isKitTemplate = n.isTemplate && n.name === "CA Ability";
+      await store.putNote({
+        ...n, type: "technique",
+        ...(isKitTemplate ? { name: "CA Technique", templateMeta: { ...(n.templateMeta ?? { version: 1 }), description: TECHNIQUE_TEMPLATE_DESCRIPTION } } : {}),
+      }, cs);
+      for (const a of store.actionsOf(n.id)) {
+        const r = a.options?.roll;
+        const roll = r ? { ...r, via: r.via === "holder" ? TECHNIQUE_VIA : r.via, count: fix(r.count), die: fix(r.die), bonus: fix(r.bonus), costs: r.costs.map((c) => ({ ...c, amount: fix(c.amount) })) } : undefined;
+        const steps = JSON.parse(fix(JSON.stringify(a.steps)));
+        await store.putAction({ ...a, steps, ...(roll ? { options: { ...a.options, roll } } : {}) }, cs);
+      }
+      for (const f of Array.from(store.fieldsByNote.get(n.id)?.values() ?? [])) {
+        if (f.formula && f.formula.includes("@holder.")) await store.putField({ ...f, formula: fix(f.formula) }, cs);
+      }
+      for (const m of Array.from(store.modifiers.values())) {
+        if (m.noteId === n.id && m.via === "holder") await store.putModifier({ ...m, via: TECHNIQUE_VIA }, cs);
+      }
+    }
+    // 2. The new Ability (a set of techniques) template.
+    let pack = Array.from(store.notes.values()).find((n) => n.isTemplate && n.type === "ability" && store.fieldsByNote.get(n.id)?.get("tag_color"));
+    if (!pack) pack = await snap.createFromSnapshot(store, abilityPackSnapshot(), {}, cs);
+    const packSnap = await snap.takeSnapshot(store, pack.id);
+    // 3. Each technique a character had goes into an Ability of the same name, which the character has.
+    const perCharacter = new Map<string, number>();
+    for (const n of legacy.filter((x) => !x.isTemplate)) {
+      const held = store.linksOf(n.id).map((l) => (l.fromNoteId === n.id && l.label === "holder" ? { l, other: l.toNoteId } : l.toNoteId === n.id && l.reverseLabel === "holder" ? { l, other: l.fromNoteId } : null))
+        .filter((x): x is NonNullable<typeof x> => !!x && isCharacter(store.notes.get(x.other)));
+      if (!held.length) continue;
+      const k = perCharacter.get(held[0].other) ?? 0;
+      perCharacter.set(held[0].other, k + 1);
+      const a = await snap.createFromSnapshot(store, packSnap, { name: n.name, folder: n.folder, ownerIds: [...n.ownerIds], portrait: n.portrait }, cs, { fromTemplateId: pack.id });
+      await store.putNote({ ...store.notes.get(a.id)!, acl: { ...n.acl } }, cs);
+      const desc = store.fieldsByNote.get(n.id)?.get("description")?.value;
+      const fd = store.fieldsByNote.get(a.id)?.get("description");
+      if (fd && typeof desc === "string") await store.putField({ ...fd, value: desc }, cs);
+      const fc = store.fieldsByNote.get(a.id)?.get("tag_color");
+      if (fc) await store.putField({ ...fc, value: abilityColor(k) }, cs);
+      for (const { l, other } of held) {
+        await store.removeLink(l.id, cs);
+        await store.putLink({ id: randomUUID(), fromNoteId: a.id, toNoteId: other, label: "holder", reverseLabel: "abilities", acl: { ...l.acl }, createdAt: Date.now() }, cs);
+      }
+      await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: a.id, label: "ability", reverseLabel: "techniques", acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
+    }
+  });
+  // 4. Pages: techniques show their ability and roll through it; characters get the new Ability tab.
+  for (const n of legacy) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agRolls" || e.nodeName === "agEffects")) {
+        if (el.getAttribute("via") === "holder") el.setAttribute("via", TECHNIQUE_VIA);
+      }
+      if (!findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "ability").length) insertNodes(frag, 0, [techniqueAbilityNode()]);
+    });
+  }
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Ability")[0];
+      if (tab && !findAll(tab, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "abilities.techniques").length) {
+        tab.delete(0, tab.length);
+        appendNodes(tab, techniqueAbilityTab());
+      }
+      // Removing an item or trait takes it off this character only.
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && (e.getAttribute("label") === "items" || e.getAttribute("label") === "traits"))) {
+        const cfg = (el.getAttribute("config") ?? {}) as any;
+        if (cfg.remove === "delete") el.setAttribute("config", { ...cfg, remove: "disconnect" } as any);
+      }
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e) === LEGACY_INVENTORY_HELP)) {
+        const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(INVENTORY_HELP))]);
       }
     });
   }

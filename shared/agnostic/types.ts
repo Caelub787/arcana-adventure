@@ -227,6 +227,8 @@ export interface AgFieldOptions {
    * them as a green layer on top.
    */
   shield?: string;
+  /** Text that is a colour ("#a78bfa"): edited with a colour picker; tags showing this sheet use it. */
+  isColor?: boolean;
 }
 
 export interface AgField {
@@ -462,9 +464,10 @@ export interface AgLinkColumn {
   /**
    * button: `ref` is the name of a button on each connected sheet (e.g. "use"); text: long text shown in full;
    * rolls: every button on the connected sheet marked "show on the character sheet", with what it rolls and costs;
-   * effects: what the connected sheet changes on others ("Athletics −2").
+   * effects: what the connected sheet changes on others ("Athletics −2");
+   * connection: `ref` is a connection of the row's sheet (e.g. "ability"): those sheets as tags, in their colour.
    */
-  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text" | "rolls" | "effects";
+  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text" | "rolls" | "effects" | "connection";
   /** Bars: the max value (another key on the same sheet). */
   maxRef?: string;
   color?: string;
@@ -478,7 +481,7 @@ export interface AgLinksConfig {
   search?: boolean;
   /** "name" or a column key. */
   sortBy?: string;
-  /** Filter chips from this column's values (e.g. item type). */
+  /** Filter chips from this column's values (e.g. item type, or a connection column: which ability). */
   filterBy?: string;
   /** Card border coloured by this column's choice colour (e.g. rarity). */
   accentBy?: string;

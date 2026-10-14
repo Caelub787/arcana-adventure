@@ -140,6 +140,11 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
             </div>
           )}
           {f.type === "number" && <ResourceOptions field={f} onChange={(options) => update({ options })} />}
+          {f.type === "text" && (
+            <label className="text-xs inline-flex items-center gap-1" title="Edited with a colour picker; tags that show this sheet (e.g. which ability a technique is from) use it.">
+              <input type="checkbox" className="accent-amber-500" checked={!!f.options.isColor} onChange={(e) => update({ options: { ...f.options, isColor: e.target.checked || undefined } })} data-testid="ag-field-iscolor" /> It's a colour (this sheet's tag colour)
+            </label>
+          )}
           {f.type === "formula" && (
             <label className="text-xs inline-flex items-center gap-1">Result is
               <select value={f.options.resultType ?? "number"} onChange={(e) => update({ options: { ...f.options, resultType: e.target.value } })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1"><option value="number">a number</option><option value="text">text</option></select>

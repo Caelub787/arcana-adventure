@@ -34,6 +34,25 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
   const [, force] = useState(0);
   useEffect(() => onUndoChange(() => force((n) => n + 1)), []);
   const [connected, setConnected] = useState(agClient.connected);
+  const { request } = useAg();
+  const { toast } = useToast();
+  // Sheets dragged from the sidebar onto this one go into its list for them (an item
+  // into the inventory, an ability into the abilities, a technique into an ability).
+  const [dropping, setDropping] = useState(false);
+  const isSheetDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("application/character-id");
+  const onDragOver = (e: React.DragEvent) => { if (!isSheetDrag(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; if (!dropping) setDropping(true); };
+  const onDrop = (e: React.DragEvent) => {
+    if (!isSheetDrag(e)) return;
+    e.preventDefault(); e.stopPropagation(); setDropping(false);
+    const raw = e.dataTransfer.getData("application/character-id");
+    if (!raw.startsWith("ag:")) return;
+    const id = raw.slice(3);
+    const dropped = state.notes.get(id);
+    if (!dropped || id === noteId) return;
+    request<{ label?: string; already?: boolean }>({ op: "note.attach", hostNoteId: noteId, noteId: id })
+      .then((r) => toast({ title: r?.already ? `${dropped.name} is already there` : `Added ${dropped.name}`, description: r?.label ? `To ${state.notes.get(noteId)?.name ?? "this sheet"}'s ${r.label.replace(/_/g, " ")}.` : undefined }))
+      .catch((err: any) => toast({ title: "Couldn't add it", description: err.message, variant: "destructive" }));
+  };
   useEffect(() => agClient.onConnection(() => setConnected(agClient.connected)), []);
 
   // Ctrl+Z outside the text editor: value changes, template switches.
@@ -63,7 +82,8 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
 
   return (
     <ActiveEditorProvider noteId={noteId}>
-      <div ref={rootRef} tabIndex={-1} className="h-full flex flex-col bg-stone-950 text-stone-200 outline-none select-text" data-testid={`ag-sheet-${noteId}`}>
+      <div ref={rootRef} tabIndex={-1} className={`h-full flex flex-col bg-stone-950 text-stone-200 outline-none select-text ${dropping ? "ring-2 ring-inset ring-amber-500" : ""}`} data-testid={`ag-sheet-${noteId}`}
+        onDragOverCapture={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false); }} onDropCapture={onDrop}>
         <SheetHeader noteId={noteId} />
         <div className="flex items-center gap-1 px-2 border-b border-stone-800 shrink-0 overflow-x-auto no-scrollbar">
           {tabs.map(([t, label, icon]) => (
