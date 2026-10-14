@@ -10,7 +10,7 @@ export interface AgMember { userId: string; name: string; role: string }
 
 export type AgOp =
   | { op: "note.create"; type: string; name: string; templateId?: string | null; isTemplate?: boolean; folder?: string | null; portrait?: string | null; ownerIds?: string[] }
-  | { op: "note.update"; id: string; patch: Partial<Pick<AgNote, "name" | "portrait" | "folder" | "sortOrder" | "ownerIds" | "acl" | "bodyAcl" | "tokenBars" | "type" | "templateMeta">> }
+  | { op: "note.update"; id: string; patch: Partial<Pick<AgNote, "name" | "portrait" | "folder" | "sortOrder" | "ownerIds" | "acl" | "bodyAcl" | "tokenBars" | "type" | "templateMeta" | "windowSize">> }
   | { op: "note.delete"; id: string }
   | { op: "note.duplicate"; id: string }
   | { op: "note.copyFrom"; sourceNoteId: string; sourceScope: AgScope; asTemplate?: boolean }

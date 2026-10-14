@@ -369,6 +369,7 @@ const TOPICS: Topic[] = [
         </Bullets>
         <P>Either way, values players have entered are kept, and every sheet is snapshotted first so it can be restored. Tick <Ui>Remove values the template no longer has</Ui> to tidy up old ones.</P>
         <H>Switching a sheet's template</H>
+        <P><b>Window size:</b> resize a template's window and that size is saved — every sheet made from it (already made, or made later) opens at that size, for everyone.</P>
         <P><Ui>Settings → Template → Change template…</Ui> asks first, clears the sheet and rebuilds it from the new template. You can undo it (the ↶ button or <Ui>Ctrl+Z</Ui>) or restore from <Ui>Version history</Ui>.</P>
         <H>Version history</H>
         <P>Every sheet keeps its past versions (template switches, template updates, restores, and any you make with <Ui>Save a version now</Ui>). Open <Ui>Settings → Version history</Ui> to restore one.</P>

@@ -351,7 +351,15 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
             ...(p.templateMeta?.playersCanCreate !== undefined ? { playersCanCreate: !!p.templateMeta.playersCanCreate } : {}),
           };
         }
+        // A template's window size is every sheet made from it's (for everyone).
+        let sizeFollowers: AgNote[] = [];
+        if (p.windowSize !== undefined) {
+          const w = Number((p.windowSize as any)?.width), h = Number((p.windowSize as any)?.height);
+          note.windowSize = p.windowSize && Number.isFinite(w) && Number.isFinite(h) ? { width: Math.round(Math.max(320, Math.min(2400, w))), height: Math.round(Math.max(260, Math.min(2000, h))) } : null;
+          if (note.isTemplate) sizeFollowers = Array.from(store.notes.values()).filter((x) => x.templateId === note.id);
+        }
         await store.putNote(note, cs, aclChanged);
+        for (const x of sizeFollowers) await store.putNote({ ...x, windowSize: note.windowSize ?? null }, cs);
         // Its own copies (items given to it…) are seen by whoever has it.
         if (p.ownerIds !== undefined) { await syncCopiesOn(store, note.id, cs); await syncCopyOwners(store, note.id, cs); }
         return { ok: true as const };

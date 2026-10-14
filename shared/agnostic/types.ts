@@ -206,6 +206,11 @@ export interface AgNote {
    * to; dragging it somewhere else moves it rather than copying it again.
    */
   copyOf?: string | null;
+  /**
+   * The size its window opens at, for everyone. Set by resizing a template's
+   * window (the GM); every sheet made from that template gets it.
+   */
+  windowSize?: { width: number; height: number } | null;
   createdAt: number;
   updatedAt: number;
 }

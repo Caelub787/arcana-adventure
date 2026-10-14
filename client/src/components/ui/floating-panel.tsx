@@ -198,6 +198,11 @@ interface FloatingPanelProps {
    */
   onPositionChange?: (pos: { x: number; y: number }) => void;
   /**
+   * Fires once, when the user finishes resizing the panel, with its new size.
+   * Lets a caller persist a size (e.g. a sheet template's default window size).
+   */
+  onSizeChange?: (size: { width: number; height: number }) => void;
+  /**
    * When provided, the panel's width is imperatively kept in sync with this
    * value on every change (unless the user has manually resized the panel)
    * instead of only being read once from defaultSize at mount. Lets a caller
@@ -258,6 +263,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   lockWidthResize,
   resizable = true,
   onPositionChange,
+  onSizeChange,
   onFullscreenChange,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -300,6 +306,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     lockWidthResize={lockWidthResize}
     resizable={resizable}
     onPositionChange={onPositionChange}
+    onSizeChange={onSizeChange}
     onFullscreenChange={onFullscreenChange}
   >
     {children}
@@ -412,6 +419,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   lockWidthResize,
   resizable = true,
   onPositionChange,
+  onSizeChange,
   onFullscreenChange,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -793,8 +801,9 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     }
     applyTransform();
     applySize();
+    onSizeChange?.({ width: sizeRef.current.width, height: sizeRef.current.height });
     setTimeout(() => forceRender((n) => n + 1), 50);
-  }, [applyTransform, applySize]);
+  }, [applyTransform, applySize, onSizeChange]);
 
   const toggleMinimize = React.useCallback(() => {
     setIsMinimized((prev) => !prev);

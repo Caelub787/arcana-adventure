@@ -35,7 +35,11 @@ export function AgWindowStack() {
     <>
       {win.openIds.map((id, i) => {
         const note = ag.state.notes.get(id);
-        const w = Math.min(720, vw - 32);
+        // A sheet opens at its template's size (the GM sets it by resizing the template's window).
+        const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+        const size = note?.windowSize ?? null;
+        const w = Math.min(size?.width ?? 720, vw - 32);
+        const h = Math.min(size?.height ?? 760, vh - 120);
         return (
           <FloatingPanel
             key={id}
@@ -43,7 +47,8 @@ export function AgWindowStack() {
             onClose={() => win.close(id)}
             title={<span className="truncate">{note?.name || "Sheet"}</span>}
             panelKey={`ag-sheet-${id}`}
-            defaultSize={{ width: w, height: Math.min(760, (typeof window !== "undefined" ? window.innerHeight : 800) - 120) }}
+            defaultSize={{ width: w, height: h }}
+            onSizeChange={note?.isTemplate && ag.realViewer.isGM ? (sz) => { void ag.request({ op: "note.update", id, patch: { windowSize: sz } }).catch(() => {}); } : undefined}
             defaultPosition={{ x: Math.max(16, Math.round((vw - w) / 2) + i * 24 - 60), y: 70 + i * 24 }}
             minWidth={320}
             minHeight={260}
