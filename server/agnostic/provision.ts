@@ -23,7 +23,7 @@ interface Provision {
 const PROVISIONS: Provision[] = [
   // An Agnostic campaign with the C.A. starter kit.
   { id: "ca-kit", email: "reedmcaleb@gmail.com", campaignName: "Cultivator's Adventure (Agnostic)", system: "agnostic" },
-  // The same, turned into its own system: a copy of that campaign in "C.A. Agnostic".
+  // The same, turned into its own system: a copy of that campaign in "CA Agnostic".
   {
     id: "ca-agnostic-copy", email: "reedmcaleb@gmail.com", campaignName: "Cultivator's Adventure", system: "ca-agnostic",
     copyFrom: { name: "Cultivator's Adventure (Agnostic)", system: "agnostic" },
@@ -96,7 +96,7 @@ async function provision(p: Provision) {
       await store.run((cs) => copyCampaignContent(from, store, cs));
     }
   } else {
-    // A plain Agnostic campaign gets the kit; a C.A. Agnostic one already starts with its templates.
+    // A plain Agnostic campaign gets the kit; a CA Agnostic one already starts with its templates.
     const store = await getStore(scope);
     const hasKit = Array.from(store.notes.values()).some((n) => n.isTemplate && n.name === "CA Character");
     if (!hasKit) await store.run((cs) => applyCAKit(store, cs, { examples: true }));

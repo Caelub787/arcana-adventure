@@ -439,7 +439,7 @@ const TOPICS: Topic[] = [
     id: "kits", title: "Starter kits (C.A.)", icon: <Package className="h-4 w-4" />, words: "starter kit cultivator adventure ca rank wounds items potion rune backpack example",
     body: (
       <>
-        <P><b>C.A. Agnostic</b> is also a system of its own: choose it when creating a campaign and the campaign starts with all of these templates. It has its own Admin and My Library (pick “C.A. Agnostic” there), separate from plain Agnostic. The C.A. Agnostic <b>admin library</b> is the system's master copy: change a template there and campaigns made afterwards start with your version.</P>
+        <P><b>CA Agnostic</b> is also a system of its own: choose it when creating a campaign and the campaign starts with all of these templates. It has its own Admin and My Library (pick “CA Agnostic” there), separate from plain Agnostic. The CA Agnostic <b>admin library</b> is the system's master copy: change a template there and campaigns made afterwards start with your version.</P>
         <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the top of the <Ui>Templates</Ui> tab (GM only).</P>
         <H>Cultivator's Adventure</H>
         <Table rows={[

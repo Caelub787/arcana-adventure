@@ -34,7 +34,7 @@ export const SYSTEM_LABELS: Record<SystemSlug, string> = {
   ca: "C.A.",
   swampy: "Swampy",
   agnostic: "Agnostic",
-  "ca-agnostic": "C.A. Agnostic",
+  "ca-agnostic": "CA Agnostic",
 };
 
 /** Longer name shown in tooltips next to the short label. */
@@ -49,7 +49,7 @@ const LABEL_TO_SLUG: Record<string, SystemSlug> = Object.entries(SYSTEM_LABELS)
   .reduce((acc, [slug, label]) => {
     acc[label] = slug as SystemSlug;
     return acc;
-  }, {} as Record<string, SystemSlug>);
+  }, { "C.A. Agnostic": "ca-agnostic" } as Record<string, SystemSlug>); // CA Agnostic's first label, still in some browsers' saved picks
 
 export const DEFAULT_SYSTEM_SLUG: SystemSlug = "arcana-adventure";
 
@@ -76,16 +76,16 @@ export function systemSlug(label?: string | null): SystemSlug {
 export const PUBLIC_SYSTEM_SLUGS: SystemSlug[] = ["ca", "swampy", "agnostic", "ca-agnostic"];
 
 /**
- * Systems that run on the Agnostic engine. "agnostic" starts empty; the others
- * are ready-made systems built in it: every campaign starts with that system's
- * templates, and each has its own Admin library and My Library.
+ * Systems that run on the Agnostic engine: every system with "agnostic" in its
+ * slug. "agnostic" starts empty; the others are ready-made systems built in it:
+ * every campaign starts with that system's templates, and each has its own
+ * Admin library and My Library. Anything that applies to "all Agnostic
+ * systems" goes through isAgnosticSystem(), never a check for one slug.
  */
-export const AGNOSTIC_SYSTEM_SLUGS: SystemSlug[] = ["agnostic", "ca-agnostic"];
-
-/** True for Agnostic and every system built on it — the fully notes-based, GM-built systems. */
 export function isAgnosticSystem(slug?: string | null): boolean {
-  return AGNOSTIC_SYSTEM_SLUGS.includes(slug as SystemSlug);
+  return !!slug && slug.includes("agnostic");
 }
+export const AGNOSTIC_SYSTEM_SLUGS: SystemSlug[] = SYSTEM_SLUGS.filter(isAgnosticSystem);
 
 /** The starter kit an Agnostic-built system is made from (none for plain Agnostic). */
 export function agnosticSystemKit(slug?: string | null): "ca" | null {

@@ -198,7 +198,7 @@ function CreateDialog({ template, types, onClose }: { template: boolean; types: 
 function ImportFromLibraryDialog({ onClose }: { onClose: () => void }) {
   const { scope, system } = useAg();
   const { user, isAdmin } = useAuth() as any;
-  // This system's own libraries (C.A. Agnostic's are separate from plain Agnostic's).
+  // This system's own libraries (CA Agnostic's are separate from plain Agnostic's).
   const lib = (kind: "library" | "admin") => agLibraryScope(kind, user?.id ?? "", system);
   const [source, setSource] = useState<AgScope>(lib("library"));
   return (

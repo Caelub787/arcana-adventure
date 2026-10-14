@@ -1,4 +1,4 @@
-// Systems built on Agnostic (e.g. "C.A. Agnostic") come with their content.
+// Systems built on Agnostic (e.g. "CA Agnostic") come with their content.
 //   Admin library  starts with the system's starter kit (templates only) and is
 //                  the system's master copy: change a template there and every
 //                  campaign and library made afterwards starts with the change.
