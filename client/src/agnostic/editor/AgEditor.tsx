@@ -24,6 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
 import { usePlayView } from "../viewMode";
+import { parseDocName } from "@shared/agnostic/types";
 import { CANVAS_ORIGIN } from "../client";
 import { AG_NODES, AgDocContext, FieldConfig, lookKindFor } from "./nodes";
 import { LookEditor } from "../look";
@@ -65,22 +66,25 @@ const AgImage = Image.extend({
 // --------------------------------------------------------------------------- editor
 export function AgEditor({ docName, noteId, nested, inline, placeholder }: { docName: string; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string }) {
   const handle = useDoc(docName);
-  const play = usePlayView();
-  const { previewUserId } = useAg();
+  const { previewUserId, state, realViewer } = useAg();
+  // Player view locks the page, but the GM's own GM-only sections stay writable:
+  // they're notes, not layout.
+  const parsed = parseDocName(docName);
+  const gmSection = parsed?.kind === "region" && realViewer.isGM && state.regions.get(parsed.id)?.acl.view === "gm";
+  const play = usePlayView() && !gmSection;
   if (!handle) return null;
   if (handle.revoked) return null; // no longer allowed: nothing to show
   if (!handle.synced) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;
   // Blocks draw their tools once, for the editability they started with: switching
   // GM / Player view (or previewing a player) builds the editor afresh.
-  return <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
+  return <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} locked={play} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
 }
 
-function BoundEditor({ doc, awareness, readOnly, noteId, nested, inline, placeholder }: {
-  doc: Y.Doc; awareness: any; readOnly: boolean; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string;
+function BoundEditor({ doc, awareness, readOnly, locked: play, noteId, nested, inline, placeholder }: {
+  doc: Y.Doc; awareness: any; readOnly: boolean; locked: boolean; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string;
 }) {
   const { viewer, previewUserId } = useAg();
   const active = useActiveEditor();
-  const play = usePlayView();
   // Preview-as-player: the GM sees exactly what the player could change.
   // Player view: the page is locked (its values, bars and buttons still work).
   const editable = !readOnly && !previewUserId && !play;

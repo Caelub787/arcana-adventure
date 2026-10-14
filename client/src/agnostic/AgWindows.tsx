@@ -1,7 +1,7 @@
 // Floating sheet windows (draggable/resizable on desktop, full-screen on
 // phones via FloatingPanel). Any number can be open; links between sheets
 // open the target in its own window.
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { useAgMaybe } from "./hooks";
 import { AgSheet } from "./AgSheet";
@@ -10,10 +10,17 @@ interface WinCtx { open: (noteId: string) => void; close: (noteId: string) => vo
 const Ctx = createContext<WinCtx | null>(null);
 export const useAgWindows = () => useContext(Ctx);
 
+// The campaign page (map tokens, etc.) sits outside this provider: it opens
+// sheets through this hook-free handle instead.
+let pageOpener: ((id: string) => void) | null = null;
+/** Open a sheet in the page's sheet windows (e.g. double-clicking its token). */
+export function openAgNoteWindow(noteId: string) { pageOpener?.(noteId); }
+
 export function AgWindowsProvider({ children }: { children: React.ReactNode }) {
   const [openIds, setOpenIds] = useState<string[]>([]);
   const open = useCallback((id: string) => setOpenIds((ids) => (ids.includes(id) ? [...ids.filter((x) => x !== id), id] : [...ids, id])), []);
   const close = useCallback((id: string) => setOpenIds((ids) => ids.filter((x) => x !== id)), []);
+  useEffect(() => { pageOpener = open; return () => { if (pageOpener === open) pageOpener = null; }; }, [open]);
   const value = useMemo(() => ({ open, close, openIds }), [open, close, openIds]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,5 +1,5 @@
 // Free-form layout editor — drag, resize, configure. Used for canvas blocks on
-// sheets, tracker card designs and reusable components. Pointer events, so it
+// sheets, player tracker card designs and reusable components. Pointer events, so it
 // works the same with a mouse or a finger; the design is scaled to fit the
 // screen and every coordinate is converted back to design pixels.
 import React, { useEffect, useMemo, useRef, useState } from "react";

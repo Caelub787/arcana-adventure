@@ -1,5 +1,5 @@
 // Reusable components: design once (a resource bar block, a stat block, an
-// attack row…), place on many sheets / templates / tracker cards. Values are
+// attack row…), place on many sheets / templates / player tracker cards. Values are
 // parameters ($hp, $max…) that each placement connects to its own fields.
 import React, { useState } from "react";
 import { Plus, Trash2, Puzzle, ChevronLeft } from "lucide-react";
@@ -28,7 +28,7 @@ export function ComponentsManager() {
   if (editing && state.components.get(editing)) return <ComponentEditor comp={state.components.get(editing)!} onBack={() => setEditing(null)} />;
   return (
     <div className="p-2 space-y-2" data-testid="ag-components">
-      <div className="text-[11px] text-stone-500">Design a piece once and reuse it everywhere — on sheets, canvases, tracker cards and inside other components. Its values are <span className="font-mono text-sky-300">$parameters</span>: leave one unconnected and it uses the sheet's value with the same name (so <span className="font-mono text-sky-300">$hp</span> shows each sheet's HP). Edit a component and every copy updates.</div>
+      <div className="text-[11px] text-stone-500">Design a piece once and reuse it everywhere — on sheets, canvases, player tracker cards and inside other components. Its values are <span className="font-mono text-sky-300">$parameters</span>: leave one unconnected and it uses the sheet's value with the same name (so <span className="font-mono text-sky-300">$hp</span> shows each sheet's HP). Edit a component and every copy updates.</div>
       <GuideButton topic="components" label="How components work (step by step)" className="w-full" />
       <button type="button" onClick={create} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-component-new"><Plus className="h-4 w-4" /> New component</button>
       <div className="space-y-1">

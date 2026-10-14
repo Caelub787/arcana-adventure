@@ -14,6 +14,7 @@ import * as repo from "./repo";
 import { getStore, type ScopeStore } from "./store";
 import * as snap from "./snapshot";
 import { applyCAKit, applyCATrackerSettings } from "./kits/ca";
+import { upgradeCAKit, markKitCurrent } from "./kits/upgrade";
 
 const marker = (key: string) => `system-seed:${key}`;
 
@@ -32,7 +33,11 @@ export async function seedSystemContent(store: ScopeStore) {
   const system = await systemOfScope(store.scope);
   const kit = agnosticSystemKit(system);
   if (!kit || !system) return;
-  if ((await repo.getSeedLevel(marker(store.key))) > 0) return;
+  if ((await repo.getSeedLevel(marker(store.key))) > 0) {
+    // Filled before: bring the kit content it got up to date.
+    await upgradeCAKit(store);
+    return;
+  }
 
   if (store.scope.kind === "admin") {
     const hasKit = Array.from(store.notes.values()).some((n) => n.isTemplate && n.name === "CA Character");
@@ -47,5 +52,7 @@ export async function seedSystemContent(store: ScopeStore) {
     });
   }
   await repo.setSeedLevel(marker(store.key), 1);
+  // Filled from an up-to-date master (or the kit itself): no upgrades to run.
+  if (store.scope.kind === "admin") await markKitCurrent(store); else await upgradeCAKit(store);
   console.log(`[agnostic] ${system}: filled ${store.key} with the system's templates`);
 }

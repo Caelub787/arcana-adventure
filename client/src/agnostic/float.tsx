@@ -24,7 +24,7 @@ export function AgPanel({ title, onClose, children, width = 460, height = 560, f
     return { x: Math.max(12, Math.round((vw() - w) / 2) + step - 48), y: Math.max(56, Math.round((vh() - Math.min(height, vh() - 80)) / 3) + step) };
   });
   // The panel is portalled, but React still bubbles its events to whatever opened it
-  // (a token would start dragging, a tracker card would open its sheet…). Stop them here,
+  // (a token would start dragging, a player tracker card would open its sheet…). Stop them here,
   // after the panel's own handlers (bring to front, drag) have run.
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
   return (

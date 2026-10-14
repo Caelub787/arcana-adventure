@@ -99,6 +99,8 @@ export const agTypeLabel = (type: string) =>
  * All optional — missing keys fall back to each widget's defaults.
  */
 export interface AgLook {
+  /** Explanation shown behind a "?" next to this insert. */
+  tooltip?: string;
   /** Blocks on a sheet: width as % of the line (10–100). */
   width?: number;
   align?: "left" | "center" | "right";
@@ -211,6 +213,8 @@ export interface AgFieldOptions {
   resultType?: "number" | "text";
   /** Choice (and text) values: a colour per value, used by badges / values (e.g. rarity). */
   choiceColors?: Record<string, string>;
+  /** Explanation shown behind a "?" wherever this value appears (see tooltip format in tipFormat.ts). */
+  tooltip?: string;
 }
 
 export interface AgField {
@@ -290,7 +294,9 @@ export type AgActionStep =
    */
   | ({ type: "choose"; name: string; from: string; filter?: string; prompt?: string } & AgStepBase)
   /** Delete a sheet: "self" (the sheet the button is on) or a chosen one. */
-  | ({ type: "remove"; target: string } & AgStepBase);
+  | ({ type: "remove"; target: string } & AgStepBase)
+  /** End the button here (with "Only if": e.g. stop when there isn't enough Energy). */
+  | ({ type: "stop" } & AgStepBase);
 
 /** What a "choose" step offers before the button runs. */
 export interface AgActionChoice {
@@ -385,7 +391,8 @@ export interface AgComponentDef {
 export interface AgLinkColumn {
   ref: string;
   label?: string;
-  display?: "value" | "input" | "bar" | "badge" | "toggle";
+  /** button: `ref` is the name of a button on each connected sheet (e.g. "use"); text: long text shown in full. */
+  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text";
   /** Bars: the max value (another key on the same sheet). */
   maxRef?: string;
   color?: string;
@@ -426,6 +433,8 @@ export interface AgCampaignSettings {
     /** note id → card id */
     cardByNote: Record<string, string>;
     scale: number;
+    /** Rolls slide out from under each card for a moment (a dice tray). Default on. */
+    diceTray?: boolean;
   };
   /** note type → default token bars when a note has none of its own. */
   tokenBarsByType: Record<string, AgTokenBar[]>;

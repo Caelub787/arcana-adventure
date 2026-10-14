@@ -56,7 +56,7 @@ export type AgOpResult =
   | { noteId: string }
   | { versionId: string }
   | { versions: AgVersionMeta[] }
-  | { result: AgActionResult; noteName: string }
+  | { result: AgActionResult; noteName: string; rollerName?: string }
   | { bundle: AgExportBundle }
   | { value: AgValue | AgValue[]; error?: string }
   | { ok: true }

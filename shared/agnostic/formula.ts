@@ -428,7 +428,9 @@ export function parseCached(src: string): FNode {
 /** Substitute {expr} placeholders in action messages. */
 export function interpolate(text: string, evalExpr: (expr: string) => FValue): string {
   return text.replace(/\{([^{}]+)\}/g, (_, expr) => {
-    try { const v = evalExpr(expr); return typeof v === "number" ? fmt(v) : Array.isArray(v) ? fmt(v) : String(v ?? ""); }
+    // A value reached through a connection comes back as a list: show its items plainly ("10", not "[10]").
+    const plain = (x: FValue): string => (typeof x === "number" ? fmt(x) : Array.isArray(x) ? x.map(plain).join(", ") : String(x ?? ""));
+    try { return plain(evalExpr(expr)); }
     catch { return `{${expr}}`; }
   });
 }

@@ -171,7 +171,7 @@ function FieldBlockView(p: NodeViewProps) {
       frame={{ look, onLook: lookUpdater(p), height: fieldHeight(a.display, look) }}
       tools={<><ConfigPopover title={a.display === "bar" ? "Resource bar" : "Value block"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l, color: "" }), kind: lookKindFor(a.display, false) }}><FieldConfig attrs={a} update={p.updateAttributes} noteId={ctx.noteId} block /></ConfigPopover><ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton></>}
     >
-      {(live) => <div contentEditable={false} className="py-0.5">{a.ref ? <FieldDisplay noteId={ctx.noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={live?.height ? { ...look, height: live.height } : look} /> : <span className="text-xs text-stone-500">Choose a value (⚙)</span>}</div>}
+      {(live) => <div contentEditable={false} className="py-0.5">{a.ref ? <FieldDisplay blockTip noteId={ctx.noteId} refPath={a.ref} maxRef={a.maxRef || undefined} display={a.display} label={a.label || undefined} showLabel={a.showLabel !== false} look={live?.height ? { ...look, height: live.height } : look} /> : <span className="text-xs text-stone-500">Choose a value (⚙)</span>}</div>}
     </Shell>
   );
 }

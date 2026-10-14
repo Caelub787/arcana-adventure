@@ -1,9 +1,13 @@
 // Browse, search and create sheets in a scope. Used by the campaign's
 // side panel, My Library and the Admin library.
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock, Flame, Loader2,
+  MoreVertical, ExternalLink, Share2, Pencil, Copy, Trash2,
 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { AclEditor } from "./pickers";
+import type { AgAcl } from "@shared/agnostic/types";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel, agLibraryScope } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
@@ -117,17 +121,23 @@ function Group({ title, notes, opts, onOpen }: { title: string; notes: AgNote[];
 }
 
 function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; onOpen: (id: string) => void }) {
-  const { state, request, viewer } = useAg();
-  const pinned = state.settings?.tracker.pinned.includes(note.id);
+  const { state, viewer } = useAg();
   const template = note.templateId ? state.notes.get(note.templateId) : undefined;
-  const togglePin = () => {
-    if (!state.settings) return;
-    const t = state.settings.tracker;
-    request({ op: "settings.update", settings: { ...state.settings, tracker: { ...t, pinned: pinned ? t.pinned.filter((x) => x !== note.id) : [...t.pinned, note.id] } } });
-  };
+  const pinned = !!state.settings?.tracker.pinned.includes(note.id);
+  // Right-click the row, or press ⋯, for everything you can do with the sheet.
+  const [menu, setMenu] = useState<null | { x: number; y: number }>(null);
+  const press = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressed = useRef(false);
+  const cancelPress = () => { if (press.current) { clearTimeout(press.current); press.current = null; } };
   return (
-    <div className="flex items-center gap-2 rounded-md border border-stone-800 bg-stone-900/70 hover:border-stone-600 px-1.5 py-1 group" draggable onDragStart={(e) => { e.dataTransfer.setData("application/character-id", `ag:${note.id}`); e.dataTransfer.effectAllowed = "copy"; }} data-testid={`ag-note-row-${note.name}`}>
-      <button type="button" onClick={() => onOpen(note.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+    <div className="flex items-center gap-2 rounded-md border border-stone-800 bg-stone-900/70 hover:border-stone-600 px-1.5 py-1 group" draggable
+      onDragStart={(e) => { e.dataTransfer.setData("application/character-id", `ag:${note.id}`); e.dataTransfer.effectAllowed = "copy"; }}
+      onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
+      // Long-press on phones = right-click.
+      onTouchStart={(e) => { cancelPress(); longPressed.current = false; const t = e.touches[0]; press.current = setTimeout(() => { longPressed.current = true; setMenu({ x: t.clientX, y: t.clientY }); }, 550); }}
+      onTouchEnd={cancelPress} onTouchMove={cancelPress}
+      data-testid={`ag-note-row-${note.name}`}>
+      <button type="button" onClick={() => { if (longPressed.current) { longPressed.current = false; return; } onOpen(note.id); }} className="flex items-center gap-2 flex-1 min-w-0 text-left">
         <Portrait note={note} size={34} radius={6} />
         <span className="min-w-0">
           <span className="block text-sm text-stone-100 truncate">{note.name || "Untitled"}</span>
@@ -135,13 +145,126 @@ function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; o
         </span>
       </button>
       {note.isTemplate && <Lock className="h-3.5 w-3.5 text-stone-600" />}
-      {viewer.isGM && opts.showTrackerPin && !note.isTemplate && (
-        <button type="button" onClick={togglePin} className={`h-8 w-8 grid place-items-center rounded ${pinned ? "text-amber-400" : "text-stone-500 hover:text-stone-200"}`} title={pinned ? "Unpin from tracker" : "Pin to tracker"} data-testid={`ag-pin-${note.name}`}>{pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}</button>
-      )}
-      {viewer.isGM && opts.onPlaceOnMap && !note.isTemplate && (
-        <button type="button" onClick={() => opts.onPlaceOnMap!(note.id)} className="h-8 w-8 grid place-items-center rounded text-stone-500 hover:text-stone-200" title="Place on the map" data-testid={`ag-place-${note.name}`}><MapPin className="h-4 w-4" /></button>
-      )}
+      {pinned && opts.showTrackerPin && <Pin className="h-3.5 w-3.5 text-amber-400/80" aria-label="In the player tracker" />}
+      <button type="button" onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu({ x: r.right, y: r.bottom }); }}
+        className="h-8 w-8 grid place-items-center rounded text-stone-500 hover:text-stone-100 hover:bg-stone-800" title="More" aria-label={`More for ${note.name}`} data-testid={`ag-row-menu-${note.name}`}>
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {menu && <NoteMenu note={note} opts={opts} at={menu} onOpen={onOpen} onClose={() => setMenu(null)} />}
     </div>
+  );
+}
+
+/** Everything you can do with a sheet from the list: open, share, player tracker, map, rename, copy, delete. */
+function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: BrowserOptions; at: { x: number; y: number }; onOpen: (id: string) => void; onClose: () => void }) {
+  const { state, request, viewer, scope, system } = useAg();
+  const { toast } = useToast();
+  const { user } = useAuth() as any;
+  const ref = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<null | "share" | "rename">(null);
+  const [pos, setPos] = useState({ left: at.x, top: at.y });
+  const pinned = !!state.settings?.tracker.pinned.includes(note.id);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    setPos({ left: Math.max(8, Math.min(window.innerWidth - w - 8, at.x)), top: Math.max(8, Math.min(window.innerHeight - h - 8, at.y)) });
+  }, [at.x, at.y, panel]);
+  useEffect(() => {
+    if (panel) return;
+    const close = (e: Event) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("pointerdown", close, true);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", esc); };
+  }, [panel, onClose]);
+  const fail = (e: any) => toast({ title: "Couldn't do that", description: e.message, variant: "destructive" });
+  const togglePin = () => {
+    if (!state.settings) return;
+    const t = state.settings.tracker;
+    request({ op: "settings.update", settings: { ...state.settings, tracker: { ...t, pinned: pinned ? t.pinned.filter((x) => x !== note.id) : [...t.pinned, note.id] } } }).catch(fail);
+  };
+  const isGM = viewer.isGM;
+  type Item = { icon: React.ReactNode; label: string; run: () => void; danger?: boolean; testId: string } | "sep";
+  const items: Item[] = [
+    { icon: <ExternalLink className="h-4 w-4" />, label: "Open", run: () => onOpen(note.id), testId: "open" },
+    ...(isGM && !note.isTemplate && scope.kind === "campaign" ? [{ icon: <Share2 className="h-4 w-4" />, label: "Share with players…", run: () => setPanel("share"), testId: "share" } as Item] : []),
+    ...(isGM && opts.showTrackerPin && !note.isTemplate ? [{ icon: pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />, label: pinned ? "Remove from player tracker" : "Add to player tracker", run: togglePin, testId: "pin" } as Item] : []),
+    ...(isGM && opts.onPlaceOnMap && !note.isTemplate ? [{ icon: <MapPin className="h-4 w-4" />, label: "Place on battlemap", run: () => opts.onPlaceOnMap!(note.id), testId: "place" } as Item] : []),
+    ...(isGM ? ["sep" as Item,
+      { icon: <Pencil className="h-4 w-4" />, label: "Rename…", run: () => setPanel("rename"), testId: "rename" } as Item,
+      { icon: <Copy className="h-4 w-4" />, label: "Duplicate", run: () => request({ op: "note.duplicate", id: note.id }).then(() => toast({ title: "Duplicated" })).catch(fail), testId: "duplicate" } as Item,
+      ...(scope.kind === "campaign" && user ? [{ icon: <Library className="h-4 w-4" />, label: "Save to My Library", run: () => agClient.request(agLibraryScope("library", user.id, system), { op: "note.copyFrom", sourceNoteId: note.id, sourceScope: scope }).then(() => toast({ title: "Saved to My Library" })).catch(fail), testId: "library" } as Item] : []),
+      "sep" as Item,
+      { icon: <Trash2 className="h-4 w-4" />, label: "Delete", danger: true, run: () => agConfirm(`Delete “${note.name}” for everyone? Its version history goes too.`, { title: "Delete this sheet?", confirm: "Delete" }).then((ok) => { if (ok) request({ op: "note.delete", id: note.id }).catch(fail); }), testId: "delete" } as Item,
+    ] : []),
+  ];
+  if (panel === "share") return <ShareDialog note={note} onClose={onClose} />;
+  if (panel === "rename") return <RenameDialog note={note} onClose={onClose} />;
+  return createPortal(
+    <div ref={ref} role="menu" className="fixed z-[30000] min-w-[210px] rounded-lg border border-stone-700 bg-stone-900/98 shadow-2xl py-1 text-sm text-stone-200" style={pos} data-testid="ag-row-menu">
+      <div className="px-3 py-1 text-[11px] text-stone-500 truncate max-w-[260px]">{note.name || "Untitled"}</div>
+      {items.map((it, i) => it === "sep" ? <div key={i} className="my-1 border-t border-stone-800" /> : (
+        <button key={it.testId} type="button" role="menuitem" onClick={() => { const keep = it.testId === "share" || it.testId === "rename"; it.run(); if (!keep) onClose(); }}
+          className={`w-full flex items-center gap-2.5 px-3 h-9 text-left hover:bg-stone-800 ${it.danger ? "text-red-300 hover:bg-red-950/60" : ""}`} data-testid={`ag-row-menu-${it.testId}`}>
+          <span className={it.danger ? "text-red-400" : "text-stone-400"}>{it.icon}</span>{it.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+/** Who sees a sheet, who owns it — in one place, from the list. */
+function ShareDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
+  const { state, request } = useAg();
+  const { toast } = useToast();
+  const note = state.notes.get(initial.id) ?? initial;
+  const players = state.members.filter((m) => m.role !== "gm");
+  const update = (patch: any) => request({ op: "note.update", id: note.id, patch }).catch((e: any) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
+  const everyone = note.acl.view === "everyone";
+  const hidden = note.acl.view === "gm";
+  const quick = (k: "everyone" | "gm") => update({ acl: { ...note.acl, view: k } as AgAcl, ...(k === "everyone" && note.bodyAcl.view === "gm" ? { bodyAcl: { ...note.bodyAcl, view: "inherit" } } : {}) });
+  return (
+    <AgPanel title={<span className="inline-flex items-center gap-1.5"><Share2 className="h-4 w-4 text-amber-400" />Share “{note.name || "Untitled"}”</span>} onClose={onClose} width={440} height={560} testId="ag-share">
+      <div className="space-y-4 text-stone-200">
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => quick("everyone")} className={`h-9 px-3 rounded-md border text-sm ${everyone ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 hover:border-amber-700"}`} data-testid="ag-share-everyone">Everyone in the campaign</button>
+          <button type="button" onClick={() => quick("gm")} className={`h-9 px-3 rounded-md border text-sm ${hidden ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 hover:border-amber-700"}`} data-testid="ag-share-gm">Only me (GM)</button>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-stone-400">Who sees its name & portrait (or pick specific players)</div>
+          <AclEditor acl={note.acl} allowInherit={false} onChange={(acl: AgAcl) => update({ acl })} editLabel="Rename" />
+          <div className="text-[11px] text-stone-400 pt-1">Who sees the rest of the sheet</div>
+          <AclEditor acl={note.bodyAcl} onChange={(bodyAcl: AgAcl) => update({ bodyAcl })} />
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-stone-400">Owners — players who control this sheet (change its values, use its buttons, add items)</div>
+          <div className="flex flex-wrap gap-1.5">
+            {players.map((m) => {
+              const on = note.ownerIds.includes(m.userId);
+              return <button key={m.userId} type="button" onClick={() => update({ ownerIds: on ? note.ownerIds.filter((x) => x !== m.userId) : [...note.ownerIds, m.userId] })}
+                className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-share-owner-${m.name}`}>{m.name}</button>;
+            })}
+            {!players.length && <span className="text-xs text-stone-500">No players have joined yet.</span>}
+          </div>
+        </div>
+        <div className="text-[10px] text-stone-500">Values, sections and buttons on the sheet can still be hidden individually (their own settings).</div>
+      </div>
+    </AgPanel>
+  );
+}
+
+function RenameDialog({ note, onClose }: { note: AgNote; onClose: () => void }) {
+  const { request } = useAg();
+  const { toast } = useToast();
+  const [name, setName] = useState(note.name);
+  const save = () => { if (name.trim() && name !== note.name) request({ op: "note.update", id: note.id, patch: { name: name.trim() } }).catch((e: any) => toast({ title: "Couldn't rename it", description: e.message, variant: "destructive" })); onClose(); };
+  return (
+    <AgPanel title="Rename" onClose={onClose} width={340} height={170} testId="ag-rename"
+      footer={<><button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button><button type="button" onClick={save} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-rename-save">Save</button></>}>
+      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} className="w-full h-10 bg-stone-950 border border-stone-700 rounded px-2 text-stone-100" data-testid="ag-rename-input" />
+    </AgPanel>
   );
 }
 
@@ -264,7 +387,7 @@ function StarterKits() {
   if (Array.from(state.notes.values()).some((n) => n.isTemplate && n.name === "CA Character")) return null;
   const add = async () => {
     const ok = await agConfirm(
-      "Adds the Cultivator's Adventure character sheet (Overview, Skills, Ability, Inventory, Traits), item templates (weapon, armor, consumable, rune, container, currency…), wounds and traits, a C.A. tracker card, and an example character with gear to try it on. Everything is ordinary Agnostic content you can change.",
+      "Adds the Cultivator's Adventure character sheet (Overview, Skills, Ability, Inventory, Traits), item templates (weapon, armor, consumable, rune, container, currency…), wounds and traits, a C.A. player tracker card, and an example character with gear to try it on. Everything is ordinary Agnostic content you can change.",
       { title: "Add Cultivator's Adventure?", confirm: "Add it", danger: false },
     );
     if (!ok) return;

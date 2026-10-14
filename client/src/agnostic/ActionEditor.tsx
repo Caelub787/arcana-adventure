@@ -3,7 +3,7 @@
 //   Change      @target.hp  subtract  $dmg
 //   Message     "{name} hits for {$dmg}!"
 import React, { useState } from "react";
-import { Plus, Trash2, Dices, ArrowDownUp, MessageSquare, Pencil, ArrowUp, MousePointerClick, Eraser } from "lucide-react";
+import { Plus, Trash2, Dices, ArrowDownUp, MessageSquare, Pencil, ArrowUp, MousePointerClick, Eraser, OctagonX } from "lucide-react";
 import type { AgActionStep, AgAcl } from "@shared/agnostic/types";
 import { AgPanel, PickField, type SelItem } from "./float";
 import { useToast } from "@/hooks/use-toast";
@@ -91,7 +91,7 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
             {steps.map((s, i) => (
               <div key={i} className="rounded border border-stone-700 bg-stone-950/60 p-2 space-y-1.5">
                 <div className="flex items-center gap-2">
-                  {s.type === "roll" ? <Dices className="h-4 w-4 text-amber-400" /> : s.type === "modify" ? <ArrowDownUp className="h-4 w-4 text-emerald-400" /> : s.type === "choose" ? <MousePointerClick className="h-4 w-4 text-violet-300" /> : s.type === "remove" ? <Eraser className="h-4 w-4 text-red-300" /> : <MessageSquare className="h-4 w-4 text-sky-400" />}
+                  {s.type === "roll" ? <Dices className="h-4 w-4 text-amber-400" /> : s.type === "modify" ? <ArrowDownUp className="h-4 w-4 text-emerald-400" /> : s.type === "choose" ? <MousePointerClick className="h-4 w-4 text-violet-300" /> : s.type === "remove" ? <Eraser className="h-4 w-4 text-red-300" /> : s.type === "stop" ? <OctagonX className="h-4 w-4 text-red-400" /> : <MessageSquare className="h-4 w-4 text-sky-400" />}
                   <span className="text-xs font-medium">{STEP_NAMES[s.type]}</span>
                   <span className="ml-auto inline-flex items-center gap-0.5">
                     <button type="button" disabled={i === 0} onClick={() => { const n = [...steps]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; setSteps(n); }} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-stone-200 disabled:opacity-30" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></button>
@@ -112,6 +112,7 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
                     <div className="text-[10px] text-stone-500">Whoever presses the button picks one in a list. Later steps use it like a connection: <span className="font-mono">@{s.name}.qty</span>, or remove it.</div>
                   </>
                 )}
+                {s.type === "stop" && <div className="text-[11px] text-stone-400">The button ends here. Use <b>Only if</b> below, e.g. stop when <span className="font-mono">@holder.energy &lt; energy_cost</span>, after a message saying why.</div>}
                 {s.type === "remove" && (
                   <div className="flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="text-stone-400">Delete</span>
@@ -161,6 +162,7 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
               <button type="button" onClick={() => setSteps([...steps, { type: "message", text: "" }])} className="h-8 px-2 rounded bg-stone-800 text-xs inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" /> Message</button>
               <button type="button" onClick={() => setSteps([...steps, { type: "choose", name: `pick${steps.filter((x) => x.type === "choose").length || ""}`, from: "@owner.wounds" }])} className="h-8 px-2 rounded bg-stone-800 text-xs inline-flex items-center gap-1" data-testid="ag-step-add-choose"><MousePointerClick className="h-3.5 w-3.5" /> Choose a sheet</button>
               <button type="button" onClick={() => setSteps([...steps, { type: "remove", target: chooseNames(steps.length).slice(-1)[0] ?? "self" }])} className="h-8 px-2 rounded bg-stone-800 text-xs inline-flex items-center gap-1" data-testid="ag-step-add-remove"><Eraser className="h-3.5 w-3.5" /> Remove a sheet</button>
+              <button type="button" onClick={() => setSteps([...steps, { type: "stop", when: "" }])} className="h-8 px-2 rounded bg-stone-800 text-xs inline-flex items-center gap-1" data-testid="ag-step-add-stop"><OctagonX className="h-3.5 w-3.5" /> Stop here</button>
             </div>
           </div>
         </div>
@@ -168,7 +170,7 @@ export function ActionEditorDialog({ noteId, actionId, onClose, onSaved }: { not
   );
 }
 
-const STEP_NAMES: Record<AgActionStep["type"], string> = { roll: "Roll", modify: "Change a value", message: "Message", choose: "Choose a sheet", remove: "Remove a sheet" };
+const STEP_NAMES: Record<AgActionStep["type"], string> = { roll: "Roll", modify: "Change a value", message: "Message", choose: "Choose a sheet", remove: "Remove a sheet", stop: "Stop here" };
 
 /** "Only if" — every step can be skipped by a condition. */
 function WhenInput({ noteId, value, onChange }: { noteId: string; value: string; onChange: (v: string) => void }) {

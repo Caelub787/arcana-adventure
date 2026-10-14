@@ -1,5 +1,5 @@
 // The sheet's data: every value it holds, how it's calculated, and who may see
-// or change it. Values here are the same ones shown on the sheet, the tracker
+// or change it. Values here are the same ones shown on the sheet, the player tracker
 // and tokens — edit one anywhere and it changes everywhere.
 import React, { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight, Gauge, ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
@@ -13,6 +13,8 @@ import { FieldInput, CommitInput } from "./widgets";
 import { FormulaInput } from "./FormulaBuilder";
 import { AclEditor } from "./pickers";
 import { agConfirm } from "./float";
+import { TipIcon } from "./tips";
+import { TooltipEditor } from "./look";
 
 const TYPES: Array<[AgFieldType, string, string]> = [
   ["number", "Number", "HP, strength, gold…"],
@@ -64,7 +66,7 @@ export function FieldsPanel({ noteId }: { noteId: string }) {
               request({ op: "field.update", id: other.id, patch: { sortOrder: f.sortOrder === other.sortOrder ? f.sortOrder + d : f.sortOrder } });
             }} />
         ))}
-        {!fields.length && <div className="text-sm text-stone-500 p-2">{isGM ? "No values yet. Values are what formulas, bars, buttons and the tracker use." : "Nothing shared with you here."}</div>}
+        {!fields.length && <div className="text-sm text-stone-500 p-2">{isGM ? "No values yet. Values are what formulas, bars, buttons and the player tracker use." : "Nothing shared with you here."}</div>}
       </div>
     </div>
   );
@@ -112,7 +114,7 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
       <div className="flex items-center gap-2 px-2 py-1.5">
         {isGM && <button type="button" onClick={onToggle} className="h-6 w-6 grid place-items-center text-stone-400">{open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</button>}
         <div className="min-w-0 flex-1">
-          <div className="text-sm text-stone-200 truncate">{f.label}</div>
+          <div className="text-sm text-stone-200 truncate inline-flex items-center gap-1 max-w-full">{f.label}{f.options.tooltip && <TipIcon text={f.options.tooltip} current={String(f.eff ?? f.value ?? "")} />}</div>
           {isGM && <div className="text-[10px] text-stone-500 font-mono truncate">{f.key}{f.type === "formula" && f.formula ? ` = ${f.formula}` : ""}</div>}
         </div>
         {restricted && isGM && <span className="text-[10px] text-violet-300 hidden sm:inline">{describeAudience(f.acl.view === "inherit" ? "inherit" : f.acl.view, memberName)}</span>}
@@ -160,6 +162,7 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
               )}
             </>
           )}
+          <TooltipEditor value={f.options.tooltip} onChange={(tooltip) => update({ options: { ...f.options, tooltip: tooltip || undefined } })} hint="Shown behind a ? wherever this value appears (optional)" />
           <div>
             <div className="text-[11px] text-stone-400 mb-1">Who can see / change this value</div>
             <AclEditor acl={f.acl} onChange={(acl) => update({ acl })} editLabel="Change" />

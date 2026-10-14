@@ -130,7 +130,7 @@ function ActionsSection({ noteId }: { noteId: string }) {
         ))}
       </div>
       <button type="button" onClick={() => setEditing("new")} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" /> New button action</button>
-      <div className="text-[10px] text-stone-500">Put a button on the sheet with Insert → Button, or on a canvas / tracker card.</div>
+      <div className="text-[10px] text-stone-500">Put a button on the sheet with Insert → Button, or on a canvas / player tracker card.</div>
       {editing && <ActionEditorDialog noteId={noteId} actionId={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => setEditing(null)} />}
     </Section>
   );

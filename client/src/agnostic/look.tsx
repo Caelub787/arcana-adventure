@@ -8,6 +8,7 @@ import { AgPanel } from "./float";
 import { AgIcon, IconGrid } from "./icons";
 import type { AgLook } from "@shared/agnostic/types";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
+import { TipIcon } from "./tips";
 
 export { mergeLook, defaultLabelPos };
 
@@ -166,9 +167,22 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
       {s.shape && row("Shape", select("shape", [["circle", "Circles"], ["square", "Squares"], ["diamond", "Diamonds"], ["heart", "Hearts"], ["star", "Stars"]], "circle"))}
       {s.icon && row("Icon", <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={L.icon !== false} onChange={(e) => set({ icon: e.target.checked ? undefined : false })} /> Show dice icon</label>)}
 
+      {kind !== "tokenBar" && kind !== "columns" && kind !== "tabs" && <TooltipEditor value={L.tooltip} onChange={(t) => set({ tooltip: t || undefined })} />}
       {Object.keys(L).length > 0 && (
         <button type="button" onClick={() => onChange({})} className="mt-1 h-7 px-2 rounded text-[11px] text-stone-400 hover:text-stone-100 hover:bg-stone-800 inline-flex items-center gap-1" data-testid="ag-look-reset"><RotateCcw className="h-3 w-3" /> Reset look</button>
       )}
+    </div>
+  );
+}
+
+/** Tooltip text: shown behind a "?" next to the value / insert. Saved when you leave the box. */
+export function TooltipEditor({ value, onChange, hint }: { value?: string; onChange: (t: string) => void; hint?: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <div className="space-y-1 pt-1">
+      <div className="text-[11px] text-stone-400 inline-flex items-center gap-1">Tooltip <TipIcon text={"Adds a **?** that shows this text on hover (or a tap on phones).\n\n## Formatting\n- **bold** with two stars each side\n- ## at the start of a line: a heading\n- lines with | between cells make a table (first line = header)\n- a row whose first cell matches the current value is highlighted"} /></div>
+      <textarea value={draft ?? value ?? ""} onChange={(e) => setDraft(e.target.value)} onBlur={() => { if (draft !== null && draft !== (value ?? "")) onChange(draft); setDraft(null); }}
+        rows={4} placeholder={hint ?? "Explain this to the players (optional)"} className="w-full bg-stone-900 border border-stone-700 rounded px-2 py-1 text-xs font-mono text-stone-200" data-testid="ag-tooltip-text" />
     </div>
   );
 }
@@ -243,6 +257,7 @@ export function BlockFrame({ look, onLook, editable, height, children, testId }:
   return (
     <div ref={ref} className="relative" style={style} data-testid={testId}>
       {typeof children === "function" ? children(live) : children}
+      {L.tooltip && <span className="absolute top-1 right-1 z-[6]"><TipIcon text={L.tooltip} /></span>}
       {editable && (
         <>
           <div className={`ag-resize absolute top-0 bottom-0 w-3 cursor-ew-resize touch-none grid place-items-center ${side === "right" ? "-right-3" : "-left-3"}`} onPointerDown={(e) => start(e, "w")} title="Drag to change the width" data-testid="ag-resize-w">

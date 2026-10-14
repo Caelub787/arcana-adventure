@@ -147,7 +147,7 @@ const TOPICS: Topic[] = [
           [<b>Values</b>, "The numbers and text a sheet holds: HP, Strength, Gold, Class… They live in the sheet's Values tab and can be shown anywhere."],
           [<b>Inserts</b>, "What you put on the page to show values: resource bars, numbers, pips, dials, buttons, charts, tables, images, columns, canvases. Every insert can be resized and restyled."],
           [<b>Templates</b>, "A blueprint sheet. New sheets made from it start with its values, layout and buttons. Update the template and you can push the changes to every sheet."],
-          [<b>Components</b>, "A small design you make once (an HP bar, a stat block, an attack row) and place on many sheets, tracker cards and other components. Change it once, it changes everywhere."],
+          [<b>Components</b>, "A small design you make once (an HP bar, a stat block, an attack row) and place on many sheets, player tracker cards and other components. Change it once, it changes everywhere."],
         ]} />
         <H>Build your first character in 10 steps</H>
         <Steps>
@@ -158,11 +158,11 @@ const TOPICS: Topic[] = [
           <li><Ui>+ Insert</Ui> → <Ui>Value block</Ui> → pick <Ui>Strength</Ui>. Type text around it like any document — headings, lists, tables.</li>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>New action…</Ui>: add a <Ui>Roll</Ui> step with <Code>1d20 + str</Code>, call it “Attack”, save, insert.</li>
           <li>Back in the campaign panel, <Ui>Sheets</Ui> → <Ui>New</Ui> → Character, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
-          <li>Press the pin icon on the new sheet to show it in the player tracker. Its card already has the HP bar.</li>
-          <li>Press the map-pin icon (or drag the sheet onto the map) to place it as a token with a live HP bar.</li>
+          <li>Right-click the new sheet in the list (or press its <Ui>⋮</Ui>) → <Ui>Add to player tracker</Ui>. Its card already has the HP bar.</li>
+          <li>Same menu → <Ui>Place on battlemap</Ui> (or drag the sheet onto the map) to make it a token with a live HP bar. Double-click the token to open the sheet.</li>
           <li>Use the <Ui>View as</Ui> picker at the top of a sheet to check exactly what the player sees.</li>
         </Steps>
-        <Tip>Everything is live. When anyone changes HP (on the sheet, the tracker card or the token) every screen updates at once.</Tip>
+        <Tip>Everything is live. When anyone changes HP (on the sheet, the player tracker card or the token) every screen updates at once.</Tip>
         <H>GM view and Player view</H>
         <P>The button under Search on the left of the map switches between them (just for you, in this campaign).</P>
         <Bullets>
@@ -221,7 +221,7 @@ const TOPICS: Topic[] = [
     id: "values", title: "Values", icon: <Hash className="h-4 w-4" />, words: "fields values number text formula dice select checkbox image key resource min max step",
     body: (
       <>
-        <P>Values are the data. The page only <i>shows</i> them, so the same HP can appear on the sheet, a tracker card and a token and is always the same number.</P>
+        <P>Values are the data. The page only <i>shows</i> them, so the same HP can appear on the sheet, a player tracker card and a token and is always the same number.</P>
         <H>Adding values</H>
         <Steps>
           <li>Open a sheet's (or template's) <Ui>Values</Ui> tab.</li>
@@ -237,7 +237,7 @@ const TOPICS: Topic[] = [
           ["Dice", <>A dice expression stored on the sheet, e.g. <Code>1d8 + str</Code>, for buttons to roll.</>],
           ["Image", "A picture that's part of the data (a weapon's art, a map)."],
         ]} />
-        <P>Click a value in the Values tab to change its settings and <b>who can see / change it</b>. That permission protects the value everywhere it appears.</P>
+        <P><b>Double-click any value on the page</b> to change it right there — even an empty one, which shows a faint dash. Click a value in the Values tab to change its settings and <b>who can see / change it</b>. That permission protects the value everywhere it appears.</P>
         <Tip>New Character and NPC sheets start with <Code>hp</Code> and <Code>hp_max</Code>, which is what the built-in <b>HP bar</b>, <b>HP</b> and <b>Max HP</b> components and the default token bar use. Rename or delete them if your game doesn't use HP.</Tip>
         <P>Formulas are explained in <Go to="formulas">Formula cheat sheet</Go>.</P>
       </>
@@ -254,7 +254,7 @@ const TOPICS: Topic[] = [
           <li><b>Bottom edge</b>: drag to make a bar thicker, pips or a dial bigger, or a chart or table taller.</li>
           <li><b>Corner square</b>: both at once. A label shows the size while you drag.</li>
           <li><b>Images</b>: drag their sides or bottom corners. The toolbar also shows S / M / L / Full and alignment when an image is selected.</li>
-          <li><b>Canvas, tracker card and component items</b>: drag the 8 handles around the selected item; arrow keys nudge it.</li>
+          <li><b>Canvas, player tracker card and component items</b>: drag the 8 handles around the selected item; arrow keys nudge it.</li>
         </Bullets>
         <H>2. ⚙ → Look & size</H>
         <Table head={["Option", "What it changes"]} rows={[
@@ -272,11 +272,17 @@ const TOPICS: Topic[] = [
           ["Buttons", "Colour, text colour, size, minimum width, corners, dice icon on/off."],
         ]} />
         <P><Ui>Reset look</Ui> puts everything back to the defaults.</P>
+        <H>Tooltips (the “?”)</H>
+        <P>Every insert's <Ui>Look & size</Ui> has a <Ui>Tooltip</Ui> box, and every value has one in the Values tab (a value's tooltip follows it everywhere it's shown). Fill one in and a <b>?</b> appears: hover it, or tap it on a phone, for a pop-up that scrolls when it's long.</P>
+        <Bullets>
+          <li><Code>**bold**</Code>, a line starting <Code>## </Code> is a heading (add <Code> · </Code> parts for small notes on its right), <Code>- </Code> makes a bullet.</li>
+          <li>Lines with <Code>|</Code> between cells become a table; the first line is the header. A row whose first cell matches the value (e.g. your rank) is highlighted.</li>
+        </Bullets>
         <H>3. When inserting</H>
         <P>The insert window shows a live preview and has the same <Ui>Look & size</Ui> panel, so you can style something before it goes on the page.</P>
-        <H>Tracker cards, components and tokens</H>
+        <H>Player tracker cards, components and tokens</H>
         <Bullets>
-          <li>In the layout editor (canvas, tracker card, component), select an item and open <Ui>Look — colours, text, label, style</Ui>. The item's box sets its size.</li>
+          <li>In the layout editor (canvas, player tracker card, component), select an item and open <Ui>Look — colours, text, label, style</Ui>. The item's box sets its size.</li>
           <li>Token bars: in <Ui>Design the player tracker</Ui> (defaults per kind) or a sheet's <Ui>Settings → Bars on the battlemap</Ui>, press the 🖌 next to a bar for thickness, width, colours, style and numbers.</li>
         </Bullets>
         <Tip>Want the same look in many places? Make it a <Go to="components">component</Go>, style it once, and every copy follows.</Tip>
@@ -287,10 +293,10 @@ const TOPICS: Topic[] = [
     id: "components", title: "Components: the full guide", icon: <Puzzle className="h-4 w-4" />, words: "component reusable parameter param bind connect hp bar stat block design once everywhere",
     body: (
       <>
-        <P>A <b>component</b> is a small design you make once and reuse anywhere: an HP bar, a stat block, an attack row with a button, a name plate. Every placed copy is live. <b>Edit the component and every copy, on every sheet, tracker card and other component, changes instantly.</b></P>
+        <P>A <b>component</b> is a small design you make once and reuse anywhere: an HP bar, a stat block, an attack row with a button, a name plate. Every placed copy is live. <b>Edit the component and every copy, on every sheet, player tracker card and other component, changes instantly.</b></P>
         <H>Built-in components</H>
         <Table rows={[
-          [<b>HP bar</b>, <>A bar of <Code>$hp</Code> out of <Code>$hp_max</Code>. The default tracker card uses it.</>],
+          [<b>HP bar</b>, <>A bar of <Code>$hp</Code> out of <Code>$hp_max</Code>. The default player tracker card uses it.</>],
           [<b>HP</b>, <>An editable <Code>$hp</Code> number with a label.</>],
           [<b>Max HP</b>, <>An editable <Code>$hp_max</Code> number with a label.</>],
         ]} />
@@ -330,7 +336,7 @@ const TOPICS: Topic[] = [
           <li><b>Stat block</b>: six values (<Code>$str $dex $con $int $wis $cha</Code>) shown big with small labels above.</li>
           <li><b>Attack row</b>: weapon name, damage dice and an Attack button, connected per weapon.</li>
           <li><b>Resource bar</b>: one bar design reused for HP, mana, stamina and ammo with different connections.</li>
-          <li><b>Name plate</b>: portrait + name + HP bar for tracker cards and NPC sheets.</li>
+          <li><b>Name plate</b>: portrait + name + HP bar for player tracker cards and NPC sheets.</li>
           <li><b>Condition pips</b>: pips with heart or star shapes for exhaustion, death saves or luck.</li>
         </Bullets>
         <ExampleComponentsButton />
@@ -391,8 +397,9 @@ const TOPICS: Topic[] = [
         <Steps>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>Choose what it does…</Ui> → <Ui>New action…</Ui> (or a sheet's <Ui>Settings → Buttons</Ui>).</li>
           <li>Name it, add steps, choose its colour and who can see and press it.</li>
-          <li>Save and insert. Buttons also go on canvases, tracker cards and components.</li>
+          <li>Save and insert. Buttons also go on canvases, player tracker cards and components.</li>
         </Steps>
+        <P><Ui>Stop here</Ui> ends the button early — give it an <Ui>Only if</Ui> (after a message saying why), e.g. stop when <Code>@holder.energy &lt; energy_cost</Code>. A roll's “Shown as” can use <Code>{"{name}"}</Code> and other values. A roll made from an item or ability counts as its character's roll (it shows on their player tracker card).</P>
         <Tip><Code>@target</Code> means the token(s) currently targeted on the battlemap, so one “Attack” button can roll and take HP off whatever is targeted.</Tip>
       </>
     ),
@@ -453,8 +460,18 @@ const TOPICS: Topic[] = [
           <li>Rank: <Code>tier(energy_pool, 0, 20, 30, …)</Code> finds the step on the ladder; <Code>choose(rank_index, 20, 25, …)</Code> reads Max HP off a list.</li>
           <li>Skill rolls: <Code>roll(1, might_die) + athletics</Code>.</li>
           <li>Points spent use <Code>base(athletics)</Code>, so a wound's −2 doesn't give points back.</li>
+          <li>Abilities are their own sheets (<b>CA Ability</b>) held by a character, listed on the Ability tab with search, filters and a <Ui>Use</Ui> button. Use checks <Code>usable</Code>, <Ui>Stop here</Ui>s if there isn't enough Energy/Focus, takes the cost off <Code>@holder.energy</Code> / <Code>@holder.focus</Code>, then rolls <Code>roll(dice_count, die) + skill_bonus + bonus</Code> and the effect dice. The GM adds one with <Ui>Add</Ui> on a character's Ability tab and opens it to set its cost, roll and effect.</li>
           <li>Heal a wound: <Ui>Choose a sheet</Ui> from <Code>@owner.wounds</Code> filtered by severity, then <Ui>Remove a sheet</Ui> <Code>$wound</Code> (the pick), then take one off <Code>qty</Code> and remove the potion when it's at 0.</li>
         </Bullets>
+        <H>Adding more ranks later</H>
+        <Steps>
+          <li>Open the <b>CA Character</b> template → <Ui>Values</Ui>.</li>
+          <li><Code>rank_index</Code>: add the new rung's Energy Pool to the end of <Code>tier(energy_pool, 0, 20, …)</Code> (five numbers for a new rank, one per star).</li>
+          <li><Code>rank</Code>: add the new rank's name to the end of its <Code>choose(…, "Bronze", …, "Terran")</Code> list.</li>
+          <li><Code>to_next_rank</Code>: add the same numbers to its list. <Code>hp_max</Code>: one Max HP per new rung. <Code>lifespan</Code> and <Code>absorption_limit</Code>: one number per new rank.</li>
+          <li>Rank's <Ui>Tooltip</Ui> (same row): add a <Code>## Name · Lifespan … · Absorbs …</Code> heading and a table line per star, like the ones above it.</li>
+          <li><Ui>Settings → Save as new version</Ui>, then apply it to the sheets that use the template. Rank, Max HP, Focus and Lifespan follow on every sheet.</li>
+        </Steps>
         <Tip>The example character, “Example Cultivator”, shows everything working: open it, its items and its wounds.</Tip>
       </>
     ),
@@ -479,20 +496,21 @@ const TOPICS: Topic[] = [
     ),
   },
   {
-    id: "tracker", title: "Player tracker & tokens", icon: <LayoutPanelTop className="h-4 w-4" />, words: "tracker card pin token battlemap map bars place drag",
+    id: "tracker", title: "Player tracker & tokens", icon: <LayoutPanelTop className="h-4 w-4" />, words: "player tracker card pin token battlemap map bars place drag",
     body: (
       <>
         <H>The player tracker</H>
         <Steps>
-          <li>Pin a sheet (the pin icon in the Sheets list) to show it in the tracker.</li>
-          <li><Ui>Design the player tracker</Ui> (or the ⚙ at the end of the tracker): choose where it sits (top, left, right, bottom) and its size.</li>
+          <li>Right-click a sheet in the list (or its <Ui>⋮</Ui>) → <Ui>Add to player tracker</Ui>.</li>
+          <li><Ui>Design the player tracker</Ui> (or the ⚙ at the end of the player tracker): choose where it sits (top, left, right, bottom) and its size.</li>
           <li>Edit the card design with the layout editor: portrait, name, bars, values, buttons, last roll, components. Make several cards and choose which kind of sheet (or which sheet) uses which.</li>
         </Steps>
         <P>Clicking a card opens the sheet; bars and buttons on the card work directly.</P>
+        <P><b>It's the dice tray.</b> Every roll made as that sheet — its buttons, its items' and abilities' buttons, its owner's own rolls — slides out from its card, tumbles, settles on the total and tucks away. Hover the card to see the last roll again; click the roll for the recent ones. Turn it off in <Ui>Design the player tracker</Ui> → <Ui>Dice tray</Ui>.</P>
         <H>Tokens</H>
         <Bullets>
-          <li>Drag a sheet from the list onto the map, or press its map-pin icon. Any sheet can be a token.</li>
-          <li>Tokens show the sheet's portrait and live bars. Set the default bars per kind in the tracker designer, or per sheet in <Ui>Settings → Bars on the battlemap</Ui>. Use 🖌 to style them.</li>
+          <li>Drag a sheet from the list onto the map, or right-click it → <Ui>Place on battlemap</Ui>. Any sheet can be a token; double-click a token to open its sheet.</li>
+          <li>Tokens show the sheet's portrait and live bars. Set the default bars per kind in the player tracker designer, or per sheet in <Ui>Settings → Bars on the battlemap</Ui>. Use 🖌 to style them.</li>
           <li>Click a token's bar to change the value. The sheet and tracker follow.</li>
         </Bullets>
       </>
@@ -505,7 +523,7 @@ const TOPICS: Topic[] = [
         <Bullets>
           <li><b>My Library → Agnostic</b>: your own Characters, Items and Species to reuse in any of your Agnostic campaigns. <b>Admin → Agnostic</b> is the site-wide one.</li>
           <li>In a campaign, <Ui>Bring in from My Library / Admin</Ui> copies a sheet or template in, along with the components it uses. The copy is independent: editing it never changes the library or other campaigns.</li>
-          <li>The import/export button (⬇ next to the tabs) shares templates, components and tracker cards as a file between campaigns or with friends.</li>
+          <li>The import/export button (⬇ next to the tabs) shares templates, components and player tracker cards as a file between campaigns or with friends.</li>
           <li>Agnostic content is completely separate from the other systems, and everything the GM edits stays in the campaign it was made in.</li>
         </Bullets>
       </>

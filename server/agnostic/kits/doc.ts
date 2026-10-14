@@ -30,6 +30,9 @@ function fill(parent: Y.XmlFragment | Y.XmlElement, nodes: Array<DocNode | DocTe
   }
 }
 
+/** Append nodes to an existing element of a live document (kit upgrades). */
+export function appendNodes(parent: Y.XmlFragment | Y.XmlElement, nodes: DocNode[]) { fill(parent, nodes); }
+
 /** A whole document (and its canvases) as the base64 Yjs state the server stores. */
 export function buildDocState(nodes: DocNode[], canvases: Record<string, Record<string, unknown>[]> = {}): string {
   const doc = new Y.Doc();

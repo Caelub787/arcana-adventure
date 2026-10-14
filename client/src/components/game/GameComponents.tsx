@@ -3718,7 +3718,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                     clickData.count++;
                     clickData.lastClickTime = now;
                     
-                    if (clickData.count === 2) {
+                    if (clickData.count === 2 && (token as any).agnosticNoteId) {
+                      // Agnostic sheet token: nothing waits on a third click — open its sheet now.
+                      onTokenDoubleClick && onTokenDoubleClick(token);
+                    } else if (clickData.count === 2) {
                       // Double-click detected - start 667ms timer to wait for possible third click
                       pendingDoubleClickTokenRef.current = token;
                       if (doubleClickTimerRef.current) {
@@ -11370,7 +11373,7 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
           {role === 'gm' && onTogglePin && (
             <DropdownMenuItem onClick={() => onTogglePin(char)} className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200">
               {char.pinned ? <PinOff className="h-4 w-4 mr-2" /> : <Pin className="h-4 w-4 mr-2" />}
-              {char.pinned ? 'Unpin from top bar' : 'Pin to top bar'}
+              {char.pinned ? 'Unpin from player tracker' : 'Pin to player tracker'}
             </DropdownMenuItem>
           )}
           {role === 'gm' && (
@@ -13266,7 +13269,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                  <p>{member.pinned ? 'Unpin from top bar' : 'Pin to top bar'}</p>
+                                  <p>{member.pinned ? 'Unpin from player tracker' : 'Pin to player tracker'}</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -13765,7 +13768,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                <p>{member.pinned ? 'Unpin from top bar' : 'Pin to top bar'}</p>
+                                <p>{member.pinned ? 'Unpin from player tracker' : 'Pin to player tracker'}</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

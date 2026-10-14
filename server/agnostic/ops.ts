@@ -56,6 +56,7 @@ function cleanOptions(raw: unknown): AgFieldOptions {
     for (const [k, v] of Object.entries(o.choiceColors).slice(0, 100)) if (typeof v === "string" && /^#[0-9a-f]{3,8}$/i.test(v)) cc[String(k).slice(0, 200)] = v;
     if (Object.keys(cc).length) out.choiceColors = cc;
   }
+  if (typeof o.tooltip === "string" && o.tooltip.trim()) out.tooltip = o.tooltip.slice(0, 8000);
   return out;
 }
 
@@ -110,7 +111,7 @@ function cleanLook(raw: unknown): AgLook | undefined {
   for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 40)) {
     if (!/^[a-zA-Z]{1,20}$/.test(k)) continue;
     if (typeof v === "number" && Number.isFinite(v)) out[k] = Math.max(-5000, Math.min(5000, v));
-    else if (typeof v === "string") out[k] = v.slice(0, 60);
+    else if (typeof v === "string") out[k] = v.slice(0, k === "tooltip" ? 8000 : 60);
     else if (typeof v === "boolean") out[k] = v;
   }
   return Object.keys(out).length ? (out as AgLook) : undefined;
@@ -156,6 +157,8 @@ function cleanSteps(raw: unknown): AgActionStep[] {
       steps.push({ type: "modify", target: String(s.target ?? "").slice(0, 200), op, value });
     } else if (s?.type === "message") {
       steps.push({ type: "message", text: String(s.text ?? "").slice(0, 1000) });
+    } else if (s?.type === "stop") {
+      steps.push({ type: "stop" });
     }
     if (when && steps.length > before) steps[steps.length - 1].when = when;
   }
@@ -207,6 +210,7 @@ function cleanSettings(raw: unknown): AgCampaignSettings {
       cardByType: strMap(t.cardByType),
       cardByNote: strMap(t.cardByNote),
       scale: typeof t.scale === "number" ? Math.max(0.4, Math.min(2.5, t.scale)) : 1,
+      diceTray: t.diceTray !== false,
     },
     tokenBarsByType: Object.fromEntries(Object.entries(s.tokenBarsByType && typeof s.tokenBarsByType === "object" ? s.tokenBarsByType : d.tokenBarsByType).slice(0, 50).map(([k, v]) => [k.slice(0, 40), cleanTokenBars(v) ?? []])),
   };
@@ -603,7 +607,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
       return store.run(async (cs) => {
         const result = await executeAction(store, action, targets, cs, { viewer, choices: body.choices ?? {}, host: ctx.host });
-        return { result, noteName: note.name };
+        // Who the roll belongs to: the sheet itself if it's a character/NPC, else the
+        // character it hangs off (a sword's owner, an ability's holder) — so the roll
+        // lands under that character's player tracker card.
+        const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
+        let roller = isPerson(note) ? note : undefined;
+        if (!roller) for (const l of Array.from(store.links.values())) if (l.fromNoteId === note.id && isPerson(store.notes.get(l.toNoteId))) { roller = store.notes.get(l.toNoteId); break; }
+        return { result, noteName: note.name, rollerName: roller?.name ?? note.name };
       });
     }
 
@@ -757,6 +767,7 @@ async function executeAction(
       try { go = isTruthy(comp.evalIn(action.noteId, step.when, { locals, roots }).value as any); } catch (e) { result.messages.push(`⚠ ${(e as Error).message}`); }
       if (!go) continue;
     }
+    if (step.type === "stop") break;
     if (step.type === "choose") {
       const allowed = chooseOptions(store, action, step, roots, run.viewer, locals);
       const picked = run.choices[step.name];
@@ -789,7 +800,9 @@ async function executeAction(
         const r = comp.evalIn(at, expr, { rollDie, locals, roots });
         const total = asNumber(r.value as any);
         locals[step.name] = total;
-        result.rolls.push({ name: step.name, label: step.label || action.name, expr: step.expr, total, breakdown: `${r.breakdown} = ${Math.round(total * 100) / 100}` });
+        // A label can name things on the sheet: "{name} hits" → "Fireball hits".
+        const label = step.label?.includes("{") ? interpolate(step.label, (e) => store.computer().evalIn(action.noteId, e, { locals, roots }).value) : step.label;
+        result.rolls.push({ name: step.name, label: label || action.name, expr: step.expr, total, breakdown: `${r.breakdown} = ${Math.round(total * 100) / 100}` });
       } catch (e) {
         result.messages.push(`⚠ ${step.label || step.name}: ${(e as Error).message}`);
       }

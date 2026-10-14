@@ -2,8 +2,9 @@
 // every card is a layout the GM designs (portrait, bars, values, buttons,
 // last roll…), placed where the GM wants it. Values are the live ones —
 // change HP anywhere and every card updates instantly.
-import React, { useMemo, useState } from "react";
-import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices } from "lucide-react";
+import type { AgNote } from "@shared/agnostic/types";
 import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
 import { DEFAULT_TRACKER_CARD, agTypeLabel } from "@shared/agnostic/types";
 import { AgPanel, AgSelector, PickField } from "./float";
@@ -18,7 +19,8 @@ import { LookButton } from "./look";
 import { GuideButton } from "./AgGuide";
 import type { AgTokenBar } from "@shared/agnostic/types";
 
-export interface RollFeedLike { characterName?: string; label?: string; total?: number; ts?: number; timestamp?: number }
+/** A roll as the campaign's roll feed carries it (newest first). */
+export interface RollFeedLike { id?: string; userId?: string; username?: string; characterName?: string; text?: string; label?: string; total?: number | null; ts?: number; timestamp?: number; dieType?: string; historical?: boolean }
 
 export function cardFor(settings: AgCampaignSettings, noteId: string, type: string): AgTrackerCard {
   const t = settings.tracker;
@@ -40,10 +42,15 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   const t = settings.tracker;
   const notes = t.pinned.map((id) => state.notes.get(id)).filter(Boolean) as NonNullable<ReturnType<typeof state.notes.get>>[];
   const scale = (isMobile ? 0.8 : 1) * (t.scale || 1);
-  const lastRollOf = (name: string) => {
-    const r = [...rollFeed].reverse().find((x) => x.characterName === name);
-    return r ? { label: r.label ?? "Roll", total: Number(r.total ?? 0), ts: r.ts ?? r.timestamp ?? Date.now() } : null;
+  // A card's rolls: rolled as that sheet, or by a player who owns it (newest first).
+  const rollsOf = (n: AgNote) => rollFeed.filter((r) => r.characterName === n.name || (!!r.userId && n.ownerIds.includes(r.userId)));
+  const lastRollOf = (n: AgNote) => {
+    const r = rollsOf(n)[0];
+    return r ? { label: r.text || r.label || "Roll", total: Number(r.total ?? 0), ts: r.ts ?? r.timestamp ?? Date.now() } : null;
   };
+  const tray = t.diceTray !== false;
+  // Rolls slide out from the card toward the middle of the screen.
+  const trayFrom: TraySide = t.placement === "bottom" ? "above" : t.placement === "left" ? "right" : t.placement === "right" ? "left" : "below";
   const vertical = t.placement === "left" || t.placement === "right";
   const pos: React.CSSProperties =
     t.placement === "top" ? { top: 56, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
@@ -55,33 +62,112 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   if (!notes.length && !viewer.isGM) return null;
   return (
     <>
-      <div className="absolute z-30 pointer-events-auto" style={pos} data-testid="ag-tracker">
-        <div className={`flex ${vertical ? "flex-col overflow-y-auto" : "flex-row overflow-x-auto"} gap-2 no-scrollbar p-0.5`} style={{ maxHeight: pos.maxHeight, maxWidth: pos.maxWidth }}>
+      <div className="absolute z-30 pointer-events-none" style={pos} data-testid="ag-tracker">
+        {/* Room on the tray's side so a sliding roll isn't clipped by the scroll area. */}
+        <div className={`flex ${vertical ? "flex-col overflow-y-auto" : "flex-row overflow-x-auto"} gap-2 no-scrollbar p-0.5`}
+          style={{ maxHeight: pos.maxHeight, maxWidth: pos.maxWidth, ...(tray ? (trayFrom === "below" ? { paddingBottom: TRAY_H + 10 } : trayFrom === "above" ? { paddingTop: TRAY_H + 10 } : trayFrom === "right" ? { paddingRight: TRAY_W + 10 } : { paddingLeft: TRAY_W + 10 }) : {}) }}>
           {notes.map((n) => {
             const card = cardFor(settings, n.id, n.type);
             return (
-              <div
-                key={n.id}
-                role="button"
-                tabIndex={0}
-                // Cards hold live controls (bars, buttons); only a click on the card itself opens the sheet.
-                onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a")) openNote(n.id); }}
-                onKeyDown={(e) => { if (e.key === "Enter") openNote(n.id); }}
-                className="shrink-0 text-left rounded-[10px] shadow-lg hover:brightness-110 transition cursor-pointer"
-                style={{ width: card.layout.width * scale }}
-                data-testid={`ag-tracker-card-${n.name}`}
-              >
-                <LayoutView layout={card.layout} opts={{ noteId: n.id, lastRoll: lastRollOf(n.name) }} maxWidth={card.layout.width * scale} />
-              </div>
+              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  // Cards hold live controls (bars, buttons); only a click on the card itself opens the sheet.
+                  onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a")) openNote(n.id); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") openNote(n.id); }}
+                  className="shrink-0 text-left rounded-[10px] shadow-lg hover:brightness-110 transition cursor-pointer"
+                  style={{ width: card.layout.width * scale }}
+                  data-testid={`ag-tracker-card-${n.name}`}
+                >
+                  <LayoutView layout={card.layout} opts={{ noteId: n.id, lastRoll: lastRollOf(n), noTips: true }} maxWidth={card.layout.width * scale} />
+                </div>
+              </TrackerSlot>
             );
           })}
           {viewer.isGM && !play && (
-            <button type="button" onClick={() => setDesigning(true)} className="shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-400 hover:text-amber-300" title="Design the tracker" data-testid="ag-tracker-design"><Settings2 className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setDesigning(true)} className="pointer-events-auto shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-400 hover:text-amber-300" title="Design the player tracker" data-testid="ag-tracker-design"><Settings2 className="h-4 w-4" /></button>
           )}
         </div>
       </div>
       {designing && <TrackerDesigner onClose={() => setDesigning(false)} />}
     </>
+  );
+}
+
+// --------------------------------------------------------------------------- dice tray
+// The player tracker is where rolls land: each new roll slides out from its
+// card, tumbles for a beat, settles on the total, then tucks away again.
+// Hover the card to peek at the last one; click it for the recent rolls.
+type TraySide = "below" | "above" | "left" | "right";
+const TRAY_W = 150, TRAY_H = 62, REVEAL_MS = 3200;
+
+function TrackerSlot({ note, rolls, tray, side, accent, children }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode }) {
+  const latest = rolls[0];
+  const key = (r?: RollFeedLike) => (r ? r.id ?? `${r.ts}-${r.total}-${r.text ?? r.label}` : undefined);
+  const lastSeen = useRef<string | undefined>(key(latest));
+  const [shown, setShown] = useState(false);
+  const [rolling, setRolling] = useState<number | null>(null);
+  const [history, setHistory] = useState(false);
+  const hover = useRef(false);
+  const timers = useRef<Array<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>>([]);
+  const clear = () => { timers.current.forEach((x) => { clearTimeout(x as any); clearInterval(x as any); }); timers.current = []; };
+  useEffect(() => () => clear(), []);
+  useEffect(() => {
+    const k = key(latest);
+    if (!latest || k === lastSeen.current) return;
+    lastSeen.current = k;
+    if (latest.historical || !tray) return;
+    clear();
+    setShown(true);
+    // Tumble within the die's faces, then settle on the real total.
+    const faces = parseInt(String(latest.dieType ?? "").replace(/^d/i, ""), 10) || 20;
+    if (latest.total !== null && latest.total !== undefined) {
+      setRolling(1 + Math.floor(Math.random() * faces));
+      timers.current.push(setInterval(() => setRolling(1 + Math.floor(Math.random() * faces)), 80));
+      timers.current.push(setTimeout(() => { clear(); setRolling(null); timers.current.push(setTimeout(() => { if (!hover.current) setShown(false); }, REVEAL_MS - 1000)); }, 1000));
+    } else {
+      timers.current.push(setTimeout(() => { if (!hover.current) setShown(false); }, REVEAL_MS));
+    }
+  }, [key(latest)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const color = accent && /^#|^rgb/.test(accent) ? accent : "#d4a24c";
+  const open = tray && !!latest && (shown || history);
+  const sideStyle: React.CSSProperties =
+    side === "below" ? { top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 6 }
+    : side === "above" ? { bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 6 }
+    : side === "right" ? { left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 6 }
+    : { right: "100%", top: "50%", transform: "translateY(-50%)", marginRight: 6 };
+  const hidden = side === "below" ? "translateY(-12px)" : side === "above" ? "translateY(12px)" : side === "right" ? "translateX(-12px)" : "translateX(12px)";
+  return (
+    <div className="relative shrink-0 pointer-events-auto"
+      onMouseEnter={() => { hover.current = true; if (latest) setShown(true); }}
+      onMouseLeave={() => { hover.current = false; if (rolling === null) timers.current.push(setTimeout(() => setShown(false), 400)); }}>
+      {children}
+      {tray && latest && (
+        <div className="absolute z-10" style={{ ...sideStyle, pointerEvents: open ? "auto" : "none" }}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}
+            className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 transition-all duration-300 ease-out"
+            style={{ width: TRAY_W, height: TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
+            title="Recent rolls" data-testid={`ag-dice-tray-${note.name}`}>
+            <span className="text-[10px] text-stone-300 truncate max-w-full leading-tight">{latest.text || latest.label || "Roll"}</span>
+            <span className={`text-xl font-bold leading-tight ${rolling !== null ? "animate-pulse" : ""}`} style={{ color }}>{rolling ?? latest.total ?? ""}</span>
+          </button>
+        </div>
+      )}
+      {history && (
+        <AgPanel title={<span className="inline-flex items-center gap-1.5"><Dices className="h-4 w-4 text-amber-400" />{note.name || "Sheet"} — recent rolls</span>} onClose={() => setHistory(false)} width={320} height={360} testId="ag-dice-history">
+          <div className="space-y-1">
+            {rolls.slice(0, 30).map((r, i) => (
+              <div key={key(r) ?? i} className="flex items-center gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
+                <span className="flex-1 min-w-0 truncate">{r.text || r.label || "Roll"}</span>
+                {r.total !== null && r.total !== undefined && <span className="font-mono font-bold" style={{ color }}>{r.total}</span>}
+              </div>
+            ))}
+            {!rolls.length && <div className="text-xs text-stone-500">No rolls yet.</div>}
+          </div>
+        </AgPanel>
+      )}
+    </div>
   );
 }
 
@@ -127,10 +213,14 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
               <input type="range" min={0.5} max={1.8} step={0.05} value={t.scale} onChange={(e) => save({ ...t, scale: Number(e.target.value) })} className="w-32" />
               <span className="w-8 text-stone-400">{Math.round(t.scale * 100)}%</span>
             </label>
+            <label className="inline-flex items-center gap-1.5 text-xs" title="Each new roll slides out from its card for a moment, like a dice tray">
+              <input type="checkbox" checked={t.diceTray !== false} onChange={(e) => save({ ...t, diceTray: e.target.checked })} data-testid="ag-tracker-dicetray" />
+              Dice tray (show rolls as they land)
+            </label>
           </div>
 
           <section className="space-y-1.5">
-            <div className="text-xs uppercase tracking-wide text-amber-400/90">Shown in the tracker</div>
+            <div className="text-xs uppercase tracking-wide text-amber-400/90">Shown in the player tracker</div>
             {t.pinned.map((id, i) => {
               const n = state.notes.get(id);
               return (
@@ -144,7 +234,7 @@ export function TrackerDesigner({ onClose }: { onClose: () => void }) {
               );
             })}
             <button type="button" onClick={() => setAdding(true)} className="h-8 px-2.5 rounded bg-stone-800 hover:bg-stone-700 text-xs inline-flex items-center gap-1" data-testid="ag-tracker-add"><Plus className="h-3.5 w-3.5" /> Add sheets…</button>
-            {adding && <AgSelector title="Add to the tracker" keepOpen items={noteItems(sheets.filter((n) => !t.pinned.includes(n.id)))} onPick={(id) => save({ ...t, pinned: [...t.pinned, id] })} onClose={() => setAdding(false)} hint="Click each sheet to add it; this window stays open." emptyText="Every sheet is already in the tracker." testId="ag-tracker-add-selector" />}
+            {adding && <AgSelector title="Add to the player tracker" keepOpen items={noteItems(sheets.filter((n) => !t.pinned.includes(n.id)))} onPick={(id) => save({ ...t, pinned: [...t.pinned, id] })} onClose={() => setAdding(false)} hint="Click each sheet to add it; this window stays open." emptyText="Every sheet is already in the player tracker." testId="ag-tracker-add-selector" />}
           </section>
 
           <section className="space-y-1.5">

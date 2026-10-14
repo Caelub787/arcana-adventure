@@ -55,6 +55,28 @@ const RANK_NAMES = ["Bronze", "Silver", "Gold", "Obsidian", "Terran"];
 const THRESHOLDS = [0, 20, 30, 40, 50, ...[100, 1000, 10000, 100000].flatMap((base) => [1, 2, 3, 4, 5].map((s) => base * s))];
 const HP_LADDER = THRESHOLDS.map((_, idx) => { let hp = 20; for (let k = 1; k <= idx; k++) hp += k % 5 === 0 ? 10 : 5; return hp; });
 const LADDER_LABELS = THRESHOLDS.map((_, idx) => `${RANK_NAMES[Math.floor(idx / 5)]} ${idx % 5 + 1}`);
+const RANK_LIFESPAN = [100, 150, 200, 250, 300];
+const RANK_ABSORB = [20, 50, 500, 5000, 50000];
+
+/** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
+export function rankTooltip(): string {
+  const n = (x: number) => x.toLocaleString("en-US");
+  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. **Usable Energy** is half the pool, and is what you spend.", ""];
+  RANK_NAMES.forEach((name, r) => {
+    out.push(`## ${name} · Lifespan ${n(RANK_LIFESPAN[r])} yrs · Absorbs ${n(RANK_ABSORB[r])}`);
+    out.push("Star | Energy Pool | Usable | Max HP | Max Focus");
+    for (let k = 0; k < 5; k++) {
+      const idx = r * 5 + k;
+      out.push(`${LADDER_LABELS[idx]} | ${n(THRESHOLDS[idx])} | ${n(Math.floor(THRESHOLDS[idx] / 2))} | ${HP_LADDER[idx]} | ${10 + 2 * idx}`);
+    }
+    out.push("");
+  });
+  return out.join("\n").trim();
+}
+
+// Abilities: each one its own small sheet held by a character (like items).
+const ABILITY_CATEGORIES = ["Attack", "Defense", "Support", "Movement", "Utility", "Passive"];
+const ABILITY_COLORS: Record<string, string> = { Attack: "#f87171", Defense: "#60a5fa", Support: "#34d399", Movement: "#fbbf24", Utility: "#c084fc", Passive: "#a8a29e" };
 
 const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Miscellaneous", "Rune", "Weapon"];
 const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e" };
@@ -87,6 +109,8 @@ class Sheet {
   bool(key: string, label: string, value = false) { return this.add(key, label, "boolean", value); }
   choice(key: string, label: string, choices: string[], value: string, colors?: Record<string, string>) { return this.add(key, label, "select", value, null, { choices, choiceColors: colors }); }
   calc(key: string, label: string, formula: string, resultType: "number" | "text" = "number") { return this.add(key, label, "formula", null, formula, { resultType }); }
+  /** A tooltip (the ? beside the value wherever it's shown). */
+  tip(key: string, text: string) { const f = this.fields.find((x) => x.key === key); if (f) f.options = { ...f.options, tooltip: text }; return this; }
   dice(key: string, label: string, expr: string) { return this.add(key, label, "dice", null, expr); }
 
   action(id: string, name: string, steps: AgActionStep[], color: string | null = null, edit: "owners" | "gm" | "everyone" = "owners") {
@@ -136,6 +160,7 @@ function characterTemplate(): AgSnapshot {
     .calc("rank", "Rank", `concat(choose(floor(rank_index / 5), ${RANK_NAMES.map((n) => `"${n}"`).join(", ")}), " ", rank_index % 5 + 1)`, "text")
     .calc("to_next_rank", "To next rank", `max(0, choose(rank_index + 1, ${THRESHOLDS.join(", ")}) - energy_pool)`)
     .calc("rank_next", "Next rank", `if(to_next_rank > 0, concat(to_next_rank, " to next"), "top of the ladder")`, "text")
+    .tip("rank", rankTooltip())
     .calc("lifespan", "Lifespan", `choose(floor(rank_index / 5), 100, 150, 200, 250, 300)`)
     .calc("absorption_limit", "Absorption limit", `choose(floor(rank_index / 5), 20, 50, 500, 5000, 50000)`);
   // Health, Physique, Energy, Focus
@@ -162,8 +187,8 @@ function characterTemplate(): AgSnapshot {
   s.calc("skill_reclaimed", "Skill points reclaimed", `min(6, -(${negatives}))`)
     .calc("skill_budget", "Skill budget", "8 + (level - 1) + skill_reclaimed").calc("skill_used", "Skill points used", positives)
     .calc("skill_points", "Skill Points", `concat(skill_used, " / ", skill_budget, if(skill_used > skill_budget, " (too many)", ""))`, "text");
-  // Ability
-  s.text("ability_name", "Ability", "").text("ability_description", "Ability description", "").text("cultivation", "Cultivation", "");
+  // Cultivation (abilities are their own sheets — see the Ability tab)
+  s.text("cultivation", "Cultivation", "");
   // Inventory totals
   s.num("weight_capacity", "Carry weight", 50, { min: 0 }).calc("carried", "Weight carried", "sum(@items.total_weight)")
     .calc("currency", "Currency", "sum(@items.coin_total)");
@@ -171,7 +196,6 @@ function characterTemplate(): AgSnapshot {
   // Skill roll buttons
   const roll = (k: typeof SKILLS[number]) => s.action(`a_${k.key}`, k.name, [{ type: "roll", name: "r", expr: `roll(1, ${k.parent}_die) + ${k.key}`, label: k.name }], "#78350f");
   const skillRolls = Object.fromEntries(SKILLS.map((k) => [k.key, roll(k)]));
-  const abilityRoll = s.action("a_ability", "Ability roll", [{ type: "roll", name: "r", expr: "roll(1, anemos_die) + arcana", label: "Ability" }], "#9f1239");
 
   // ---- Overview: identity chips on a canvas
   const chip = (key: string, label: string, iconName: string, suffix?: string, w = 152) => ({ key, label, iconName, suffix, w });
@@ -258,20 +282,7 @@ function characterTemplate(): AgSnapshot {
   ];
 
   // ---- Ability
-  const abilityTab: DocNode[] = [
-    framed(s, "ability", "Flame", "Ability", [], [
-      block("ability_name", { display: "value", showLabel: false, look: { fontSize: 18, bold: true } }),
-      block("ability_description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
-      p(muted("Double-click the name or the line under it to change them. Write what the ability does at length right here, under this box.")),
-    ]),
-    hr(),
-    framed(s, "cultivation", "Flame", "Cultivation", [val("cultivation", { look: { bold: true } })], [p(muted("Energy type. Double-click to set it."))]),
-    hr(),
-    framed(s, "ability_rolls", "Dices", "Rolls", [], [
-      p(button(abilityRoll, "Ability roll")),
-      p(muted("GM: change this button (⚙) or add more in Settings → Buttons, then Insert → Button here.")),
-    ]),
-  ];
+  const abilityTab: DocNode[] = abilityTabContent();
 
   // ---- Inventory
   const inventoryTab: DocNode[] = [
@@ -303,6 +314,78 @@ function characterTemplate(): AgSnapshot {
     ], { color: GILT }),
   ];
   return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, physique, energy, focus, wounds, attributes, skills, ability, inventory and traits." }, page, { cv_identity: chips, cv_attributes: attrBoxes });
+}
+
+// --------------------------------------------------------------------------- abilities
+export const ABILITY_LIST_COLUMNS = [
+  { ref: "category", display: "badge" }, { ref: "roll_text", display: "value", label: "Roll" }, { ref: "cost_text", display: "value", label: "Cost" },
+  { ref: "range", display: "value", label: "Range" }, { ref: "description", display: "text" },
+  { ref: "Use", display: "button", label: "Use", color: "#9f1239" }, { ref: "Roll effect", display: "button", label: "Effect", color: "#7c2d12" },
+];
+export const ABILITY_LIST_CONFIG = {
+  layout: "cards", search: true, sortBy: "name", filterBy: "category", accentBy: "category",
+  add: { types: ["ability"], reverse: "holder", existing: true }, remove: "delete", emptyText: "No abilities yet — the GM adds them with Add.",
+};
+
+/** The character's Ability tab: cultivation, then every ability as a card with its roll, cost and Use button. */
+export function abilityTabContent(): DocNode[] {
+  return [
+    columns([[p(icon("Flame", GILT, 18), " ", b("Cultivation"))], [pAlign("right", val("cultivation", { look: { bold: true } }))]], { ...SECTION_LOOK, ratio: "3:2", gap: 8 }),
+    p(muted("Energy type. Double-click to set it.")),
+    h(3, icon("Sparkles", GILT, 18), " Abilities"),
+    links("abilities", ABILITY_LIST_COLUMNS, ABILITY_LIST_CONFIG),
+    p(muted("Use spends the ability's Energy and Focus, then rolls (it won't if there isn't enough). GM: Add gives this character a new ability or one that already exists; open an ability to change its cost, roll and effect.")),
+  ];
+}
+
+export function abilityTemplateSnapshot(): AgSnapshot { return abilityTemplate(); }
+
+function abilityTemplate(): AgSnapshot {
+  const s = new Sheet();
+  // The roll comes off the holder: their attribute's die + a skill + a bonus.
+  const dieIf = ATTRS.reduceRight((acc, a) => `if(attribute == "${a.name}", @holder.${a.key}_die, ${acc})`, "20");
+  const skillIf = SKILLS.reduceRight((acc, k) => `if(skill == "${k.name}", @holder.${k.key}, ${acc})`, "0");
+  s.choice("category", "Category", ABILITY_CATEGORIES, "Attack", ABILITY_COLORS)
+    .num("energy_cost", "Energy cost", 10, { min: 0 }).num("focus_cost", "Focus cost", 0, { min: 0 })
+    .choice("attribute", "Attribute", [...ATTRS.map((a) => a.name), "None"], "Anemos")
+    .choice("skill", "Skill", ["None", ...SKILLS.map((k) => k.name)], "Arcana")
+    .num("dice_count", "Dice", 1, { min: 1, max: 20 }).num("bonus", "Bonus", 0)
+    .calc("die", "Die size", `if(count(@holder.name) == 0 || attribute == "None", 20, ${dieIf})`)
+    .calc("skill_bonus", "Skill bonus", `if(skill == "None", 0, ${skillIf})`)
+    .calc("roll_text", "Roll", `concat(dice_count, "d", die, if(skill_bonus + bonus > 0, concat(" + ", skill_bonus + bonus), if(skill_bonus + bonus < 0, concat(" − ", abs(skill_bonus + bonus)), "")))`, "text")
+    .calc("cost_text", "Cost", `concat(energy_cost, " Energy", if(focus_cost > 0, concat(" · ", focus_cost, " Focus"), ""))`, "text")
+    .calc("usable", "Can use now", "@holder.energy >= energy_cost && @holder.focus >= focus_cost")
+    .dice("effect", "Effect dice", "")
+    .text("range", "Range", "").text("duration", "Duration", "").text("cooldown", "Cooldown", "").text("description", "Description", "");
+  s.tip("roll_text", "The ability's roll: the holder's **attribute die** (0 → d6 … 4+ → d20) plus their **skill** and the **bonus**. Change Attribute, Skill, Dice and Bonus on the ability to change it.");
+  s.tip("cost_text", "**Use** spends this much of the holder's Energy (and Focus) first. If they don't have enough, nothing happens and they're told why.");
+  const use = s.action("a_use", "Use", [
+    { type: "message", text: "Not enough to use {name}: it needs {energy_cost} Energy (has {@holder.energy}) and {focus_cost} Focus (has {@holder.focus}).", when: "!usable" },
+    { type: "stop", when: "!usable" },
+    { type: "modify", target: "@holder.energy", op: "subtract", value: "energy_cost", when: "energy_cost > 0" },
+    { type: "modify", target: "@holder.focus", op: "subtract", value: "focus_cost", when: "focus_cost > 0" },
+    { type: "roll", name: "r", expr: "roll(dice_count, die) + skill_bonus + bonus", label: "{name}" },
+    { type: "roll", name: "fx", expr: "effect", label: "{name} effect", when: 'effect != ""' },
+  ], "#9f1239");
+  const fx = s.action("a_effect", "Roll effect", [{ type: "roll", name: "fx", expr: "effect", label: "{name} effect", when: 'effect != ""' }, { type: "message", text: "{name} has no effect dice.", when: 'effect == ""' }], "#7c2d12");
+  s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this ability only the GM sees."))], { view: "gm", edit: "gm" });
+  const page: DocNode[] = [
+    p(val("category", { display: "badge" }), "   ", muted("Cost "), val("cost_text", { look: { bold: true } })),
+    block("description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
+    columns([
+      [p(icon("Dices", GILT, 16), " ", b("Roll "), val("roll_text", { look: { bold: true, color: GILT } })),
+        p(muted("Attribute "), val("attribute", { display: "input" })), p(muted("Skill "), val("skill", { display: "input" })),
+        p(muted("Dice "), val("dice_count", { display: "input" }), "  ", muted("Bonus "), val("bonus", { display: "input" }))],
+      [p(icon("Zap", GILT, 16), " ", b("Cost")),
+        p(muted("Energy "), val("energy_cost", { display: "input" })), p(muted("Focus "), val("focus_cost", { display: "input" })),
+        p(muted("Effect dice "), val("effect", { look: { bold: true } }))],
+    ], { ...SECTION_LOOK, gap: 12 }),
+    p(muted("Range "), val("range", { look: { bold: true } }), "    ", muted("Duration "), val("duration", { look: { bold: true } }), "    ", muted("Cooldown "), val("cooldown", { look: { bold: true } })),
+    p(button(use, "Use"), " ", button(fx, "Roll effect")),
+    p(muted("Use spends the Energy and Focus first, then rolls (and the effect dice, if any). Double-click any value to change it.")),
+    section("r_gm", { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 }),
+  ];
+  return s.snapshot({ type: "ability", name: "CA Ability", description: "An ability: category, Energy/Focus cost, a roll off the holder's attribute and skill, effect dice, range, duration. Use spends the cost and rolls." }, page);
 }
 
 // --------------------------------------------------------------------------- items
@@ -479,6 +562,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   for (const k of ["Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
+  await add("ability", abilityTemplate());
 
   await applyCATrackerSettings(store, cs);
 
@@ -489,7 +573,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
       energy_pool: 1200, hp: 40, physique: 1500, energy: 480, focus: 9,
       might: 2, finesse: 1, constitution: 1, will: 1, anemos: 0, intelligence: 0,
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,
-      ability_name: "Oathbound Bulwark", ability_description: "Plant your shield and draw every eye in the room.", cultivation: "Ember", weight_capacity: 50,
+      cultivation: "Ember", weight_capacity: 50,
     }, cs);
     const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Bronze 3", weight: 3, value: 400, durability: 40, durability_max: 40, equipped: true, damage: "1d8 + 6" }, cs);
     const shield = await createFrom(store, made.Armor, "Bulwark of Veridun", { rarity: "Uncommon", weight: 6, value: 180, armor_dc: 2, equipped: true }, cs);
@@ -507,7 +591,10 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     await store.putModifier({ id: randomUUID(), noteId: cut.id, via: "bearer", targetKey: "speed", op: "add", amount: "-5", condition: null, label: "Shallow cut" }, cs);
     const trait = await createFrom(store, made.trait, "Iron Will", { summary: "Never breaks under fear — the GM may grant advantage on Focus rolls against it." }, cs);
     await connect(store, trait, hero, "holder", "traits", cs);
-    sheets = 10;
+    const bulwark = await createFrom(store, made.ability, "Oathbound Bulwark", { category: "Defense", energy_cost: 20, focus_cost: 2, attribute: "Will", skill: "Focus", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
+    const lance = await createFrom(store, made.ability, "Ember Lance", { category: "Attack", energy_cost: 30, attribute: "Anemos", skill: "Arcana", effect: "2d6", range: "30 ft", description: "A spear of burning Anemos. Roll to hit; the effect dice are its fire damage." }, cs);
+    for (const a of [bulwark, lance]) await connect(store, a, hero, "holder", "abilities", cs);
+    sheets = 12;
     if (store.scope.kind === "campaign" && store.settings) {
       const st = store.settings;
       if (!st.tracker.pinned.includes(hero.id)) await store.putSettings({ ...st, tracker: { ...st.tracker, pinned: [...st.tracker.pinned, hero.id] } }, cs);

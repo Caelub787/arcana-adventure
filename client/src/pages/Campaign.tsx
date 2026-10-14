@@ -34,6 +34,7 @@ import { AgRoot } from "@/agnostic/AgRoot";
 import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
 import { AgTracker } from "@/agnostic/AgTracker";
 import { AgViewModeButton } from "@/agnostic/viewMode";
+import { openAgNoteWindow } from "@/agnostic/AgWindows";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
@@ -10585,6 +10586,8 @@ export default function Campaign() {
   const handleTokenDoubleClick = useCallback((token: any) => {
     // Only assign in select mode - double-click assigns the character
     if (selectionMode !== 'select') return;
+    // Agnostic systems: a token stands for a sheet — double-click opens it.
+    if (isAgnostic && token?.agnosticNoteId) { openAgNoteWindow(token.agnosticNoteId); return; }
     
     console.log('[TokenDoubleClick] Assigning character from token:', token.id, token.characterId);
     if (token.type === 'player' && characters && Array.isArray(characters)) {
@@ -10621,7 +10624,7 @@ export default function Campaign() {
       }
     }
     setSelectedTokenId(token.id);
-  }, [selectionMode, characters, role, myPermissions, user, effectiveCampaignId, toast]);
+  }, [selectionMode, characters, role, myPermissions, user, effectiveCampaignId, toast, isAgnostic]);
 
   // Handler for triple-clicking a token - opens character sheet WITHOUT assigning
   const handleTokenTripleClick = useCallback((token: any) => {

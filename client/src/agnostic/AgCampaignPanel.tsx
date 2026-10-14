@@ -1,5 +1,5 @@
 // The campaign's "Characters" side panel, Agnostic-style: every sheet of every
-// kind, templates, components, the tracker designer, and library imports.
+// kind, templates, components, the player tracker designer, and library imports.
 import React, { useState } from "react";
 import { Settings2 } from "lucide-react";
 import { useAgMaybe } from "./hooks";

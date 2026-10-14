@@ -1,6 +1,6 @@
 // Presentation widgets. Every one of them reads the single live value from
 // the scope store and writes back through ops — the same HP shows (and
-// changes) identically on a sheet, the tracker and a battlemap token.
+// changes) identically on a sheet, the player tracker and a battlemap token.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
@@ -17,6 +17,7 @@ import { agClient } from "./client";
 import { mergeLook, defaultLabelPos } from "./lookUtil";
 import { LinksTable } from "./links";
 import { AgIcon } from "./icons";
+import { TipIcon } from "./tips";
 
 // --- battlemap / tracker targets ("@target" in actions) -----------------------------
 let currentTargets: string[] = [];
@@ -245,12 +246,18 @@ function Dial({ field, maxField, color = "#38bdf8", size = 56, look }: { field: 
  * A shown value that opens its own editor on double-click (long-press on
  * touch), in a floating panel — no edit mode, nothing else changes.
  */
-function EditOnDoubleClick({ field, children }: { field?: AgField; children: React.ReactNode }) {
-  const { canEditField } = usePerms(field?.noteId);
+/**
+ * Double-click (or long-press) a value to change it right where it is. An empty
+ * value shows a faint dash for whoever may fill it in, so there's always
+ * something to double-click. The GM can also change a dice value's dice here.
+ */
+export function EditOnDoubleClick({ field, children, empty }: { field?: AgField; children: React.ReactNode; empty?: boolean }) {
+  const { canEditField, isGM } = usePerms(field?.noteId);
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editable = !!field && field.type !== "formula" && field.type !== "dice" && canEditField(field);
+  const editable = !!field && field.type !== "formula" && (field.type === "dice" ? isGM : canEditField(field));
   if (!editable) return <>{children}</>;
+  if (empty) children = <span className="inline-block min-w-[1.5em] text-stone-500 font-normal border-b border-dashed border-stone-600" title="Empty — double-click to fill in">—</span>;
   const cancel = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   return (
     <>
@@ -260,11 +267,24 @@ function EditOnDoubleClick({ field, children }: { field?: AgField; children: Rea
         onTouchEnd={cancel} onTouchMove={cancel} onTouchCancel={cancel}
         data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
       {open && (
-        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={300} height={field!.type === "text" ? 200 : 180} testId="ag-value-edit">
-          <FieldInput field={field!} className={field!.type === "text" ? "w-full" : ""} />
+        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={300} height={field!.type === "text" || field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
+          {field!.type === "dice" ? <DiceFormulaInput field={field!} /> : <FieldInput field={field!} className={field!.type === "text" ? "w-full" : ""} />}
         </AgPanel>
       )}
     </>
+  );
+}
+
+/** The GM changes what a dice value rolls ("1d8 + 2"). */
+function DiceFormulaInput({ field }: { field: AgField }) {
+  const { request } = useAg();
+  const { toast } = useToast();
+  return (
+    <div className="space-y-1">
+      <CommitInput value={field.formula ?? ""} className="w-full h-9 bg-stone-950 border border-stone-700 rounded px-2 font-mono text-sky-200" placeholder="e.g. 1d8 + 2"
+        onCommit={(v) => request({ op: "field.update", id: field.id, patch: { formula: v } }).catch((e: any) => toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }))} />
+      <div className="text-[11px] text-stone-500">Dice like 2d6 + 3, or roll(1, might_die) + athletics. Press Enter to save.</div>
+    </div>
   );
 }
 
@@ -337,12 +357,31 @@ export async function uploadImage(file: File): Promise<string> {
 }
 
 /** One field shown the way the GM picked. */
-export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabel = true, color, params, fontSize, align, look, box }: {
+type FieldDisplayProps = {
   noteId: string; refPath: string; maxRef?: string; display: AgFieldDisplay; label?: string; showLabel?: boolean; color?: string;
   params?: Record<string, string>; fontSize?: number; align?: "left" | "center" | "right"; look?: AgLook;
   /** Inside a canvas / card / component item: the item's size decides how big it draws. */
   box?: { w: number; h: number };
-}) {
+  /** The insert's own tooltip is drawn by its block frame, not here. */
+  blockTip?: boolean;
+  /** No "?" at all (small cards). */
+  noTip?: boolean;
+};
+
+/** A value, plus a "?" when the value (or this insert) has a tooltip. */
+export function FieldDisplay(props: FieldDisplayProps) {
+  const { state } = useAg();
+  const f = resolveRef(state, props.noteId, props.refPath, props.params)[0];
+  const tip = props.noTip ? "" : [f?.options.tooltip, props.blockTip ? null : props.look?.tooltip].filter((x) => x && x.trim()).join("\n\n");
+  const core = <FieldDisplayCore {...props} />;
+  if (!tip) return core;
+  const icon = <TipIcon text={tip} current={f ? formatValue(effOf(f)) : null} size={Math.max(11, Math.round((props.look?.fontSize ?? props.fontSize ?? 14) * 0.85))} />;
+  if (props.box) return <span className="flex w-full h-full items-start gap-1"><span className="flex-1 min-w-0 h-full">{core}</span>{icon}</span>;
+  if (props.display === "bar") return <span className="flex w-full items-center gap-1"><span className="flex-1 min-w-0">{core}</span>{icon}</span>;
+  return <span className="inline-flex items-center gap-1 max-w-full"><span className="min-w-0">{core}</span>{icon}</span>;
+}
+
+function FieldDisplayCore({ noteId, refPath, maxRef, display, label, showLabel = true, color, params, fontSize, align, look, box }: FieldDisplayProps) {
   const { state } = useAg();
   const L = mergeLook({ color, fontSize }, look);
   const fields = resolveRef(state, noteId, refPath, params);
@@ -375,7 +414,7 @@ export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabe
       body = (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 border" style={{ borderColor: L.border ?? choiceColor ?? L.color ?? "#78350f", background: choiceColor ? `color-mix(in srgb, ${choiceColor} 14%, transparent)` : "rgba(0,0,0,.35)", borderRadius: L.radius ?? 999, fontSize: L.fontSize ?? 12 }}>
           {pos === "left" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
-          <span className="font-semibold" style={{ color: L.textColor ?? choiceColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined, textTransform: L.labelUpper ? "uppercase" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span>
+          <EditOnDoubleClick field={many ? undefined : field} empty={!many && formatValue(effOf(field), field.options.decimals) === ""}><span className="font-semibold" style={{ color: L.textColor ?? choiceColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined, textTransform: L.labelUpper ? "uppercase" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span></EditOnDoubleClick>
           {pos === "right" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
         </span>
       );
@@ -388,7 +427,7 @@ export function FieldDisplay({ noteId, refPath, maxRef, display, label, showLabe
     }
     default:
       body = (
-        <EditOnDoubleClick field={many ? undefined : field}>
+        <EditOnDoubleClick field={many ? undefined : field} empty={!many && !field.err && formatValue(effOf(field), field.options.decimals) === ""}>
           <span className={`font-semibold ${field.err ? "text-red-400" : "text-stone-100"}`} style={{ ...textStyle, color: field.err ? undefined : (L.textColor ?? choiceColor ?? L.color) }} title={field.err ?? undefined}>
             {field.err ? "\u26a0" : many ?? formatValue(effOf(field), field.options.decimals)}{L.suffix ? <span className="font-normal text-stone-400"> {L.suffix}</span> : null}
             {maxField ? <span className="text-stone-400 font-normal"> / {formatValue(effOf(maxField))}</span> : null}
@@ -451,11 +490,14 @@ export function ActionButton({ actionId, label, className = "", look }: { action
   const go = async (choices: Record<string, string>) => {
     setBusy(true);
     try {
-      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices });
+      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string; rollerName?: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices });
       const broadcast = scope.kind === "campaign";
+      // A sword's or an ability's roll is the character's roll (their player tracker card shows it).
+      const roller = res.rollerName || res.noteName;
       for (const r of res.result.rolls) {
+        const label = roller !== res.noteName && !r.label.includes(res.noteName) ? `${res.noteName}: ${r.label}` : r.label;
         triggerRollNotification({
-          type: "custom", label: r.label, result: r.total, total: r.total, username: res.noteName, characterName: res.noteName,
+          type: "custom", label, result: r.total, total: r.total, username: roller, characterName: roller,
           calculationBreakdown: r.breakdown, customColor: action.color ?? undefined,
         }, broadcast);
       }
@@ -487,6 +529,7 @@ export function ActionButton({ actionId, label, className = "", look }: { action
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : look?.iconName ? <AgIcon name={look.iconName} size={14} color={look.iconColor} /> : look?.icon === false ? null : <Dices className="h-3.5 w-3.5" />}
       {label || action.name}
     </button>
+    {look?.tooltip && <TipIcon text={look.tooltip} className="ml-1" />}
     {picking && (() => {
       const c = picking.choices[picking.idx];
       return (
@@ -564,7 +607,7 @@ export function ChartWidget({ noteId, chart, refs, maxRef, params, height = 200,
   );
 }
 
-// --- free layouts (canvas blocks, tracker cards, components) -----------------------------------
+// --- free layouts (canvas blocks, player tracker cards, components) -----------------------------------
 export interface LayoutRenderOpts {
   noteId: string;
   params?: Record<string, string>;
@@ -572,6 +615,8 @@ export interface LayoutRenderOpts {
   lastRoll?: { label: string; total: number; ts: number } | null;
   /** Renders a rich-text region item (provided by the sheet editor). */
   renderRegion?: (regionId: string) => React.ReactNode;
+  /** Small cards (player tracker, tokens): no "?" tooltips. */
+  noTips?: boolean;
 }
 
 function showToAllows(aud: AgAudience | undefined, viewer: { userId: string; isGM: boolean }, ownerIds: string[]) {
@@ -584,7 +629,7 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
   switch (widget.kind) {
     case "field":
       return <div className="w-full h-full flex items-center overflow-hidden" style={{ justifyContent: widget.align === "center" ? "center" : widget.align === "right" ? "flex-end" : "flex-start" }}>
-        <FieldDisplay noteId={opts.noteId} refPath={widget.ref} maxRef={widget.maxRef} display={widget.display} label={widget.label} showLabel={widget.showLabel ?? false} color={widget.color} params={opts.params} fontSize={widget.fontSize} align={widget.align} look={widget.look} box={{ w, h }} />
+        <FieldDisplay noteId={opts.noteId} refPath={widget.ref} maxRef={widget.maxRef} display={widget.display} label={widget.label} showLabel={widget.showLabel ?? false} color={widget.color} params={opts.params} fontSize={widget.fontSize} align={widget.align} look={widget.look} box={{ w, h }} noTip={opts.noTips} />
       </div>;
     case "text":
       return <div className="w-full h-full overflow-hidden whitespace-pre-wrap leading-tight" style={{ fontSize: widget.fontSize ?? 13, color: widget.color ?? "#e7e5e4", fontWeight: widget.bold ? 700 : 400, textAlign: widget.align }}>{widget.text}</div>;
@@ -602,10 +647,12 @@ export function WidgetView({ widget, opts, w, h }: { widget: AgWidget; opts: Lay
     case "links": return <div className="w-full h-full overflow-auto"><LinksTable noteId={opts.noteId} label={widget.label} columns={widget.columns} config={widget.config} look={widget.look ? { ...widget.look, height: undefined } : undefined} /></div>;
     case "component": return <ComponentView componentId={widget.componentId} noteId={opts.noteId} bindings={widget.bindings} width={w} lastRoll={opts.lastRoll} />;
     case "shape":
+      // A line is just a top border; anything else gets an even border all round.
+      // (Never pass borderTop: undefined next to border — React then wipes the top edge.)
       return <div className="w-full h-full" style={{
         background: widget.shape === "line" ? "transparent" : widget.color, borderRadius: widget.shape === "circle" ? "50%" : widget.radius ?? 0,
-        border: widget.border ? `2px solid ${widget.border}` : undefined, opacity: widget.opacity ?? 1,
-        borderTop: widget.shape === "line" ? `2px solid ${widget.color}` : undefined,
+        opacity: widget.opacity ?? 1,
+        ...(widget.shape === "line" ? { borderTop: `2px solid ${widget.color}` } : widget.border ? { border: `2px solid ${widget.border}` } : {}),
       }} />;
     case "icon": return <div className="w-full h-full grid place-items-center"><AgIcon name={widget.name} size={Math.max(8, Math.min(w, h))} color={widget.color ?? "#d4a24c"} /></div>;
     case "lastRoll":
@@ -636,13 +683,17 @@ export function LayoutView({ layout, opts, maxWidth, fit = "width", className = 
   const owners = state.notes.get(opts.noteId)?.ownerIds ?? [];
   return (
     <div ref={ref} className={className} style={{ width: layout.width * scale, height: layout.height * scale }}>
-      <div className="relative origin-top-left" style={{
-        width: layout.width, height: layout.height, transform: `scale(${scale})`,
+      {/* zoom, not transform: zoomed layouts snap to whole pixels, so thin borders
+          (chips, frames) keep every edge instead of blurring away at odd scales. */}
+      <div className="relative" style={{
+        width: layout.width, height: layout.height, zoom: scale,
         background: layout.background, border: layout.border ? `1px solid ${layout.border}` : undefined, borderRadius: layout.radius,
       }}>
         {[...layout.items].sort((a, b) => (a.z ?? 0) - (b.z ?? 0)).map((it) => showToAllows(it.showTo, viewer, owners) && (
           <div key={it.id} className="absolute" style={{ left: it.x, top: it.y, width: it.w, height: it.h }}>
             <WidgetView widget={it.widget} opts={opts} w={it.w} h={it.h} />
+            {/* Values and buttons draw their own "?"; everything else gets it in its corner. */}
+            {!opts.noTips && it.widget.kind !== "field" && it.widget.kind !== "button" && (it.widget as any).look?.tooltip && <span className="absolute top-0.5 right-0.5 z-[2]"><TipIcon text={(it.widget as any).look.tooltip} size={12} /></span>}
           </div>
         ))}
       </div>

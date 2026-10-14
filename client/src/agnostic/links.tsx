@@ -10,8 +10,9 @@ import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, follow, resolveRef, effOf, usePerms } from "./hooks";
-import { Portrait, FieldInput, ResourceBar, useFieldWriter } from "./widgets";
+import { Portrait, FieldInput, ResourceBar, useFieldWriter, EditOnDoubleClick, CommitInput, ActionButton } from "./widgets";
 import { AgSelector, agConfirm, type SelItem } from "./float";
+import { TipIcon } from "./tips";
 
 export const normCol = (c: string | AgLinkColumn): AgLinkColumn => (typeof c === "string" ? { ref: c } : c);
 
@@ -115,6 +116,12 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   );
 
   const cell = (id: string, c: AgLinkColumn, compact = false) => {
+    if (c.display === "button") {
+      // A button on the connected sheet, found by its name ("Use", "Strike"…).
+      const want = c.ref.trim().toLowerCase();
+      const a = Array.from(state.actions.values()).find((x) => x.noteId === id && x.name.trim().toLowerCase() === want);
+      return a ? <span data-no-open><ActionButton actionId={a.id} label={c.label || a.name} look={{ height: compact ? 28 : 30, fontSize: 12, color: c.color }} /></span> : null;
+    }
     const f = fieldOf(id, c.ref);
     if (!f) return <span className="text-stone-600">—</span>;
     const display = c.display ?? "input";
@@ -122,14 +129,22 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       const m = c.maxRef ? fieldOf(id, c.maxRef) : undefined;
       return <span className="inline-block align-middle" style={{ width: compact ? 72 : 110 }}><ResourceBar field={f} maxField={m} color={c.color ?? "#22c55e"} height={compact ? 8 : 12} showNumbers={!compact} compact /></span>;
     }
+    // Values and badges change on double-click (long-press on phones), even when empty.
     if (display === "badge") {
       const v = effOf(f);
-      if (v === null || v === "") return null;
+      const empty = v === null || v === "";
       const col = f.options.choiceColors?.[String(v)] ?? c.color ?? "#a8a29e";
-      return <span className="inline-flex items-center px-1.5 py-px rounded-full border text-[10px] font-semibold uppercase tracking-wide" style={{ borderColor: col, color: col, background: `color-mix(in srgb, ${col} 12%, transparent)` }}>{formatValue(v)}{c.suffix ? ` ${c.suffix}` : ""}</span>;
+      return <span data-no-open><EditOnDoubleClick field={f} empty={empty}>{empty ? null : <span className="inline-flex items-center px-1.5 py-px rounded-full border text-[10px] font-semibold uppercase tracking-wide" style={{ borderColor: col, color: col, background: `color-mix(in srgb, ${col} 12%, transparent)` }}>{formatValue(v)}{c.suffix ? ` ${c.suffix}` : ""}</span>}</EditOnDoubleClick></span>;
     }
     if (display === "toggle") return <ToggleCell field={f} label={colLabel(c, f)} />;
-    if (display === "value") return <span className="text-stone-200">{formatValue(effOf(f), f.options.decimals)}{c.suffix ? <span className="text-stone-500"> {c.suffix}</span> : null}</span>;
+    if (display === "text") {
+      const text = formatValue(effOf(f));
+      return <span className="text-stone-300 whitespace-pre-wrap" data-no-open><EditOnDoubleClick field={f} empty={text === ""}><span>{text}</span></EditOnDoubleClick></span>;
+    }
+    if (display === "value") {
+      const text = formatValue(effOf(f), f.options.decimals);
+      return <span className="text-stone-200" data-no-open><EditOnDoubleClick field={f} empty={text === ""}><span>{text}{c.suffix ? <span className="text-stone-500"> {c.suffix}</span> : null}</span></EditOnDoubleClick></span>;
+    }
     return <span className="inline-flex items-center gap-1"><FieldInput field={f} />{c.suffix ? <span className="text-stone-500 text-[11px]">{c.suffix}</span> : null}</span>;
   };
 
@@ -146,6 +161,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     const stats = columns.filter((c) => !c.display || c.display === "value" || c.display === "input");
     const bars = columns.filter((c) => c.display === "bar");
     const toggles = columns.filter((c) => c.display === "toggle");
+    const texts = columns.filter((c) => c.display === "text");
+    const buttons = columns.filter((c) => c.display === "button");
     return (
       <div className="space-y-2" style={fontStyle} data-testid="ag-links">
         {toolbar}
@@ -159,16 +176,18 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
               <Portrait note={n} size={44} radius={8} className="shrink-0" />
               <div className="flex-1 min-w-0 space-y-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-semibold text-stone-100 truncate">{n.name || "Untitled"}</span>
+                  <RowName note={n} />
                   {badges.map((c) => <React.Fragment key={c.ref}>{cell(id, c)}</React.Fragment>)}
                 </div>
                 {(stats.length > 0 || bars.length > 0) && (
                   <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-stone-400" data-no-open>
-                    {stats.map((c) => <span key={c.ref} className="inline-flex items-center gap-1"><span className="text-stone-500">{colLabel(c, fieldOf(id, c.ref))}</span>{cell(id, c, true)}</span>)}
+                    {stats.map((c) => { const f = fieldOf(id, c.ref); return <span key={c.ref} className="inline-flex items-center gap-1"><span className="text-stone-500">{colLabel(c, f)}</span>{cell(id, c, true)}{f?.options.tooltip && <TipIcon text={f.options.tooltip} current={formatValue(effOf(f))} size={11} />}</span>; })}
                     {bars.map((c) => <span key={c.ref} className="inline-flex items-center gap-1"><span className="text-stone-500">{colLabel(c, fieldOf(id, c.ref))}</span>{cell(id, c, true)}</span>)}
                   </div>
                 )}
+                {texts.map((c) => <div key={c.ref} className="text-[12px] leading-snug line-clamp-3">{c.label ? <span className="text-stone-500">{c.label} </span> : null}{cell(id, c, true)}</div>)}
               </div>
+              {buttons.length > 0 && <div className="flex flex-col sm:flex-row gap-1 shrink-0" data-no-open>{buttons.map((c) => <React.Fragment key={c.ref}>{cell(id, c, true)}</React.Fragment>)}</div>}
               {toggles.map((c) => <span key={c.ref} data-no-open>{cell(id, c)}</span>)}
               {removeBtn(id)}
             </div>
@@ -188,7 +207,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           <thead className={`${look?.color ? "" : "bg-stone-800/80"} text-stone-300 sticky top-0`} style={{ background: look?.color, color: look?.textColor, fontWeight: look?.bold ? 700 : undefined }}>
             <tr>
               <th className="text-left px-2 py-1 font-medium">{label.replace(/_/g, " ") || "Connected"}</th>
-              {columns.map((c) => <th key={c.ref} className="text-left px-2 py-1 font-medium">{colLabel(c, sample ? fieldOf(sample, c.ref) : undefined)}</th>)}
+              {columns.map((c) => { const f = sample ? fieldOf(sample, c.ref) : undefined; return <th key={c.ref} className="text-left px-2 py-1 font-medium"><span className="inline-flex items-center gap-1">{colLabel(c, f)}{f?.options.tooltip && <TipIcon text={f.options.tooltip} size={11} />}</span></th>; })}
               {removeMode !== "none" && <th className="w-8" />}
             </tr>
           </thead>
@@ -212,6 +231,28 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   );
 }
 
+/** A row's name; double-click (long-press) to rename it, for whoever may. */
+function RowName({ note }: { note: AgNote }) {
+  const { request } = useAg();
+  const { canEditHeader } = usePerms(note.id);
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  if (editing) {
+    // Leaving the box (or Enter) saves; the wrapper hears the blur after the input commits.
+    return <span data-no-open onClick={(e) => e.stopPropagation()} onBlur={() => setTimeout(() => setEditing(false), 0)}><CommitInput autoFocus value={note.name} className="h-7 w-44 bg-stone-950 border border-amber-600 rounded px-1.5 text-sm text-stone-100"
+      onCommit={(v) => { setEditing(false); if (v.trim() && v !== note.name) request({ op: "note.update", id: note.id, patch: { name: v.trim() } }).catch((e: any) => toast({ title: "Couldn't rename it", description: e.message, variant: "destructive" })); }}
+      /></span>;
+  }
+  return (
+    <span className="text-sm font-semibold text-stone-100 truncate" title={canEditHeader ? "Double-click to rename" : undefined}
+      onDoubleClick={canEditHeader ? (e) => { e.stopPropagation(); setEditing(true); } : undefined}
+      onTouchStart={canEditHeader ? () => { cancel(); timer.current = setTimeout(() => setEditing(true), 500); } : undefined}
+      onTouchEnd={cancel} onTouchMove={cancel}>{note.name || "Untitled"}</span>
+  );
+}
+
 /** A yes/no value as a button: "Equip" / "Equipped". */
 function ToggleCell({ field, label }: { field: AgField; label: string }) {
   const { canEditField } = usePerms(field.noteId);
@@ -230,7 +271,7 @@ function ToggleCell({ field, label }: { field: AgField; label: string }) {
 // --------------------------------------------------------------------------- settings
 export interface LinksSettings { label: string; columns: Array<string | AgLinkColumn>; config?: AgLinksConfig }
 
-const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"]];
+const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"], ["text", "Text (in full)"], ["button", "Its button (by name)"]];
 
 /** Everything a connections table can do, in one panel. */
 export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string; value: LinksSettings; onChange: (v: LinksSettings) => void }) {
@@ -282,7 +323,7 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
       {cols.map((c, i) => (
         <div key={i} className="rounded border border-stone-800 bg-stone-950/50 p-1.5 space-y-1">
           <div className="flex items-center gap-1">
-            <input list="ag-link-keys" value={c.ref} placeholder="value key, e.g. weight" onChange={(e) => setCols(cols.map((x, j) => (j === i ? { ...x, ref: e.target.value.toLowerCase().replace(/[^a-z0-9_.@]/g, "") } : x)))} className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid={`ag-links-col-${i}`} />
+            <input list={c.display === "button" ? undefined : "ag-link-keys"} value={c.ref} placeholder={c.display === "button" ? "button name, e.g. Use" : "value key, e.g. weight"} onChange={(e) => setCols(cols.map((x, j) => (j === i ? { ...x, ref: x.display === "button" ? e.target.value.slice(0, 60) : e.target.value.toLowerCase().replace(/[^a-z0-9_.@]/g, "") } : x)))} className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid={`ag-links-col-${i}`} />
             <select value={c.display ?? "input"} onChange={(e) => setCols(cols.map((x, j) => (j === i ? { ...x, display: e.target.value as any } : x)))} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-xs">
               {DISPLAYS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
             </select>
