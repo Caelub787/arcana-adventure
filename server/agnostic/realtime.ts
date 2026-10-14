@@ -93,7 +93,8 @@ function visible(store: ScopeStore, kind: Kind, id: string, viewer: AgViewer): u
       const l = store.links.get(id);
       return l && canViewLink(l, store.notes.get(l.fromNoteId), store.notes.get(l.toNoteId), viewer) ? l : null;
     }
-    case "modifier": return viewer.isGM ? store.modifiers.get(id) ?? null : null;
+    // A sheet's effects (a wound's −2 Athletics) are seen by whoever can see the sheet.
+    case "modifier": { const m = store.modifiers.get(id); const n = m && store.notes.get(m.noteId); return m && n && (viewer.isGM || canViewNote(n, viewer)) ? m : null; }
     case "action": {
       const a = store.actions.get(id); const n = a && store.notes.get(a.noteId);
       return a && n && canSeeAction(a, n, viewer) ? actionView(a, viewer) : null;
@@ -125,6 +126,7 @@ function expand(store: ScopeStore, cs: ChangeSet) {
     store.regionsOf(noteId).forEach((r) => cs.regions.add(r.id));
     store.actionsOf(noteId).forEach((a) => cs.actions.add(a.id));
     store.linksOf(noteId).forEach((l) => cs.links.add(l.id));
+    store.modifiersOf(noteId).forEach((m) => cs.modifiers.add(m.id));
   }
   // A link's visibility depends on both ends.
   for (const noteId of Array.from(cs.notes)) store.linksOf(noteId).forEach((l) => cs.links.add(l.id));

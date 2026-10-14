@@ -60,6 +60,8 @@ function cleanOptions(raw: unknown): AgFieldOptions {
     if (Object.keys(cc).length) out.choiceColors = cc;
   }
   if (typeof o.tooltip === "string" && o.tooltip.trim()) out.tooltip = o.tooltip.slice(0, 8000);
+  if (typeof o.follows === "string" && isValidKey(o.follows)) out.follows = o.follows;
+  if (typeof o.shield === "string" && isValidKey(o.shield)) out.shield = o.shield;
   return out;
 }
 
@@ -503,7 +505,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           if (f.type !== "number") fail("Only numbers can be adjusted");
           const d = Number(body.delta);
           if (!Number.isFinite(d)) fail("Bad amount");
-          f.value = coerceValue(f, asNumber((f.value as number) ?? 0) + d);
+          f.value = coerceValue(f, asNumber((f.value as number) ?? 0) + await absorb(store, f, d, cs));
         } else {
           f.value = coerceValue(f, body.value);
         }
@@ -792,6 +794,24 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   return { ok: true };
 }
 
+/**
+ * A loss to a value with temporary points (its "shield", e.g. Temp HP) comes off
+ * those first. Returns what's left to change on the value itself.
+ */
+async function absorb(store: ScopeStore, f: AgField, delta: number, cs: ChangeSet, result?: AgActionResult): Promise<number> {
+  if (delta >= 0 || !f.options.shield) return delta;
+  const s = store.fieldsByNote.get(f.noteId)?.get(f.options.shield);
+  if (!s || s.type !== "number") return delta;
+  const have = Math.max(0, asNumber((s.value as any) ?? 0));
+  const soak = Math.min(have, -delta);
+  if (soak <= 0) return delta;
+  const from = s.value;
+  const to = coerceValue(s, have - soak);
+  await store.putField({ ...s, value: to }, cs);
+  result?.changes.push({ noteId: s.noteId, key: s.key, from, to });
+  return delta + soak;
+}
+
 const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
 /** The character a sheet stands for: itself, or the character/NPC it hangs off (a sword's owner). */
 function personOf(store: ScopeStore, note: AgNote): AgNote | undefined {
@@ -964,7 +984,9 @@ async function executeAction(
           if (!f || f.type === "formula" || f.type === "dice") { result.messages.push(`⚠ ${store.notes.get(nid)?.name ?? "Sheet"} has no "${key}" value to change`); continue; }
           const from = f.value;
           const base = asNumber((from as any) ?? 0);
-          const to = coerceValue(f, step.op === "set" ? amount : step.op === "add" ? base + amount : base - amount);
+          // A loss comes off temporary points first (e.g. Temp HP before HP).
+          const change = step.op === "set" ? 0 : await absorb(store, f, step.op === "add" ? amount : -amount, cs, result);
+          const to = coerceValue(f, step.op === "set" ? amount : base + change);
           await store.putField({ ...f, value: to }, cs);
           result.changes.push({ noteId: nid, key, from, to });
         }

@@ -215,6 +215,18 @@ export interface AgFieldOptions {
   choiceColors?: Record<string, string>;
   /** Explanation shown behind a "?" wherever this value appears (see tooltip format in tipFormat.ts). */
   tooltip?: string;
+  /**
+   * A current value that goes up with its maximum: when that value (a key on the
+   * same sheet, e.g. "hp_max") rises by 5, this one rises by 5 too; when it
+   * drops, this one is kept within it. E.g. HP gaining a rank's extra health.
+   */
+  follows?: string;
+  /**
+   * Temporary points that soak up losses first (a key on the same sheet, e.g.
+   * "temp_hp"): taking 5 off this value takes it from those first. Bars show
+   * them as a green layer on top.
+   */
+  shield?: string;
 }
 
 export interface AgField {
@@ -449,9 +461,10 @@ export interface AgLinkColumn {
   label?: string;
   /**
    * button: `ref` is the name of a button on each connected sheet (e.g. "use"); text: long text shown in full;
-   * rolls: every button on the connected sheet marked "show on the character sheet", with what it rolls and costs.
+   * rolls: every button on the connected sheet marked "show on the character sheet", with what it rolls and costs;
+   * effects: what the connected sheet changes on others ("Athletics −2").
    */
-  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text" | "rolls";
+  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text" | "rolls" | "effects";
   /** Bars: the max value (another key on the same sheet). */
   maxRef?: string;
   color?: string;

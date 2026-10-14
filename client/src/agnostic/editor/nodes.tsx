@@ -18,6 +18,7 @@ import { AgPanel, agConfirm } from "../float";
 import { AgIcon, IconGrid } from "../icons";
 import { LinksConfigEditor } from "../links";
 import { RollsBlock } from "../rolls";
+import { EffectsBlock } from "../effects";
 import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, type LookKind } from "../look";
@@ -568,6 +569,39 @@ export const AgRolls = Node.create({
   addNodeView: () => ReactNodeViewRenderer(RollsView, { stopEvent: stopInside }),
 });
 
+function EffectsView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  const ag = useAgMaybe();
+  if (!ctx || !ag) return <NodeViewWrapper />;
+  const a = p.node.attrs;
+  const look = nodeLook(a);
+  const labels = connectionLabels(ag.state, ctx.noteId);
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="effects" frame={{ look, onLook: lookUpdater(p) }} tools={<>
+      <ConfigPopover title="Effects" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
+        <Row label="Changes">
+          <input list="ag-effects-via" value={a.via ?? ""} placeholder="(this sheet)" onChange={(e) => p.updateAttributes({ via: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-effects-via" />
+          <datalist id="ag-effects-via">{labels.map((l) => <option key={l} value={l} />)}{["bearer", "holder", "owner"].filter((l) => !labels.includes(l)).map((l) => <option key={l} value={l} />)}</datalist>
+        </Row>
+        <div className="text-[10px] text-stone-500">The connection to the sheet whose values change — <span className="font-mono">bearer</span> on a wound, <span className="font-mono">owner</span> on an item, <span className="font-mono">holder</span> on a trait. Empty: this sheet.</div>
+        <Row label="Only while"><input value={a.condition ?? ""} placeholder="(always)" onChange={(e) => p.updateAttributes({ condition: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" /></Row>
+        <div className="text-[10px] text-stone-500">New effects start with this condition, e.g. <span className="font-mono">equipped</span> for gear.</div>
+      </ConfigPopover>
+      <ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
+    </>}>
+      <div contentEditable={false}><EffectsBlock noteId={ctx.noteId} attrs={{ via: a.via ?? "", condition: a.condition ?? "" }} /></div>
+    </Shell>
+  );
+}
+
+export const AgEffects = Node.create({
+  name: "agEffects", group: "block", atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ via: { default: "" }, condition: { default: "" }, look: { default: {} } }),
+  parseHTML: () => [{ tag: "div[data-ag-effects]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-effects": "" })],
+  addNodeView: () => ReactNodeViewRenderer(EffectsView, { stopEvent: stopInside }),
+});
+
 function NoteLinkView(p: NodeViewProps) {
   return (
     <NodeViewWrapper as="span" className={p.selected ? "ring-1 ring-amber-400 rounded-full" : ""}>
@@ -796,5 +830,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

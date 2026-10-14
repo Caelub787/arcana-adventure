@@ -8345,10 +8345,17 @@ export default function Campaign() {
     
     // Show the dialog and mark as shown
     const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
+    sessionStorage.setItem(sessionKey, 'shown');
+    // CA Agnostic: no pop-up — a random colour is simply given (change it any time in Settings).
+    if ((campaign as any)?.system === 'ca-agnostic') {
+      api.updateBeaconColor(effectiveCampaignId, randomColor)
+        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/members`] }))
+        .catch(() => {});
+      return;
+    }
     setPendingBeaconColor(randomColor);
     setBeaconColorDialogOpen(true);
-    sessionStorage.setItem(sessionKey, 'shown');
-  }, [effectiveCampaignId, myMembership, beaconColorDialogOpen, isNew]);
+  }, [effectiveCampaignId, myMembership, beaconColorDialogOpen, isNew, campaign]);
 
   // Load current user's permissions for all characters in the campaign
   const { data: myPermissions } = useQuery({
@@ -11347,7 +11354,7 @@ export default function Campaign() {
               </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>{isSandbox ? 'Actors' : 'Characters'}</p>
+                <p>{isSandbox ? 'Actors' : (campaign as any)?.system === 'ca-agnostic' ? 'Sheets' : 'Characters'}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -14211,7 +14218,7 @@ export default function Campaign() {
             >
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
-                {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
+                {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : (campaign as any)?.system === 'ca-agnostic' ? 'Sheets' : 'Characters')}
                 {activeSidePanel === 'initiative' && 'Initiative'}
                 {activeSidePanel === 'notes' && 'Notes'}
                 {activeSidePanel === 'settings' && 'Settings'}

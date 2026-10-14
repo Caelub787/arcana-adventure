@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAg, follow, resolveRef, effOf, usePerms } from "./hooks";
 import { Portrait, FieldInput, ResourceBar, useFieldWriter, EditOnDoubleClick, CommitInput, ActionButton } from "./widgets";
 import { RollsList } from "./rolls";
+import { EffectsList } from "./effects";
 import { AgSelector, agConfirm, type SelItem } from "./float";
 import { TipIcon } from "./tips";
 
@@ -118,6 +119,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
 
   const cell = (id: string, c: AgLinkColumn, compact = false) => {
     if (c.display === "rolls") return <RollsList noteId={id} compact={compact} />;
+    if (c.display === "effects") return <EffectsList noteId={id} />;
     if (c.display === "button") {
       // A button on the connected sheet, found by its name ("Use", "Strike"…).
       const want = c.ref.trim().toLowerCase();
@@ -166,6 +168,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     const texts = columns.filter((c) => c.display === "text");
     const buttons = columns.filter((c) => c.display === "button");
     const rollCols = columns.filter((c) => c.display === "rolls");
+    const effectCols = columns.filter((c) => c.display === "effects");
     return (
       <div className="space-y-2" style={fontStyle} data-testid="ag-links">
         {toolbar}
@@ -189,6 +192,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
                   </div>
                 )}
                 {texts.map((c) => <div key={c.ref} className="text-[12px] leading-snug line-clamp-3">{c.label ? <span className="text-stone-500">{c.label} </span> : null}{cell(id, c, true)}</div>)}
+                {effectCols.map((c, k) => <div key={`fx-${k}`}>{cell(id, c, true)}</div>)}
                 {rollCols.map((c, k) => <div key={`rolls-${k}`} className="pt-0.5">{cell(id, c, true)}</div>)}
               </div>
               {buttons.length > 0 && <div className="flex flex-col sm:flex-row gap-1 shrink-0" data-no-open>{buttons.map((c) => <React.Fragment key={c.ref}>{cell(id, c, true)}</React.Fragment>)}</div>}
@@ -275,7 +279,7 @@ function ToggleCell({ field, label }: { field: AgField; label: string }) {
 // --------------------------------------------------------------------------- settings
 export interface LinksSettings { label: string; columns: Array<string | AgLinkColumn>; config?: AgLinksConfig }
 
-const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"], ["text", "Text (in full)"], ["button", "Its button (by name)"], ["rolls", "Its rolls (all shown ones)"]];
+const DISPLAYS: Array<[NonNullable<AgLinkColumn["display"]>, string]> = [["input", "Editable"], ["value", "Value"], ["badge", "Badge"], ["bar", "Bar"], ["toggle", "On/off button"], ["text", "Text (in full)"], ["button", "Its button (by name)"], ["rolls", "Its rolls (all shown ones)"], ["effects", "Its effects (what it changes)"]];
 
 /** Everything a connections table can do, in one panel. */
 export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string; value: LinksSettings; onChange: (v: LinksSettings) => void }) {

@@ -12,7 +12,7 @@ import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, 
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import {
-  buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, val, block, button, columns, section, tabs, links, canvas, table, rolls,
+  buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, val, block, button, columns, section, tabs, links, canvas, table, rolls, effects,
 } from "./doc";
 
 export const CA_KIT_FOLDER = "Cultivator's Adventure";
@@ -57,14 +57,18 @@ const HP_LADDER = THRESHOLDS.map((_, idx) => { let hp = 20; for (let k = 1; k <=
 const LADDER_LABELS = THRESHOLDS.map((_, idx) => `${RANK_NAMES[Math.floor(idx / 5)]} ${idx % 5 + 1}`);
 const RANK_LIFESPAN = [100, 150, 200, 250, 300];
 const RANK_ABSORB = [20, 50, 500, 5000, 50000];
-/** Max Focus: 6 to start, +2 per star, +4 more per rank (Silver 1 = 6 + 5×2 + 4 = 20). */
-export const FOCUS_FORMULA = "6 + 2 * rank_index + 4 * floor(rank_index / 5)";
-const focusAt = (idx: number) => 6 + 2 * idx + 4 * Math.floor(idx / 5);
+/** Max Focus: 6 to start, +1 per star (every step on the ladder, ranks included). */
+export const FOCUS_FORMULA = "6 + rank_index";
+const focusAt = (idx: number) => 6 + idx;
+/** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
+export const USABLE_LADDER = THRESHOLDS.map((x) => Math.floor(x / 2));
+export const USABLE_FORMULA = `choose(rank_index, ${USABLE_LADDER.join(", ")})`;
+export const USABLE_NOTE = " — set by your star; it goes up when you break through, not with every point of the pool";
 
 /** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
 export function rankTooltip(): string {
   const n = (x: number) => x.toLocaleString("en-US");
-  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. **Usable Energy** is half the pool, and is what you spend.", ""];
+  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. **Usable Energy** is what you spend: a set amount for each star, which only goes up when you break through to the next star or rank.", ""];
   RANK_NAMES.forEach((name, r) => {
     out.push(`## ${name} · Lifespan ${n(RANK_LIFESPAN[r])} yrs · Absorbs ${n(RANK_ABSORB[r])}`);
     out.push("Star | Energy Pool | Usable | Max HP | Max Focus");
@@ -175,9 +179,12 @@ function characterTemplate(): AgSnapshot {
     .calc("lifespan", "Lifespan", `choose(floor(rank_index / 5), 100, 150, 200, 250, 300)`)
     .calc("absorption_limit", "Absorption limit", `choose(floor(rank_index / 5), 20, 50, 500, 5000, 50000)`);
   // Health, Energy, Focus
-  s.calc("hp_max", "Max HP", `choose(rank_index, ${HP_LADDER.join(", ")})`).num("hp", "HP", 20, { min: 0 })
-    .calc("usable_energy", "Usable Energy", "floor(energy_pool / 2)").num("energy", "Energy", 0, { min: 0 })
-    .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0 })
+  // Each current value goes up with its maximum (a rank up adds its extra, without refilling);
+  // Temp HP is taken before HP and shows in green on the bar.
+  s.calc("hp_max", "Max HP", `choose(rank_index, ${HP_LADDER.join(", ")})`).num("hp", "HP", 20, { min: 0, follows: "hp_max", shield: "temp_hp" })
+    .num("temp_hp", "Temp HP", 0, { min: 0 })
+    .calc("usable_energy", "Usable Energy", USABLE_FORMULA).num("energy", "Energy", 0, { min: 0, follows: "usable_energy" })
+    .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0, follows: "focus_max" })
     .calc("wounds_count", "Wounds", "count(@wounds.name)");
   // Attributes: value → die size (0 d6, 1 d8, 2 d10, 3 d12, 4+ d20)
   for (const a of ATTRS) {
@@ -236,21 +243,22 @@ function characterTemplate(): AgSnapshot {
     hr(),
     framed(s, "health", "Heart", "Health", [val("hp", { look: { bold: true } }), " / ", val("hp_max", { look: { bold: true } })], [
       block("hp", { maxRef: "hp_max", display: "bar", showLabel: false, look: { color: "#f43f5e", track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } }),
-      p(muted("20 base, +5 per star, +10 per rank — scales with Rank above. Click the bar to heal or hurt.")),
+      p(muted("Temp HP "), val("temp_hp", { display: "input" }), muted("  — taken before HP; shows in green on the bar.")),
+      p(muted("20 base, +5 per star, +10 per rank — scales with Rank above, and a rank up adds its extra HP to your current HP. Click the bar to heal or hurt.")),
     ]),
     hr(),
     framed(s, "energy", "Zap", "Energy Pool", [val("energy_pool", { look: { bold: true } })], [
-      p(muted("Usable Energy "), val("usable_energy", { look: { fontSize: 12, textColor: "#a8a29e" } }), muted(" — half the pool")),
+      p(muted("Usable Energy "), val("usable_energy", { look: { fontSize: 12, textColor: "#a8a29e" } }), muted(USABLE_NOTE)),
       block("energy", { maxRef: "usable_energy", display: "bar", label: "Energy", showLabel: true, look: { color: "#06b6d4", track: "#3f3a2a", height: 16, radius: 4, labelPos: "above", numbers: "fraction", iconName: "Zap", iconColor: "#22d3ee" } }),
     ]),
     hr(),
     framed(s, "focus", "Sparkles", "Focus", [val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })], [
       block("focus", { maxRef: "focus_max", display: "bar", showLabel: false, look: { color: "#8b5cf6", track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } }),
-      p(muted("6 to start, +2 per star and +4 per rank. Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest.")),
+      p(muted("6 to start, +1 per star. Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest.")),
     ]),
     hr(),
     framed(s, "wounds", "HeartPulse", "Wounds", [val("wounds_count", { look: { bold: true } })], [
-      links("wounds", [{ ref: "severity", display: "badge" }, { ref: "location", display: "badge" }, { ref: "effects", display: "value", label: "Effects" }], {
+      links("wounds", [{ ref: "severity", display: "badge" }, { ref: "location", display: "badge" }, { ref: "", display: "effects" }], {
         layout: "cards", accentBy: "severity", add: { types: ["wound"], reverse: "bearer", existing: false }, remove: "delete", emptyText: "No wounds.",
       }),
       p(muted("Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.")),
@@ -357,8 +365,16 @@ export function abilityPage(gmRegionId: string | null): DocNode[] {
     h(3, icon("Dices", GILT, 16), " Rolls"),
     rolls("holder", ["energy", "focus"], "#9f1239", SECTION_LOOK),
     p(muted("Each roll has its own dice, bonus and Energy / Focus cost. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.")),
+    ...effectsNodes("holder", "", "Passive changes this ability makes to its holder (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
+}
+
+export const WOUND_EFFECTS_HELP = "What this wound does to its bearer while it lasts — each one really changes that value (the red number beside it on the character). Treat or heal the wound and they're gone.";
+export const ITEM_EFFECTS_HELP = "What this item changes on its owner. New effects only count while it's equipped (change “equipped” to always for ones that apply anyway).";
+/** An "Effects" heading and block: changes this sheet makes to `via`'s values. */
+export function effectsNodes(via: string, condition: string, help: string): DocNode[] {
+  return [h(3, icon("Activity", GILT, 16), " Effects"), effects(via, condition, SECTION_LOOK), p(muted(help))];
 }
 
 /** An item's rolls heading and block. */
@@ -451,8 +467,8 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
       }),
     );
   }
-  // Every item can have rolls (a weapon starts with Strike and Damage).
-  body.push(...itemRollsNodes());
+  // Every item can have rolls (a weapon starts with Strike and Damage) and effects on its owner.
+  body.push(...itemRollsNodes(), ...effectsNodes("owner", "equipped", ITEM_EFFECTS_HELP));
   if (kind === "Weapon" || kind === "Armor") {
     body.push(
       h(3, icon("Gem", "#c084fc", 16), " Runes"),
@@ -480,19 +496,16 @@ function woundTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("severity", "Severity", SEVERITIES, "Minor", SEVERITY_COLORS).choice("location", "Location", LOCATIONS, "Body", LOCATION_COLORS)
     .calc("severity_rank", "Severity level", `if(severity == "Severe", 3, if(severity == "Moderate", 2, 1))`)
-    .calc("focus_cost", "Focus cost", `choose(if(location == "Head", 2, if(location == "Body", 0, 1)), 0, 2, 4)`)
-    .text("effects", "Effects", "");
+    .calc("focus_cost", "Focus cost", `choose(if(location == "Head", 2, if(location == "Body", 0, 1)), 0, 2, 4)`);
   const treat = s.action("a_treat", "Treat", [{ type: "remove", target: "self" }], "#15803d");
   const page: DocNode[] = [
     p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }), "  ", muted("Focus cost to aim here: "), val("focus_cost", { look: { bold: true } })),
     p(i("What happened — describe the wound here.")),
-    h(3, icon("Activity", GILT, 16), " Effects"),
-    block("effects", { display: "value", label: "Summary", showLabel: true, look: { labelPos: "left" } }),
-    p(muted("GM: make the effects real in this wound's Links tab → “Changes values on connected sheets”: via "), b("bearer"), muted(", e.g. athletics −2, speed −5. They apply while the wound exists.")),
+    ...effectsNodes("bearer", "", WOUND_EFFECTS_HELP),
     hr(),
     p(button(treat, "Treat (removes the wound)", { color: "#15803d" })),
   ];
-  return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects on its bearer's skills and speed. Treat removes it." }, page);
+  return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects that really change its bearer's values (skills, speed…). Treat removes it." }, page);
 }
 
 function traitTemplate(): AgSnapshot {
@@ -501,7 +514,7 @@ function traitTemplate(): AgSnapshot {
   const page: DocNode[] = [
     block("summary", { display: "value", showLabel: false, look: { bold: true } }),
     p(i("Describe the trait here.")),
-    p(muted("GM: a trait can change its holder's values (Links → Changes values, via “holder”) and carry its own buttons.")),
+    ...effectsNodes("holder", "", "What this trait changes on its holder, for as long as they have it."),
   ];
   return s.snapshot({ type: "trait", name: "Trait", description: "A trait: a summary line, a description, optional effects and rolls." }, page);
 }
@@ -579,8 +592,8 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     const coins = await createFrom(store, made.Currency, "Silver Marks", { qty: 35, value: 1 }, cs);
     for (const it of [sword, shield, potion, pack, coins]) await connect(store, it, hero, "owner", "items", cs);
     await connect(store, rune, sword, "socket", "runes", cs);
-    const arrow = await createFrom(store, made.wound, "Goblin arrow", { severity: "Moderate", location: "Body", effects: "Athletics −2" }, cs);
-    const cut = await createFrom(store, made.wound, "Shallow cut", { severity: "Minor", location: "Leg", effects: "Speed −5" }, cs);
+    const arrow = await createFrom(store, made.wound, "Goblin arrow", { severity: "Moderate", location: "Body" }, cs);
+    const cut = await createFrom(store, made.wound, "Shallow cut", { severity: "Minor", location: "Leg" }, cs);
     await connect(store, arrow, hero, "bearer", "wounds", cs);
     await connect(store, cut, hero, "bearer", "wounds", cs);
     await store.putModifier({ id: randomUUID(), noteId: arrow.id, via: "bearer", targetKey: "athletics", op: "add", amount: "-2", condition: null, label: "Goblin arrow" }, cs);

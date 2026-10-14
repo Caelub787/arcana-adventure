@@ -79,6 +79,8 @@ export const links = (label: string, cols: unknown[], config: Record<string, unk
   ({ type: "agLinks", attrs: { label, columns: cols, config, look } });
 /** A sheet's rolls (see the Rolls block): who rolls and pays, and the costs new rolls start with. */
 export const rolls = (via: string, costs: string[], color = "", look: Record<string, unknown> = {}): DocNode => ({ type: "agRolls", attrs: { via, costs, color, look } });
+/** Changes this sheet makes to the values of the sheet it's connected to by `via` (see the Effects block). */
+export const effects = (via: string, condition = "", look: Record<string, unknown> = {}): DocNode => ({ type: "agEffects", attrs: { via, condition, look } });
 export const canvas = (canvasId: string, width: number, height: number, look: Record<string, unknown> = {}): DocNode =>
   ({ type: "agCanvas", attrs: { canvasId, width, height, background: "", look } });
 export const table = (rows: Array<Array<DocNode[]>>, header = true): DocNode => ({

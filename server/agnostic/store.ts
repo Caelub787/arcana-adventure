@@ -83,8 +83,12 @@ export class ScopeStore {
     const next = this.queue.then(async () => {
       const cs = emptyChanges();
       const result = await fn(cs);
+      const touched = new Set(cs.fields);
+      const before = this.computed;
       // Anything structural may change formula results anywhere in the scope.
       for (const id of this.recompute()) cs.fields.add(id);
+      // Values that go up with their maximum (HP with Max HP on a rank up).
+      if (await this.followMaxima(before, touched, cs)) for (const id of this.recompute()) cs.fields.add(id);
       for (const l of Array.from(this.listeners)) {
         try { l(cs); } catch (e) { console.error("[agnostic] listener failed", e); }
       }
@@ -92,6 +96,32 @@ export class ScopeStore {
     });
     this.queue = next.catch(() => undefined);
     return next;
+  }
+
+  /**
+   * A field with `follows: "<max key>"` moves with that maximum: when the max
+   * rises by N the value rises by N (HP gets a rank's extra health without being
+   * refilled); when it drops, the value is kept within it. Values someone just
+   * set themselves are left alone.
+   */
+  private async followMaxima(before: Map<string, Computed>, touched: Set<string>, cs: ChangeSet): Promise<boolean> {
+    let changed = false;
+    for (const fields of Array.from(this.fieldsByNote.values())) {
+      for (const f of Array.from(fields.values())) {
+        const key = f.options?.follows;
+        if (!key || f.type !== "number" || touched.has(f.id)) continue;
+        const max = fields.get(key);
+        if (!max) continue;
+        const was = before.get(max.id)?.eff, now = this.computed.get(max.id)?.eff;
+        if (typeof was !== "number" || typeof now !== "number" || was === now) continue;
+        const cur = typeof f.value === "number" ? f.value : Number(f.value) || 0;
+        const next = now > was ? cur + (now - was) : Math.min(cur, now);
+        if (next === cur) continue;
+        await this.putField({ ...f, value: next }, cs);
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   // --- indexing ------------------------------------------------------------------

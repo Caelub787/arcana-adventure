@@ -36,7 +36,7 @@ export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean
 function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
   const { state, openNote, viewer, system } = useAg();
   const [designing, setDesigning] = useState(false);
-  const [history, setHistory] = useState(false);
+  const [history, setHistory] = useState<string | null>(null);
   // CA Agnostic: rolls show their working, and the tracker keeps a roll history button.
   const ca = system === "ca-agnostic";
   const play = usePlayView();
@@ -72,7 +72,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
           {notes.map((n) => {
             const card = cardFor(settings, n.id, n.type);
             return (
-              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border} working={ca}>
+              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border} working={ca} onHistory={ca ? () => setHistory(n.id) : undefined}>
                 <div
                   role="button"
                   tabIndex={0}
@@ -88,23 +88,20 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
               </TrackerSlot>
             );
           })}
-          {ca && notes.length > 0 && (
-            <button type="button" onClick={() => setHistory(true)} className="pointer-events-auto shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-300 hover:text-amber-300" title="Roll history" data-testid="ag-tracker-history"><Dices className="h-4 w-4" /></button>
-          )}
           {viewer.isGM && !play && (
             <button type="button" onClick={() => setDesigning(true)} className="pointer-events-auto shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-400 hover:text-amber-300" title="Design the player tracker" data-testid="ag-tracker-design"><Settings2 className="h-4 w-4" /></button>
           )}
         </div>
       </div>
       {designing && <TrackerDesigner onClose={() => setDesigning(false)} />}
-      {history && <RollHistory notes={notes} rollsOf={rollsOf} onClose={() => setHistory(false)} />}
+      {history && <RollHistory notes={notes} rollsOf={rollsOf} first={history} onClose={() => setHistory(null)} />}
     </>
   );
 }
 
 /** Every recent roll by the sheets on the player tracker, with its working; filter by sheet. */
-function RollHistory({ notes, rollsOf, onClose }: { notes: AgNote[]; rollsOf: (n: AgNote) => RollFeedLike[]; onClose: () => void }) {
-  const [only, setOnly] = useState<string | null>(null);
+function RollHistory({ notes, rollsOf, onClose, first }: { notes: AgNote[]; rollsOf: (n: AgNote) => RollFeedLike[]; onClose: () => void; first?: string | null }) {
+  const [only, setOnly] = useState<string | null>(first ?? null);
   const rows = useMemo(() => {
     const seen = new Set<string>();
     const out: Array<{ r: RollFeedLike; who: AgNote }> = [];
@@ -154,7 +151,7 @@ function RollRow({ r, who, color = "#d4a24c" }: { r: RollFeedLike; who?: string 
 type TraySide = "below" | "above" | "left" | "right";
 const TRAY_W = 150, TRAY_H = 62, REVEAL_MS = 3200;
 
-function TrackerSlot({ note, rolls, tray, side, accent, children, working }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; working?: boolean }) {
+function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHistory }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; working?: boolean; onHistory?: () => void }) {
   const latest = rolls[0];
   const key = (r?: RollFeedLike) => (r ? r.id ?? `${r.ts}-${r.total}-${r.text ?? r.label}` : undefined);
   const lastSeen = useRef<string | undefined>(key(latest));
@@ -195,6 +192,12 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working }: { n
       onMouseEnter={() => { hover.current = true; if (latest) setShown(true); }}
       onMouseLeave={() => { hover.current = false; if (rolling === null) timers.current.push(setTimeout(() => setShown(false), 400)); }}>
       {children}
+      {/* Roll history, inside the card's corner. */}
+      {onHistory && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onHistory(); }} className="absolute top-0.5 right-0.5 z-[2] h-4 w-4 grid place-items-center rounded bg-black/50 text-stone-400 hover:text-amber-300 hover:bg-black/80" title="Roll history" data-testid={`ag-tracker-history-${note.name}`}>
+          <Dices className="h-3 w-3" />
+        </button>
+      )}
       {tray && latest && (
         <div className="absolute z-10" style={{ ...sideStyle, pointerEvents: open ? "auto" : "none" }}>
           <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}

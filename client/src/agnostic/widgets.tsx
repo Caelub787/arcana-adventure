@@ -45,8 +45,10 @@ function predictField(f: AgField, value: any): AgField {
 }
 
 export function useFieldWriter() {
-  const { request, key, previewUserId } = useAg();
+  const { request, key, previewUserId, state } = useAg();
   const { toast } = useToast();
+  const stateRef = useRef(state);
+  stateRef.current = state;
   return useMemo(() => {
     const fail = (e: any) => { toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }); throw e; };
     // Shown at once; the server confirms (or it's put back if refused).
@@ -61,6 +63,16 @@ export function useFieldWriter() {
       },
       adjust: (f: AgField, delta: number) => {
         const cur = typeof f.value === "number" ? f.value : Number(f.value) || 0;
+        // A loss comes off temporary points first (Temp HP before HP) — the server does the same.
+        const shield = delta < 0 && f.options?.shield ? resolveRef(stateRef.current, f.noteId, f.options.shield)[0] : undefined;
+        if (shield && typeof shield.value === "number" && shield.value > 0) {
+          const soak = Math.min(shield.value, -delta);
+          const beforeShield = shield.value, beforeCur = f.value;
+          const r1 = optimistic(shield, beforeShield - soak), r2 = optimistic(f, cur + delta + soak);
+          return request({ op: "field.adjust", id: f.id, delta })
+            .then(() => pushUndo(key, { label: `${f.label} ${delta}`, undo: async () => { await request({ op: "field.set", id: shield.id, value: beforeShield }); await request({ op: "field.set", id: f.id, value: beforeCur }); } }))
+            .catch((e) => { r1(); r2(); return fail(e); }).catch(() => {});
+        }
         const revert = optimistic(f, cur + delta);
         return request({ op: "field.adjust", id: f.id, delta })
           .then(() => pushUndo(key, { label: `${f.label} ${delta > 0 ? "+" : ""}${delta}`, undo: () => request({ op: "field.adjust", id: f.id, delta: -delta }) }))
@@ -112,7 +124,7 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
         <div className="text-xs text-stone-400 mb-1.5">{field.label}{max != null ? ` (max ${formatValue(max)})` : ""}</div>
         <div className="flex items-center gap-1">
           {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}
-          <CommitInput value={field.value as number} type="number" className="h-9 w-16 text-center" onCommit={(s) => w.set(field, s === "" ? null : Number(s))} />
+          <CommitInput value={field.value as number} type="number" className="h-9 flex-1 min-w-[4rem] text-center text-base" onCommit={(s) => w.set(field, s === "" ? null : Number(s))} />
           {[1, 5].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-emerald-900/60 text-sm text-stone-200">+{d}</button>)}
         </div>
         {max != null && (
@@ -149,15 +161,21 @@ export function ResourceBar({ field, maxField, color = "#16a34a", label, showNum
   field: AgField; maxField?: AgField; color?: string; label?: string; showNumbers?: boolean; height?: number; compact?: boolean; look?: AgLook;
 }) {
   const { canEditField } = usePerms(field.noteId);
+  const { state } = useAg();
   const L = look ?? {};
   const cur = asNumber(effOf(field) as any);
   const max = maxField ? asNumber(effOf(maxField) as any) : null;
+  // Temporary points (e.g. Temp HP): a green layer on top, after the value.
+  const shieldF = field.options?.shield ? resolveRef(state, field.noteId, field.options.shield)[0] : undefined;
+  const shield = shieldF ? Math.max(0, asNumber(effOf(shieldF) as any)) : 0;
   const fill = L.color ?? color;
   const vertical = L.direction === "up";
   const h = height;
-  const p = max != null ? pct(cur, max) : 100;
+  const scale = max != null ? Math.max(max, cur + shield) : 0;
+  const p = max != null ? pct(cur, scale) : 100;
+  const pShield = max != null && shield > 0 ? pct(shield, scale) : 0;
   const mode = !showNumbers ? "none" : L.numbers;
-  const nums = numbersText(mode, cur, max);
+  const nums = numbersText(mode, cur, max) + (shield > 0 && mode !== "none" && mode !== "percent" ? ` +${formatValue(shield)}` : "");
   const name = label ?? field.label;
   const text = [L.labelPos === "inside" ? name : !compact && label ? label : "", nums].filter(Boolean).join(" ");
   const fontSize = L.fontSize ?? Math.max(8, Math.min(12, (vertical ? 14 : h) - 3));
@@ -166,13 +184,17 @@ export function ResourceBar({ field, maxField, color = "#16a34a", label, showNum
     <div
       className={`relative w-full overflow-hidden ${L.border ? "" : "border border-black/40"} ${canEditField(field) ? "cursor-pointer" : ""}`}
       style={{ height: h, background: L.track ?? "rgba(0,0,0,0.6)", borderRadius: L.radius ?? 2, border: L.border ? `1px solid ${L.border}` : undefined }}
-      title={`${name}: ${formatValue(cur)}${max != null ? ` / ${formatValue(max)}` : ""}`}
+      title={`${name}: ${formatValue(cur)}${max != null ? ` / ${formatValue(max)}` : ""}${shield > 0 ? ` (+${formatValue(shield)} ${shieldF!.label})` : ""}`}
       data-testid={`ag-bar-${field.key}`}
     >
       <div
         className={`absolute ease-out duration-500 ${vertical ? "inset-x-0 bottom-0 transition-[height]" : `inset-y-0 transition-[width] ${L.direction === "left" ? "right-0" : "left-0"}`}`}
         style={{ ...(vertical ? { height: `${p}%` } : { width: `${p}%` }), ...barFill(fill, L.barStyle), borderRadius: L.radius ? Math.max(0, L.radius - 1) : undefined }}
       />
+      {pShield > 0 && (
+        <div className={`absolute ease-out duration-500 ${vertical ? "inset-x-0 transition-[height,bottom]" : "inset-y-0 transition-[width,left]"}`} data-testid={`ag-bar-shield-${field.key}`}
+          style={{ ...(vertical ? { bottom: `${p}%`, height: `${pShield}%` } : L.direction === "left" ? { right: `${p}%`, width: `${pShield}%` } : { left: `${p}%`, width: `${pShield}%` }), background: "#22c55e", boxShadow: "inset 0 0 0 1px rgba(0,0,0,.25)" }} />
+      )}
       {segments > 0 && Array.from({ length: segments - 1 }, (_, i) => (
         <div key={i} className="absolute pointer-events-none" style={vertical
           ? { left: 0, right: 0, height: 1, bottom: `${((i + 1) / segments) * 100}%`, background: L.track ?? "rgba(0,0,0,0.75)" }
@@ -269,7 +291,7 @@ export function EditOnDoubleClick({ field, children, empty }: { field?: AgField;
         data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
       {open && (
         <AgPanel title={field!.label} onClose={() => setOpen(false)} width={300} height={field!.type === "text" || field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
-          {field!.type === "dice" ? <DiceFormulaInput field={field!} /> : <FieldInput field={field!} className={field!.type === "text" ? "w-full" : ""} />}
+          {field!.type === "dice" ? <DiceFormulaInput field={field!} /> : <FieldInput field={field!} className={field!.type === "text" || field!.type === "number" ? "w-full" : ""} />}
         </AgPanel>
       )}
     </>
@@ -303,18 +325,23 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
     return <span className={className}>{formatValue(v, field.options.decimals)}</span>;
   }
   switch (field.type) {
-    case "number":
+    case "number": {
+      // In a panel (w-full) the box fills it; inline it grows with the number so it's never cut off.
+      const wide = /\bw-full\b/.test(className);
+      const digits = String(field.value ?? "").length;
+      const btn = wide ? "h-9 w-9 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300 shrink-0" : "h-7 w-6 sm:h-6 sm:w-5 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300";
       return (
-        <span className={`inline-flex items-center gap-0.5 ${className}`}>
-          <button type="button" onClick={() => w.adjust(field, -(field.options.step ?? 1))} className="h-7 w-6 sm:h-6 sm:w-5 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300" aria-label={`Lower ${field.label}`}><Minus className="h-3 w-3" /></button>
-          <CommitInput value={field.value as number} type="number" step={field.options.step} className="h-7 sm:h-6 w-14 text-center" onCommit={(s) => w.set(field, s === "" ? null : Number(s))} aria-label={field.label} />
-          <button type="button" onClick={() => w.adjust(field, field.options.step ?? 1)} className="h-7 w-6 sm:h-6 sm:w-5 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-300" aria-label={`Raise ${field.label}`}><Plus className="h-3 w-3" /></button>
+        <span className={`${wide ? "flex" : "inline-flex"} items-center gap-0.5 ${className}`}>
+          <button type="button" onClick={() => w.adjust(field, -(field.options.step ?? 1))} className={btn} aria-label={`Lower ${field.label}`}><Minus className="h-3 w-3" /></button>
+          <CommitInput value={field.value as number} type="number" step={field.options.step} className={wide ? "h-9 flex-1 min-w-0 text-center text-base" : "h-7 sm:h-6 text-center"} style={wide ? undefined : { width: `calc(${Math.max(3, digits + 1)}ch + 1.25rem)` }} onCommit={(s) => w.set(field, s === "" ? null : Number(s))} aria-label={field.label} />
+          <button type="button" onClick={() => w.adjust(field, field.options.step ?? 1)} className={btn} aria-label={`Raise ${field.label}`}><Plus className="h-3 w-3" /></button>
           {/* Items, wounds and other modifiers change the value in play; the box edits the base. */}
           {typeof v === "number" && typeof field.value === "number" && v !== field.value && (
-            <span className={`ml-1 px-1 rounded text-[11px] font-semibold ${v > field.value ? "text-emerald-300 bg-emerald-950/60" : "text-red-300 bg-red-950/60"}`} title={`${formatValue(field.value)} base, ${formatValue(v)} with modifiers`} data-testid={`ag-eff-${field.key}`}>= {formatValue(v)}</span>
+            <span className={`ml-1 px-1 rounded text-[11px] font-semibold shrink-0 ${v > field.value ? "text-emerald-300 bg-emerald-950/60" : "text-red-300 bg-red-950/60"}`} title={`${formatValue(field.value)} base, ${formatValue(v)} with modifiers`} data-testid={`ag-eff-${field.key}`}>= {formatValue(v)}</span>
           )}
         </span>
       );
+    }
     case "boolean":
       return <input type="checkbox" checked={!!v} onChange={(e) => w.set(field, e.target.checked)} className={`h-4 w-4 accent-amber-500 ${className}`} aria-label={field.label} />;
     case "select":

@@ -34,7 +34,7 @@ export interface BrowserOptions {
 }
 
 export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
-  const { state, viewer, openNote } = useAg();
+  const { state, viewer, openNote, system } = useAg();
   const [tabState, setTab] = useState<Tab>("sheets");
   const play = usePlayView();
   // Player view: just the sheets — templates, components and imports are building tools.
@@ -84,7 +84,8 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
               </div>
               {isGM && <button type="button" onClick={() => setCreating({ template: tab === "templates" })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
             </div>
-            <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {/* CA Agnostic: every type chip shows, wrapping onto more lines, whatever the panel's width. */}
+            <div className={`flex gap-1 ${system === "ca-agnostic" ? "flex-wrap" : "overflow-x-auto no-scrollbar"}`} data-testid="ag-type-chips">
               <button type="button" onClick={() => setTypeFilter("")} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${!typeFilter ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>All</button>
               {typeIds.map((t) => (
                 <button key={t} type="button" onClick={() => setTypeFilter(typeFilter === t ? "" : t)} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${typeFilter === t ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>{AG_BUILTIN_TYPES.find((x) => x.id === t)?.plural ?? agTypeLabel(t)}</button>

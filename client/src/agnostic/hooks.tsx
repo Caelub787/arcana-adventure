@@ -50,7 +50,8 @@ export function filterState(st: ScopeState, viewer: AgViewer): ScopeState {
   const regions = new Map([...Array.from(st.regions)].filter(([, r]) => { const n = notes.get(r.noteId); return !!n && canViewRegion(r, n, viewer); }));
   const actions = new Map([...Array.from(st.actions)].filter(([, a]) => { const n = notes.get(a.noteId); return !!n && canSeeAction(a as any, n, viewer); }));
   const links = new Map([...Array.from(st.links)].filter(([, l]) => canViewLink(l, notes.get(l.fromNoteId), notes.get(l.toNoteId), viewer)));
-  return { ...st, notes, fields, regions, actions, links, modifiers: new Map(), isGM: false };
+  const modifiers = new Map([...Array.from(st.modifiers)].filter(([, m]) => notes.has(m.noteId)));
+  return { ...st, notes, fields, regions, actions, links, modifiers, isGM: false };
 }
 
 export function AgScopeProvider({ scope, children, onOpenNote, blocking = true, system: systemProp }: { scope: AgScope; children: React.ReactNode; onOpenNote?: (noteId: string) => void; blocking?: boolean; system?: string | null }) {

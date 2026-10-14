@@ -20,6 +20,7 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote,
   AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Plus, Hash, Gauge, Dices, EyeOff, Lock, Columns2, Columns3, LayoutGrid,
   Image as ImageIcon, Table as TableIcon, BarChart3, Link2, Puzzle, Minus, Highlighter, Palette, Loader2, FileText, Code, Sparkles, PanelsTopLeft, Backpack,
+  Activity,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
@@ -249,6 +250,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Value block", hint: "A value on its own line", icon: <Hash className="h-4 w-4" />, run: () => configure("agFieldBlock", { ref: "", maxRef: "", display: "input", label: "", showLabel: true, color: "" }, "Value") },
     { label: "Resource bar", hint: "Current / max as a bar", icon: <Gauge className="h-4 w-4" />, run: () => configure("agFieldBlock", { ref: "", maxRef: "", display: "bar", label: "", showLabel: true, color: "#16a34a" }, "Resource bar") },
     { label: "Button / roll", hint: "Rolls dice, changes values, posts messages", icon: <Dices className="h-4 w-4" />, gm: true, run: () => configure("agButton", { actionId: "", label: "" }, "Button") },
+    { label: "Effects", hint: "Changes this sheet makes to another's values (a wound's −2 Athletics)", icon: <Activity className="h-4 w-4" />, gm: true, run: () => insert({ type: "agEffects", attrs: { via: "", condition: "" } }) },
     { label: "Rolls", hint: "Named rolls with dice, bonus and costs — as many as you like", icon: <Dices className="h-4 w-4" />, gm: true, run: () => insert({ type: "agRolls", attrs: { via: "", costs: [] } }) },
     { label: "Hidden section", icon: <EyeOff className="h-4 w-4" />, gm: true, run: () => makeRegion(false), hint: "Its own who-can-see / who-can-edit" },
     { label: "Secret words", icon: <Lock className="h-4 w-4" />, gm: true, run: () => makeRegion(true), hint: "Hidden words inside a sentence" },

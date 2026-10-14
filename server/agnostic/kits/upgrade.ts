@@ -5,7 +5,7 @@
 // anything the GM changed alone wherever it can.
 import * as Y from "yjs";
 import { randomUUID } from "crypto";
-import { noteDocName, type AgNote } from "@shared/agnostic/types";
+import { noteDocName, regionDocName, type AgNote } from "@shared/agnostic/types";
 import type { ScopeStore } from "../store";
 import * as repo from "../repo";
 import * as docs from "../docs";
@@ -14,11 +14,12 @@ import { appendNodes, insertNodes, p, muted, val, button, pAlign } from "./doc";
 import {
   CA_KIT_FOLDER, rankTooltip, abilityTabContent, abilityTemplateSnapshot, abilityPage, itemRollsNodes, ABILITY_LIST_COLUMNS,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES, ABILITY_HELP, INVENTORY_HELP,
+  effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 2;
+export const CA_KIT_LEVEL = 3;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -33,6 +34,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (!characterTemplates.length) { await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL); return; }
   if (level < 1) await upgrade1(store, characterTemplates);
   if (level < 2) await upgrade2(store, characterTemplates);
+  if (level < 3) await upgrade3(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -301,4 +303,155 @@ async function upgrade2(store: ScopeStore, characterTemplates: AgNote[]) {
   }
   // The Physique sections' own text goes with them.
   await store.run(async (cs) => { for (const id of Array.from(physiqueRegions.values())) if (store.regions.has(id)) await store.removeRegion(id, cs); });
+}
+
+// --------------------------------------------------------------------------- level 3
+// Max Focus is 6 + 1 per star; HP, Energy and Focus go up with their maximum
+// (a rank up adds its extra); Temp HP is taken first and shows green on the
+// bar; wounds, traits, items and abilities get an Effects block that really
+// changes the values of the sheet they're on.
+
+async function editRegion(note: AgNote, regionId: string, fn: (frag: Y.XmlFragment) => void) {
+  const name = regionDocName(regionId, note.docEpoch);
+  const entry = await docs.getDoc(name, note.id);
+  entry.doc.transact(() => fn(entry.doc.getXmlFragment("default")));
+  docs.subscribe(entry, "kit-upgrade");
+  docs.unsubscribe(name, "kit-upgrade");
+}
+/** Swap the paragraph that starts with `starts` for new nodes (each match). */
+function replacePara(frag: Y.XmlFragment | Y.XmlElement, starts: string, nodes: Parameters<typeof insertNodes>[2]) {
+  for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).trim().startsWith(starts))) {
+    const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+    const i = parent.toArray().indexOf(para);
+    parent.delete(i, 1);
+    insertNodes(parent, i, nodes);
+  }
+}
+const OLD_FOCUS = ["10+2*rank_index", "6+2*rank_index+4*floor(rank_index/5)"];
+
+async function upgrade3(store: ScopeStore, characterTemplates: AgNote[]) {
+  const notes = Array.from(store.notes.values());
+  const ids = (names: string[]) => new Set(notes.filter((n) => n.isTemplate && names.includes(n.name)).map((n) => n.id));
+  const of = (tpl: Set<string>) => notes.filter((n) => tpl.has(n.id) || (n.templateId && tpl.has(n.templateId)));
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = of(charIds);
+  const wounds = of(ids(["Wound"])).filter((n) => n.isTemplate ? n.folder === CA_KIT_FOLDER : true);
+  const traits = of(ids(["Trait"]));
+  const items = of(ids(CA_ITEM_TEMPLATE_NAMES));
+  const abilities = of(ids(["CA Ability"]));
+  const fieldOf = (noteId: string, key: string) => store.fieldsByNote.get(noteId)?.get(key);
+
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      const fm = fieldOf(n.id, "focus_max");
+      if (fm && OLD_FOCUS.includes((fm.formula ?? "").replace(/\s+/g, ""))) await store.putField({ ...fm, formula: FOCUS_FORMULA }, cs);
+      // Usable Energy: the star's set amount, not half of whatever the pool holds.
+      const ue = fieldOf(n.id, "usable_energy");
+      if (ue && (ue.formula ?? "").replace(/\s+/g, "") === "floor(energy_pool/2)") await store.putField({ ...ue, formula: USABLE_FORMULA }, cs);
+      const rank = fieldOf(n.id, "rank");
+      if (rank && (!rank.options.tooltip || rank.options.tooltip.startsWith("Your rank is read from your"))) await store.putField({ ...rank, options: { ...rank.options, tooltip: rankTooltip() } }, cs);
+      const hp = fieldOf(n.id, "hp");
+      if (hp && !fieldOf(n.id, "temp_hp")) {
+        await store.putField({ id: randomUUID(), noteId: n.id, key: "temp_hp", label: "Temp HP", type: "number", value: 0, formula: null, options: { min: 0 }, acl: { view: "inherit", edit: "inherit" }, sortOrder: hp.sortOrder, templateFieldId: null }, cs);
+      }
+      for (const [key, follows, shield] of [["hp", "hp_max", "temp_hp"], ["energy", "usable_energy", undefined], ["focus", "focus_max", undefined]] as const) {
+        const f = fieldOf(n.id, key);
+        if (!f || f.type !== "number" || (f.options.follows && (!shield || f.options.shield))) continue;
+        await store.putField({ ...f, options: { ...f.options, follows: f.options.follows ?? follows, ...(shield ? { shield: f.options.shield ?? shield } : {}) } }, cs);
+      }
+    }
+    // The wound's old "effects" text: gone from the template; kept on a sheet only if it says something.
+    for (const n of wounds) {
+      const f = fieldOf(n.id, "effects");
+      if (f && (n.isTemplate || !String(f.value ?? "").trim())) await store.removeField(f.id, cs);
+    }
+  });
+
+  for (const n of characters) {
+    const regions = store.regionsOf(n.id);
+    const health = regions.find((r) => r.label === "Health");
+    if (health) await editRegion(n, health.id, (frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "temp_hp").length) return;
+      replacePara(frag, "20 base, +5 per star", [
+        p(muted("Temp HP "), val("temp_hp", { display: "input" }), muted("  — taken before HP; shows in green on the bar.")),
+        p(muted("20 base, +5 per star, +10 per rank — scales with Rank above, and a rank up adds its extra HP to your current HP. Click the bar to heal or hurt.")),
+      ]);
+    });
+    const focus = regions.find((r) => r.label === "Focus");
+    if (focus) await editRegion(n, focus.id, (frag) => {
+      replacePara(frag, "6 to start, +2 per star", [p(muted("6 to start, +1 per star. Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest."))]);
+      replacePara(frag, "Choosing where a wound lands costs Focus", [p(muted("6 to start, +1 per star. Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest."))]);
+    });
+    const energy = regions.find((r) => r.label === "Energy Pool");
+    if (energy) await editRegion(n, energy.id, (frag) => {
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).includes("half the pool"))) {
+        // The value stays; only the words after it change.
+        for (const c of para.toArray()) if (c instanceof Y.XmlText && c.toString().includes("half the pool")) {
+          const at = c.toDelta().map((d: any) => d.insert).join("").indexOf(" — half the pool");
+          if (at >= 0) { c.delete(at, " — half the pool".length); c.insert(at, USABLE_NOTE, { textStyle: { color: "#a8a29e" } }); }
+        }
+      }
+    });
+    const wounds = regions.find((r) => r.label === "Wounds");
+    const fixWoundList = (frag: Y.XmlFragment) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "wounds")) {
+        const cols = el.getAttribute("columns") as any;
+        if (Array.isArray(cols) && !cols.some((c: any) => c?.display === "effects")) {
+          el.setAttribute("columns", [...cols.filter((c: any) => c?.ref !== "effects"), { ref: "", display: "effects" }] as any);
+        }
+      }
+    };
+    if (wounds) await editRegion(n, wounds.id, fixWoundList);
+    await editPage(n, (_doc, frag) => fixWoundList(frag));
+  }
+
+  // Wounds: the Effects block takes the place of the old summary and the GM's how-to.
+  for (const n of wounds) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agEffects")) return;
+      const top = frag.toArray();
+      const head = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "heading" && textOf(c).trim() === "Effects");
+      if (head >= 0) {
+        let end = head;
+        for (let k = head + 1; k < top.length; k++) {
+          const c = top[k];
+          if (!(c instanceof Y.XmlElement)) break;
+          if (c.nodeName === "agFieldBlock" || (c.nodeName === "paragraph" && textOf(c).startsWith("GM: make the effects real"))) end = k; else break;
+        }
+        frag.delete(head, end - head + 1);
+        insertNodes(frag, head, effectsNodes("bearer", "", WOUND_EFFECTS_HELP));
+        // A sheet that kept its old summary shows it under the effects.
+        if (fieldOf(n.id, "effects")) insertNodes(frag, head + 3, [p(muted("Notes "), val("effects", { look: { bold: true } }))]);
+      } else {
+        const hr = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "horizontalRule");
+        insertNodes(frag, hr >= 0 ? hr : frag.length, effectsNodes("bearer", "", WOUND_EFFECTS_HELP));
+      }
+    });
+  }
+  for (const n of traits) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agEffects")) return;
+      replacePara(frag, "GM: a trait can change its holder", []);
+      appendNodes(frag, effectsNodes("holder", "", "What this trait changes on its holder, for as long as they have it."));
+    });
+  }
+  const afterRolls = (frag: Y.XmlFragment) => {
+    const top = frag.toArray();
+    const i = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "agRolls");
+    if (i < 0) return frag.length;
+    const next = top[i + 1];
+    return next instanceof Y.XmlElement && next.nodeName === "paragraph" && !hasType(next, "agField") ? i + 2 : i + 1;
+  };
+  for (const n of items) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agEffects")) return;
+      insertNodes(frag, afterRolls(frag), effectsNodes("owner", "equipped", ITEM_EFFECTS_HELP));
+    });
+  }
+  for (const n of abilities) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agEffects")) return;
+      insertNodes(frag, afterRolls(frag), effectsNodes("holder", "", "Passive changes this ability makes to its holder (leave empty if none)."));
+    });
+  }
 }

@@ -139,6 +139,7 @@ function FieldRow({ field: f, isGM, open, onToggle, onMove }: { field: AgField; 
               <label className="inline-flex items-center gap-1">Step <CommitInput type="number" value={f.options.step ?? ""} className="h-7 w-14" onCommit={(v) => update({ options: { ...f.options, step: v === "" ? undefined : Number(v) } })} /></label>
             </div>
           )}
+          {f.type === "number" && <ResourceOptions field={f} onChange={(options) => update({ options })} />}
           {f.type === "formula" && (
             <label className="text-xs inline-flex items-center gap-1">Result is
               <select value={f.options.resultType ?? "number"} onChange={(e) => update({ options: { ...f.options, resultType: e.target.value } })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1"><option value="number">a number</option><option value="text">text</option></select>
@@ -187,6 +188,30 @@ function FormulaEdit({ field, onSave }: { field: AgField; onSave: (f: string) =>
     <div className="space-y-1">
       <FormulaInput noteId={field.noteId} value={draft} allowDice={field.type === "dice"} onChange={setDraft} />
       {dirty && <div className="flex justify-end gap-1"><button type="button" onClick={() => setDraft(field.formula ?? "")} className="h-7 px-2 text-xs text-stone-400">Reset</button><button type="button" onClick={() => onSave(draft)} className="h-7 px-3 rounded bg-amber-600 text-white text-xs" data-testid="ag-formula-save">Save formula</button></div>}
+    </div>
+  );
+}
+
+/**
+ * A current value's links to its maximum and its temporary points:
+ *   Goes up with — when that maximum rises (a rank up), this rises by the same amount.
+ *   Temporary points — losses come off that value first; bars show it as a green layer.
+ */
+function ResourceOptions({ field: f, onChange }: { field: AgField; onChange: (o: AgField["options"]) => void }) {
+  const { state } = useAg();
+  const siblings = Array.from(state.fields.values()).filter((x) => x.noteId === f.noteId && x.id !== f.id);
+  const maxes = siblings.filter((x) => x.type === "number" || x.type === "formula");
+  const temps = siblings.filter((x) => x.type === "number");
+  const sel = (value: string | undefined, list: AgField[], set: (v: string | undefined) => void, testId: string) => (
+    <select value={value ?? ""} onChange={(e) => set(e.target.value || undefined)} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-xs max-w-[160px]" data-testid={testId}>
+      <option value="">— none</option>
+      {list.map((x) => <option key={x.id} value={x.key}>{x.label}</option>)}
+    </select>
+  );
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs items-center">
+      <label className="inline-flex items-center gap-1" title="When that value goes up (e.g. Max HP on a rank up), this one goes up by the same amount; when it goes down, this one is kept within it">Goes up with {sel(f.options.follows, maxes, (follows) => onChange({ ...f.options, follows }), "ag-field-follows")}</label>
+      <label className="inline-flex items-center gap-1" title="Losses come off this value first (e.g. Temp HP); bars show it in green on top">Temporary points {sel(f.options.shield, temps, (shield) => onChange({ ...f.options, shield }), "ag-field-shield")}</label>
     </div>
   );
 }
