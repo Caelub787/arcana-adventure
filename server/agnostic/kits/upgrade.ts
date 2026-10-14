@@ -19,7 +19,7 @@ import {
   LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
   abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
   ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
-  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges,
+  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges, ITEM_RANK_CHOICES,
   ASPECT_VIA, ALL_ABILITIES, ABILITY_LIST_COLUMNS as ABILITY_SET_COLUMNS, ASPECT_HELP, subAbilityNodes,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
@@ -30,7 +30,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 13;
+export const CA_KIT_LEVEL = 14;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -56,6 +56,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 11) await upgrade11(store, characterTemplates);
   if (level < 12) await upgrade12(store, characterTemplates);
   if (level < 13) await upgrade13(store);
+  if (level < 14) await upgrade14(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -903,5 +904,20 @@ async function upgrade13(store: ScopeStore) {
   await store.run(async (cs) => {
     for (const n of copies) if (n.ownerIds.length) await store.putNote({ ...n, ownerIds: [] }, cs, true);
     for (const n of copies) await syncCopyOwners(store, n.id, cs);
+  });
+}
+
+// --------------------------------------------------------------------------- level 14
+// Most items have a rank but no star: an item's Rank can be "Gold" as well as
+// "Gold 3". Choices the GM added stay (after the kit's).
+async function upgrade14(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const fields of Array.from(store.fieldsByNote.values())) {
+      const f = fields.get("rank_tag");
+      if (!f || f.type !== "select") continue;
+      const have = f.options.choices ?? [];
+      const choices = [...ITEM_RANK_CHOICES, ...have.filter((c) => !ITEM_RANK_CHOICES.includes(c))];
+      if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices } }, cs);
+    }
   });
 }

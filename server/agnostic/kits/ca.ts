@@ -87,6 +87,8 @@ const LADDER = rankLadder(RANK_NAMES);
 const THRESHOLDS = LADDER.thresholds;
 const HP_LADDER = LADDER.hp;
 export const LADDER_LABELS = LADDER.labels;
+/** An item's Rank: most items have a rank but no star ("Gold"); some have a star ("Gold 3"). */
+export const ITEM_RANK_CHOICES = ["Unranked", ...RANK_NAMES.flatMap((r) => [r, ...LADDER_LABELS.filter((l) => l.startsWith(`${r} `))])];
 const RANK_LIFESPAN = LADDER.lifespan;
 const RANK_ABSORB = LADDER.absorb;
 export const RANK_FORMULAS = LADDER.formulas;
@@ -572,7 +574,7 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
   const s = new Sheet();
   s.choice("item_type", "Type", ITEM_TYPES, kind === "Training" ? "Consumable" : kind, ITEM_TYPE_COLORS)
     .choice("rarity", "Rarity", RARITIES, "Common", RARITY_COLORS)
-    .choice("rank_tag", "Rank", ["Unranked", ...LADDER_LABELS], "Unranked")
+    .choice("rank_tag", "Rank", ITEM_RANK_CHOICES, "Unranked")
     .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" ? 0 : 1, { min: 0, step: 0.1 })
     .calc("total_weight", "Total weight", "weight * qty").num("value", "Value", kind === "Currency" ? 1 : 10, { min: 0 })
     .calc("coin_total", "Coins", `if(item_type == "Currency", qty * value, 0)`)
