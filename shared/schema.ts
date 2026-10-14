@@ -115,6 +115,8 @@ export const campaigns = pgTable("campaigns", {
   // survives a server restart/redeploy, not just a live in-memory cache -
   // it's cleared only when the GM clears chat.
   rollFeed: jsonb("roll_feed").$type<any[]>().notNull().default(sql`'[]'::jsonb`),
+  // The Soundscape mix the GM last set — survives refreshes and restarts; only the GM stops it.
+  soundscapeState: jsonb("soundscape_state").$type<any>(),
   // Swampy only: the GM's Fear pool, the other half of the Duality Dice. It
   // belongs to the table rather than to any character, so it lives here.
   swampyFear: integer("swampy_fear").notNull().default(0),
@@ -1362,6 +1364,8 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   // Soundscape (GM): a library sound id — loops toggle in/out of the mix,
   // one-shots play for everyone.
   soundId: text("sound_id"),
+  // Agnostic systems: "note:<id>" (opens that sheet) or "action:<id>" (presses that button / roll).
+  agnosticRef: text("agnostic_ref"),
 }, (table) => ({
   uniqueSlot: uniqueIndex("free_hotbar_user_campaign_loadout_slot_unique").on(
     table.userId,

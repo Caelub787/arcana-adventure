@@ -26,6 +26,9 @@ import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOU
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
 import { initAgnosticRealtime, handleAgnosticUpgrade } from "./agnostic/realtime";
 import { deleteAgnosticCampaignData } from "./agnostic/repo";
+import { resolveScopeAccessCached as resolveAgnosticScopeAccess } from "./agnostic/access";
+import { getStore as getAgnosticStore } from "./agnostic/store";
+import { canViewNote as canViewAgNote, canSeeAction as canSeeAgAction } from "@shared/agnostic/acl";
 import multer from "multer";
 import sharp from "sharp";
 import fs from "fs";
@@ -533,6 +536,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Soundscape: what each campaign's table is currently hearing. In-memory on
   // purpose — a server restart is a natural "silence", like stopping the music.
   const soundscapeStates = new Map<string, SoundscapeState>();
+  // The mix is also saved on the campaign, so a refresh, a restart or a deploy
+  // doesn't silence the table — it plays until the GM stops it. Saved a moment
+  // after the last change (slider drags send many).
+  const soundscapeSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const persistSoundscape = (campaignId: string) => {
+    const pending = soundscapeSaveTimers.get(campaignId);
+    if (pending) clearTimeout(pending);
+    soundscapeSaveTimers.set(campaignId, setTimeout(() => {
+      soundscapeSaveTimers.delete(campaignId);
+      const state = soundscapeStates.get(campaignId);
+      if (state) storage.updateCampaign(campaignId, { soundscapeState: state } as any).catch((err) => console.error('Failed to save soundscape:', err));
+    }, 1000));
+  };
+  const soundscapeStateOf = async (campaignId: string): Promise<SoundscapeState> => {
+    const hit = soundscapeStates.get(campaignId);
+    if (hit) return hit;
+    const campaign = await storage.getCampaign(campaignId);
+    const saved = (campaign as any)?.soundscapeState;
+    const state = saved ? normalizeSoundscapeState(saved) : EMPTY_SOUNDSCAPE;
+    soundscapeStates.set(campaignId, state);
+    return state;
+  };
 
   // Recent dice-roll notifications per campaign, so the pinned-roster
   // player tracker's roll memory survives a page reload instead of only
@@ -2691,6 +2716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const state = normalizeSoundscapeState(message.state);
           state.updatedAt = Date.now();
           soundscapeStates.set(campaignId, state);
+          persistSoundscape(campaignId);
           const payload = JSON.stringify({ type: "soundscape_state", campaignId, state });
           campaignRooms.get(campaignId)?.forEach((client) => {
             if (client.readyState === 1) client.send(payload);
@@ -5497,6 +5523,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Access check for putting an item/character on the caller's free hotbar.
   // Characters require edit access. Character-owned items require edit access
   // on the owning character. Library items (characterId null) are GM-only.
+  // Which of these Agnostic hotbar targets ("note:<id>" / "action:<id>") the
+  // person can still see in this campaign's Agnostic data — or that are gone.
+  const agnosticHotbarVisibility = async (userId: string, campaignId: string, refs: string[]): Promise<Map<string, "visible" | "hidden" | "gone">> => {
+    const out = new Map<string, "visible" | "hidden" | "gone">();
+    if (!refs.length) return out;
+    const scope = { kind: "campaign" as const, id: campaignId };
+    const viewer = await resolveAgnosticScopeAccess(userId, scope);
+    const store = await getAgnosticStore(scope);
+    for (const ref of refs) {
+      const [kind, id] = ref.split(":");
+      if (kind === "note") {
+        const n = store.notes.get(id);
+        out.set(ref, !n ? "gone" : viewer && canViewAgNote(n, viewer) ? "visible" : "hidden");
+      } else if (kind === "action") {
+        const a = store.actions.get(id);
+        const n = a ? store.notes.get(a.noteId) : undefined;
+        out.set(ref, !a || !n ? "gone" : viewer && canSeeAgAction(a, n, viewer) ? "visible" : "hidden");
+      } else out.set(ref, "gone");
+    }
+    return out;
+  };
+
   const checkFreeHotbarTargetAccess = async (
     userId: string,
     campaignId: string,
@@ -5576,7 +5624,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Re-validate access per entry on every read: permissions may have been
       // revoked since assignment, so stale entries must not leak data.
+      // Agnostic slots: still there, and still something this person can see?
+      const agVisible = await agnosticHotbarVisibility(userId, campaignId, entries.map((e) => e.agnosticRef).filter((r): r is string => !!r));
       const enriched = await Promise.all(entries.map(async (entry) => {
+        if (entry.agnosticRef) {
+          const seen = agVisible.get(entry.agnosticRef);
+          if (seen === "gone") {
+            try { await storage.deleteFreeHotbarEntry(entry.id); } catch { /* next read tries again */ }
+            return null;
+          }
+          return seen === "visible" ? { ...entry, character: null, item: null, rollEntry: null, sourceCharacter: null } : null;
+        }
         if (entry.soundId) {
           // Soundscape slot: GM-only, and only while the sound still exists in the library.
           if (!isGM || !isKnownSound(entry.soundId)) return null;
@@ -5735,12 +5793,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rollEntryId = req.body.rollEntryId || null;
       const skillKey = req.body.skillKey || null;
       const soundId = req.body.soundId || null;
+      const agnosticRef = typeof req.body.agnosticRef === "string" ? req.body.agnosticRef : null;
 
       if (!Number.isInteger(loadoutIndex) || loadoutIndex < 0 || loadoutIndex > 8) {
         return res.status(400).json({ error: "loadoutIndex must be 0-8" });
       }
       if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) {
         return res.status(400).json({ error: "slotIndex must be 0-9" });
+      }
+      if (agnosticRef) {
+        // An Agnostic sheet or button: only in an Agnostic campaign, and only one this person can see.
+        if (characterId || itemId || rollEntryId || skillKey || soundId) return res.status(400).json({ error: "agnosticRef can't be combined with other targets" });
+        if (!/^(note|action):[0-9a-f-]{36}$/.test(agnosticRef)) return res.status(400).json({ error: "Bad sheet or button" });
+        const campaign = await storage.getCampaign(campaignId);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        if (!isAgnosticSystem((campaign as any).system)) return res.status(400).json({ error: "Not an Agnostic campaign" });
+        const seen = await agnosticHotbarVisibility(userId, campaignId, [agnosticRef]);
+        if (seen.get(agnosticRef) !== "visible") return res.status(403).json({ error: "You can't see that" });
+        const entry = await storage.upsertFreeHotbarEntry({
+          userId, campaignId, loadoutIndex, slotIndex,
+          characterId: null, itemId: null, rollEntryId: null, skillKey: null, soundId: null, agnosticRef,
+        });
+        return res.json(entry);
       }
       if (soundId) {
         // Soundscape slots are a GM tool: they drive the table's shared mix.
@@ -5751,7 +5825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!(await hasGmAccess(userId, campaignId, campaign.gmUserId))) return res.status(403).json({ error: "Only the GM can put sounds on the hotbar" });
         const entry = await storage.upsertFreeHotbarEntry({
           userId, campaignId, loadoutIndex, slotIndex,
-          characterId: null, itemId: null, rollEntryId: null, skillKey: null, soundId,
+          characterId: null, itemId: null, rollEntryId: null, skillKey: null, soundId, agnosticRef: null,
         });
         return res.json(entry);
       }
@@ -5768,7 +5842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const entry = await storage.upsertFreeHotbarEntry({
         userId, campaignId, loadoutIndex, slotIndex,
-        characterId, itemId, rollEntryId, skillKey, soundId: null,
+        characterId, itemId, rollEntryId, skillKey, soundId: null, agnosticRef: null,
       });
       res.json(entry);
     } catch (err) {
@@ -5793,7 +5867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/campaigns/:campaignId/soundscape", requireAuth, async (req, res) => {
     try {
       if (!(await requireSoundscapeAccess(req, res, false))) return;
-      res.json(soundscapeStates.get(req.params.campaignId) ?? EMPTY_SOUNDSCAPE);
+      res.json(await soundscapeStateOf(req.params.campaignId));
     } catch (err) {
       res.status(500).json({ error: "Failed to load soundscape" });
     }

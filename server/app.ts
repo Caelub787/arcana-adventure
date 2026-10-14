@@ -398,6 +398,7 @@ async function ensureKnowledgeSystemSchema() {
       created_at timestamp NOT NULL DEFAULT now()
     )`,
     `ALTER TABLE IF EXISTS campaigns ADD COLUMN IF NOT EXISTS roll_feed jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS campaigns ADD COLUMN IF NOT EXISTS soundscape_state jsonb`,
     `CREATE TABLE IF NOT EXISTS timelines (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,

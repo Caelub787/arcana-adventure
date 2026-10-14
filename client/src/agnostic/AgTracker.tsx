@@ -151,6 +151,25 @@ function RollRow({ r, who, color = "#d4a24c" }: { r: RollFeedLike; who?: string 
 type TraySide = "below" | "above" | "left" | "right";
 const TRAY_W = 150, TRAY_H = 62, REVEAL_MS = 3200;
 
+/**
+ * What the dice in a roll can show: "1d6" → 1–6, "2d6 + 3" → 2–12 (the dice,
+ * before what's added). Read off the roll's working; falls back to its die type.
+ */
+export function tumbleRange(r: Pick<RollFeedLike, "breakdown" | "dieType" | "text">): [number, number] {
+  const src = String(r.breakdown ?? "").split(/\s\((?:advantage|disadvantage)/)[0];
+  let lo = 0, hi = 0;
+  for (const m of Array.from(src.matchAll(/(\d+)d(\d+)(?:k[hl](\d+))?/g))) {
+    const n = Number(m[3] ?? m[1]), sides = Number(m[2]);
+    if (n > 0 && sides > 0) { lo += n; hi += n * sides; }
+  }
+  if (hi > 0) return [lo, hi];
+  const faces = parseInt(String(r.dieType ?? "").replace(/^d/i, ""), 10);
+  if (faces > 0) return [1, faces];
+  const m = /(\d*)d(\d+)/.exec(String(r.text ?? ""));
+  if (m) { const n = Number(m[1] || 1), sides = Number(m[2]); return [n, n * sides]; }
+  return [1, 20];
+}
+
 function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHistory }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; working?: boolean; onHistory?: () => void }) {
   const latest = rolls[0];
   const key = (r?: RollFeedLike) => (r ? r.id ?? `${r.ts}-${r.total}-${r.text ?? r.label}` : undefined);
@@ -169,11 +188,12 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
     if (latest.historical || !tray) return;
     clear();
     setShown(true);
-    // Tumble within the die's faces, then settle on the real total.
-    const faces = parseInt(String(latest.dieType ?? "").replace(/^d/i, ""), 10) || 20;
+    // Tumble only through numbers the dice could show (a d6 never flashes a 7), then settle on the real total.
+    const [lo, hi] = tumbleRange(latest);
+    const face = () => lo + Math.floor(Math.random() * (hi - lo + 1));
     if (latest.total !== null && latest.total !== undefined) {
-      setRolling(1 + Math.floor(Math.random() * faces));
-      timers.current.push(setInterval(() => setRolling(1 + Math.floor(Math.random() * faces)), 80));
+      setRolling(face());
+      timers.current.push(setInterval(() => setRolling(face()), 80));
       timers.current.push(setTimeout(() => { clear(); setRolling(null); timers.current.push(setTimeout(() => { if (!hover.current) setShown(false); }, REVEAL_MS - 1000)); }, 1000));
     } else {
       timers.current.push(setTimeout(() => { if (!hover.current) setShown(false); }, REVEAL_MS));

@@ -247,4 +247,6 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_name text`,
   `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_portrait text`,
   `CREATE UNIQUE INDEX IF NOT EXISTS initiative_entries_campaign_agnostic_unique ON initiative_entries (campaign_id, agnostic_note_id)`,
+  // Hotbar slots holding an Agnostic sheet or button.
+  `ALTER TABLE IF EXISTS free_hotbar_entries ADD COLUMN IF NOT EXISTS agnostic_ref text`,
 ];

@@ -24,6 +24,7 @@ import { caAbilityRollLabel, caAuraOf, CA_SKILLS, caAttrValueToDieSides, caEffec
 import { AuraCurrentField } from "@/components/game/CAPanels";
 import { getSound, SOUNDSCAPE_LIBRARY } from "@shared/soundscape";
 import { soundscape, triggerSound } from "@/lib/soundscape";
+import { AgHotbarSlot, AgHotbarPicker } from "@/agnostic/AgHotbar";
 
 const NUM_LOADOUTS = 9;
 const NUM_SLOTS = 10;
@@ -62,6 +63,8 @@ export interface FreeHotbarEntryView {
   skillKey?: string | null;
   /** Soundscape (GM only): a library sound — loops toggle in the mix, one-shots play for all. */
   soundId?: string | null;
+  /** Agnostic systems: "note:<id>" (a sheet) or "action:<id>" (a button / roll). */
+  agnosticRef?: string | null;
   character: FreeHotbarCharView | null;
   item: any | null;
   rollEntry?: any | null;
@@ -123,9 +126,13 @@ interface V3FreeHotbarProps {
   // HP/Energy/Mana stat-bar display for the wound systems' Wounds/Energy
   // display where relevant.
   campaignSystem?: string;
+  /** Agnostic systems: slots hold the campaign's sheets and their buttons instead of characters and items. */
+  agnostic?: boolean;
 }
 
-export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem }: V3FreeHotbarProps) {
+export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem, agnostic }: V3FreeHotbarProps) {
+  // Agnostic slots press themselves (they know their sheet / button); the digit keys reach them here.
+  const agPress = useRef<Map<number, () => void>>(new Map());
   // Sound slots light up while their loop is in the Soundscape mix.
   const [, setSoundscapeTick] = useState(0);
   useEffect(() => soundscape.subscribe(() => setSoundscapeTick((t) => t + 1)), []);
@@ -346,7 +353,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   };
 
   const setSlotMutation = useMutation({
-    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null }) =>
+    mutationFn: (data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null; agnosticRef?: string | null }) =>
       api.setFreeHotbarSlot(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['free-hotbar', campaignId] });
@@ -418,6 +425,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const handleSlotClick = (slotIndex: number) => {
     const entry = currentEntries.get(slotIndex);
     if (!entry) { setPickerSlot(slotIndex); return; }
+    if (entry.agnosticRef) { agPress.current.get(slotIndex)?.(); return; }
     if (entry.soundId) {
       triggerSound(entry.soundId, { isGM });
       return;
@@ -549,6 +557,19 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
           // stat bars already do.
           const slotLive = entry?.character ? liveCharMap.get(entry.character.id) : null;
           const slotAura = slotLive?.caAuraColor ? caAuraOf(slotLive) : null;
+          if (entry?.agnosticRef) {
+            return (
+              <div key={slotIndex} className="relative">
+                <AgHotbarSlot
+                  agRef={entry.agnosticRef}
+                  className="chrome-frame relative w-10 h-10 sm:w-14 sm:h-14 rounded-lg border-2 flex items-center justify-center overflow-hidden transition-all duration-200 hover:scale-105 select-none touch-none border-amber-600 bg-stone-800 hover:border-amber-500 disabled:opacity-50"
+                  onRemove={() => removeMutation.mutate(entry.id)}
+                  registerPress={(fn) => { if (fn) agPress.current.set(slotIndex, fn); else agPress.current.delete(slotIndex); }}
+                  testId={`free-hotbar-slot-${slotIndex}`}
+                />
+              </div>
+            );
+          }
           return (
             <div key={slotIndex} className="relative">
               <button
@@ -680,8 +701,14 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
         </div>
       </div>
 
-      {/* Slot picker */}
-      {pickerSlot !== null && (
+      {/* Slot picker (Agnostic: the campaign's sheets and their buttons, in a floating panel) */}
+      {pickerSlot !== null && agnostic && (
+        <AgHotbarPicker
+          onClose={() => setPickerSlot(null)}
+          onAssign={(agnosticRef) => setSlotMutation.mutate({ loadoutIndex: loadout, slotIndex: pickerSlot, agnosticRef })}
+        />
+      )}
+      {pickerSlot !== null && !agnostic && (
         <SlotPickerDialog
           campaignId={campaignId}
           isGM={isGM}

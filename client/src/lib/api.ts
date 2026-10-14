@@ -1359,7 +1359,7 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/free-hotbar`);
   }
 
-  async setFreeHotbarSlot(campaignId: string, data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null }): Promise<any> {
+  async setFreeHotbarSlot(campaignId: string, data: { loadoutIndex: number; slotIndex: number; characterId?: string | null; itemId?: string | null; rollEntryId?: string | null; skillKey?: string | null; soundId?: string | null; agnosticRef?: string | null }): Promise<any> {
     return this.request(`/campaigns/${campaignId}/free-hotbar`, {
       method: 'PUT',
       body: JSON.stringify(data),

@@ -14761,11 +14761,12 @@ export default function Campaign() {
       {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3, C.A. and
           Swampy campaigns. Swampy uses it for the same reason C.A. does: it has
           no per-character hotbar model of its own to slot into. */}
-      {!spectatorMode && !isSandbox && (isAAV3 || isCA || isSwampy) && (
+      {!spectatorMode && !isSandbox && (isAAV3 || isCA || isSwampy || isAgnostic) && (
         <V3FreeHotbar
           campaignId={campaignId!}
           isGM={role === 'gm'}
           campaignSystem={campaign?.system}
+          agnostic={isAgnostic}
           onOpenCharacterSheet={(characterId, opts) => {
             if (opts?.toggle && openCharacterSheets.some((c: any) => c.id === characterId)) {
               closeCharacterSheet(characterId);

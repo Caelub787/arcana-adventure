@@ -2594,6 +2594,7 @@ export class DatabaseStorage implements IStorage {
           rollEntryId: entry.rollEntryId ?? null,
           skillKey: entry.skillKey ?? null,
           soundId: entry.soundId ?? null,
+          agnosticRef: entry.agnosticRef ?? null,
         },
       })
       .returning();

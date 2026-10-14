@@ -493,36 +493,23 @@ function FieldDisplayCore({ noteId, refPath, maxRef, display, label, showLabel =
 /** Pressing and holding a roll (or right-clicking it) asks for advantage / disadvantage / a modifier first. */
 const HOLD_MS = 450;
 
-export function ActionButton({ actionId, label, className = "", look, compact }: { actionId: string; label?: string; className?: string; look?: AgLook; compact?: boolean }) {
-  const { state, request, scope, realViewer, viewer, system } = useAg();
+/**
+ * Pressing a button anywhere (a sheet, a list, the hotbar): asks any "choose"
+ * questions first, runs it, posts its rolls (as the character it belongs to)
+ * and shows what happened. `askOptions` opens advantage / disadvantage / a
+ * modifier first. Render `ui` next to whatever presses it.
+ */
+export function useActionRunner(actionId: string) {
+  const { state, request, scope, system } = useAg();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | { choices: AgActionChoice[]; idx: number; picked: Record<string, string>; mods: AgRollMods }>(null);
   const [asking, setAsking] = useState(false);
-  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
   const action = state.actions.get(actionId);
   const { canRun } = usePerms(action?.noteId);
-  if (!action) return realViewer.isGM && !viewer.isGM ? null : realViewer.isGM ? <span className="text-xs text-red-400">[missing action]</span> : null;
-  const allowed = canRun(actionId);
-  const opts = action.options ?? {};
-  const run = async (mods: AgRollMods = {}) => {
-    if (!allowed || busy) return;
-    // Buttons that ask "which one?" (e.g. which wound a potion heals) get the options first.
-    if (action.asks || action.steps?.some((st) => st.type === "choose")) {
-      setBusy(true);
-      try {
-        const { choices } = await request<{ choices: AgActionChoice[] }>({ op: "action.prepare", id: actionId, targetNoteIds: getAgTargets() });
-        const empty = choices.find((c) => !c.options.length);
-        if (empty) { toast({ title: action.name, description: `Nothing to choose: ${empty.prompt}` }); return; }
-        if (!choices.length) { setBusy(false); await go({}, mods); return; }
-        setPicking({ choices, idx: 0, picked: {}, mods });
-      } catch (e: any) { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }
-      finally { setBusy(false); }
-      return;
-    }
-    await go({}, mods);
-  };
+  const allowed = !!action && canRun(actionId);
   const go = async (choices: Record<string, string>, mods: AgRollMods) => {
+    if (!action) return;
     setBusy(true);
     try {
       const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string; rollerName?: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices, mods });
@@ -548,6 +535,55 @@ export function ActionButton({ actionId, label, className = "", look, compact }:
       setBusy(false);
     }
   };
+  const run = async (mods: AgRollMods = {}) => {
+    if (!action || !allowed || busy) return;
+    // Buttons that ask "which one?" (e.g. which wound a potion heals) get the options first.
+    if (action.asks || action.steps?.some((st) => st.type === "choose")) {
+      setBusy(true);
+      try {
+        const { choices } = await request<{ choices: AgActionChoice[] }>({ op: "action.prepare", id: actionId, targetNoteIds: getAgTargets() });
+        const empty = choices.find((c) => !c.options.length);
+        if (empty) { toast({ title: action.name, description: `Nothing to choose: ${empty.prompt}` }); return; }
+        if (!choices.length) { setBusy(false); await go({}, mods); return; }
+        setPicking({ choices, idx: 0, picked: {}, mods });
+      } catch (e: any) { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }
+      finally { setBusy(false); }
+      return;
+    }
+    await go({}, mods);
+  };
+  const ui = (
+    <>
+      {asking && action && <RollModsPanel name={action.name} onClose={() => setAsking(false)} onRoll={(mods) => { setAsking(false); void run(mods); }} />}
+      {picking && (() => {
+        const c = picking.choices[picking.idx];
+        return (
+          <AgSelector
+            title={c.prompt}
+            items={c.options.map((o) => ({ id: o.id, name: o.name, image: o.portrait, sub: o.sub }))}
+            onClose={() => setPicking(null)}
+            onPick={(id) => {
+              const picked = { ...picking.picked, [c.name]: id };
+              if (picking.idx + 1 < picking.choices.length) setPicking({ ...picking, idx: picking.idx + 1, picked });
+              else { setPicking(null); void go(picked, picking.mods); }
+            }}
+            keepOpen
+            testId="ag-action-choose"
+          />
+        );
+      })()}
+    </>
+  );
+  return { action, allowed, busy, run, askOptions: () => { if (allowed) setAsking(true); }, ui };
+}
+
+export function ActionButton({ actionId, label, className = "", look, compact }: { actionId: string; label?: string; className?: string; look?: AgLook; compact?: boolean }) {
+  const { realViewer, viewer } = useAg();
+  const runner = useActionRunner(actionId);
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
+  const { action, allowed, busy } = runner;
+  if (!action) return realViewer.isGM && !viewer.isGM ? null : realViewer.isGM ? <span className="text-xs text-red-400">[missing action]</span> : null;
+  const opts = action.options ?? {};
   const cancelHold = () => { if (hold.current.timer) { clearTimeout(hold.current.timer); hold.current.timer = null; } };
   const showName = opts.showName !== false || (!opts.icon && !look?.iconName);
   const iconEl = busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -559,14 +595,14 @@ export function ActionButton({ actionId, label, className = "", look, compact }:
     <>
     <button
       type="button"
-      onClick={(e) => { if (hold.current.fired) { hold.current.fired = false; e.preventDefault(); return; } void run(); }}
+      onClick={(e) => { if (hold.current.fired) { hold.current.fired = false; e.preventDefault(); return; } void runner.run(); }}
       onPointerDown={(e) => {
         if (!allowed || (e.pointerType === "mouse" && e.button !== 0)) return;
         hold.current.fired = false; cancelHold();
-        hold.current.timer = setTimeout(() => { hold.current.fired = true; hold.current.timer = null; setAsking(true); }, HOLD_MS);
+        hold.current.timer = setTimeout(() => { hold.current.fired = true; hold.current.timer = null; runner.askOptions(); }, HOLD_MS);
       }}
       onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
-      onContextMenu={(e) => { if (!allowed) return; e.preventDefault(); e.stopPropagation(); cancelHold(); setAsking(true); }}
+      onContextMenu={(e) => { if (!allowed) return; e.preventDefault(); e.stopPropagation(); cancelHold(); runner.askOptions(); }}
       disabled={!allowed || busy}
       className={`inline-flex items-center justify-center gap-1.5 rounded-md ${showName ? "px-3" : "px-2"} h-8 text-sm font-medium border shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none touch-manipulation ${className}`}
       style={{
@@ -582,24 +618,7 @@ export function ActionButton({ actionId, label, className = "", look, compact }:
       {showName && text}
     </button>
     {look?.tooltip && <TipIcon text={look.tooltip} className="ml-1" />}
-    {asking && <RollModsPanel name={text} onClose={() => setAsking(false)} onRoll={(mods) => { setAsking(false); void run(mods); }} />}
-    {picking && (() => {
-      const c = picking.choices[picking.idx];
-      return (
-        <AgSelector
-          title={c.prompt}
-          items={c.options.map((o) => ({ id: o.id, name: o.name, image: o.portrait, sub: o.sub }))}
-          onClose={() => setPicking(null)}
-          onPick={(id) => {
-            const picked = { ...picking.picked, [c.name]: id };
-            if (picking.idx + 1 < picking.choices.length) setPicking({ ...picking, idx: picking.idx + 1, picked });
-            else { setPicking(null); void go(picked, picking.mods); }
-          }}
-          keepOpen
-          testId="ag-action-choose"
-        />
-      );
-    })()}
+    {runner.ui}
     </>
   );
 }
