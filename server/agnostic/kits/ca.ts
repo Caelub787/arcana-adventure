@@ -50,18 +50,45 @@ const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }>
   { key: "survival", name: "Survival", parent: "intelligence", desc: "Tracking, foraging, navigating, and living off the land." },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
-// The Universal Rank ladder: Bronze 1 at 0, then the source table's figures.
-const RANK_NAMES = ["Bronze", "Silver", "Gold", "Obsidian", "Terran"];
-const THRESHOLDS = [0, 20, 30, 40, 50, ...[100, 1000, 10000, 100000].flatMap((base) => [1, 2, 3, 4, 5].map((s) => base * s))];
-const HP_LADDER = THRESHOLDS.map((_, idx) => { let hp = 20; for (let k = 1; k <= idx; k++) hp += k % 5 === 0 ? 10 : 5; return hp; });
-const LADDER_LABELS = THRESHOLDS.map((_, idx) => `${RANK_NAMES[Math.floor(idx / 5)]} ${idx % 5 + 1}`);
-const RANK_LIFESPAN = [100, 150, 200, 250, 300];
-const RANK_ABSORB = [20, 50, 500, 5000, 50000];
+// The Universal Rank ladder: Bronze 1 at 0, then the source table's figures,
+// each rank ten times the last (Silver 100–500, Gold 1,000–5,000 … Livelihood
+// 1,000,000–5,000,000). Lifespan +50 years a rank; absorption ×10 a rank.
+// Add a rank by adding its name here — every number and formula follows.
+export const RANK_NAMES = ["Bronze", "Silver", "Gold", "Obsidian", "Terran", "Livelihood"];
+
+/** Every figure on a ladder of these ranks (five stars each), and the formulas that read it. */
+export function rankLadder(names: string[]) {
+  const thresholds = [0, 20, 30, 40, 50, ...names.slice(1).flatMap((_, r) => [1, 2, 3, 4, 5].map((st) => 10 ** (r + 2) * st))];
+  const hp = thresholds.map((_, idx) => { let v = 20; for (let k = 1; k <= idx; k++) v += k % 5 === 0 ? 10 : 5; return v; });
+  const labels = thresholds.map((_, idx) => `${names[Math.floor(idx / 5)]} ${idx % 5 + 1}`);
+  const lifespan = names.map((_, r) => 100 + 50 * r);
+  const absorb = names.map((_, r) => (r === 0 ? 20 : 50 * 10 ** (r - 1)));
+  const usable = thresholds.map((x) => Math.floor(x / 2));
+  return {
+    thresholds, hp, labels, lifespan, absorb, usable,
+    formulas: {
+      rank_index: `tier(energy_pool, ${thresholds.join(", ")})`,
+      rank: `concat(choose(floor(rank_index / 5), ${names.map((n) => `"${n}"`).join(", ")}), " ", rank_index % 5 + 1)`,
+      to_next_rank: `max(0, choose(rank_index + 1, ${thresholds.join(", ")}) - energy_pool)`,
+      lifespan: `choose(floor(rank_index / 5), ${lifespan.join(", ")})`,
+      absorption_limit: `choose(floor(rank_index / 5), ${absorb.join(", ")})`,
+      hp_max: `choose(rank_index, ${hp.join(", ")})`,
+      usable_energy: `choose(rank_index, ${usable.join(", ")})`,
+    } as Record<string, string>,
+  };
+}
+const LADDER = rankLadder(RANK_NAMES);
+const THRESHOLDS = LADDER.thresholds;
+const HP_LADDER = LADDER.hp;
+export const LADDER_LABELS = LADDER.labels;
+const RANK_LIFESPAN = LADDER.lifespan;
+const RANK_ABSORB = LADDER.absorb;
+export const RANK_FORMULAS = LADDER.formulas;
 /** Max Focus: 6 to start, +1 per star (every step on the ladder, ranks included). */
 export const FOCUS_FORMULA = "6 + rank_index";
 const focusAt = (idx: number) => 6 + idx;
 /** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
-export const USABLE_LADDER = THRESHOLDS.map((x) => Math.floor(x / 2));
+export const USABLE_LADDER = LADDER.usable;
 /** Point budgets: every star (rank_index step) adds one attribute point and one skill (modifier) point. */
 export const ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + rank_index";
 export const SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index";
@@ -179,17 +206,17 @@ function characterTemplate(): AgSnapshot {
     .num("age", "Age", 20).text("birthday", "Birthday").text("languages", "Languages", "Common");
   // Rank — read straight off the Energy Pool, never set by hand.
   s.num("energy_pool", "Energy Pool", 0, { min: 0 })
-    .calc("rank_index", "Rank step", `tier(energy_pool, ${THRESHOLDS.join(", ")})`)
-    .calc("rank", "Rank", `concat(choose(floor(rank_index / 5), ${RANK_NAMES.map((n) => `"${n}"`).join(", ")}), " ", rank_index % 5 + 1)`, "text")
-    .calc("to_next_rank", "To next rank", `max(0, choose(rank_index + 1, ${THRESHOLDS.join(", ")}) - energy_pool)`)
+    .calc("rank_index", "Rank step", RANK_FORMULAS.rank_index)
+    .calc("rank", "Rank", RANK_FORMULAS.rank, "text")
+    .calc("to_next_rank", "To next rank", RANK_FORMULAS.to_next_rank)
     .calc("rank_next", "Next rank", `if(to_next_rank > 0, concat(to_next_rank, " to next"), "top of the ladder")`, "text")
     .tip("rank", rankTooltip())
-    .calc("lifespan", "Lifespan", `choose(floor(rank_index / 5), 100, 150, 200, 250, 300)`)
-    .calc("absorption_limit", "Absorption limit", `choose(floor(rank_index / 5), 20, 50, 500, 5000, 50000)`);
+    .calc("lifespan", "Lifespan", RANK_FORMULAS.lifespan)
+    .calc("absorption_limit", "Absorption limit", RANK_FORMULAS.absorption_limit);
   // Health, Energy, Focus
   // Each current value goes up with its maximum (a rank up adds its extra, without refilling);
   // Temp HP is taken before HP and shows in green on the bar.
-  s.calc("hp_max", "Max HP", `choose(rank_index, ${HP_LADDER.join(", ")})`).num("hp", "HP", 20, { min: 0, follows: "hp_max", shield: "temp_hp" })
+  s.calc("hp_max", "Max HP", RANK_FORMULAS.hp_max).num("hp", "HP", 20, { min: 0, follows: "hp_max", shield: "temp_hp" })
     .num("temp_hp", "Temp HP", 0, { min: 0, color: TEMP_HP_COLOR })
     .calc("usable_energy", "Usable Energy", USABLE_FORMULA).num("energy", "Energy", 0, { min: 0, follows: "usable_energy", shield: "temp_energy" })
     .num("temp_energy", "Temp Energy", 0, { min: 0, color: TEMP_ENERGY_COLOR })

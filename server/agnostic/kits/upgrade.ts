@@ -17,11 +17,12 @@ import {
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
+  RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 5;
+export const CA_KIT_LEVEL = 6;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -39,6 +40,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 3) await upgrade3(store, characterTemplates);
   if (level < 4) await upgrade4(store, characterTemplates);
   if (level < 5) await upgrade5(store, characterTemplates);
+  if (level < 6) await upgrade6(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -508,4 +510,31 @@ async function upgrade5(store: ScopeStore, characterTemplates: AgNote[]) {
       replacePara(frag, "8 + one per level; up to 6 back", [p(muted(SKILL_BUDGET_NOTE))]);
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 6
+// Livelihood, the new top rank. A rank formula is only replaced where it is
+// still the kit's own for the old five-rank ladder (or the old Usable Energy).
+async function upgrade6(store: ScopeStore, characterTemplates: AgNote[]) {
+  const flat = (x: string | null | undefined) => (x ?? "").replace(/\s+/g, "");
+  const old = rankLadder(RANK_NAMES.slice(0, 5));
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const notes = Array.from(store.notes.values());
+  const characters = notes.filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const oldTags = ["Unranked", ...old.labels].join("|");
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      for (const [key, formula] of Object.entries(RANK_FORMULAS)) {
+        const f = store.fieldsByNote.get(n.id)?.get(key);
+        if (f && flat(f.formula) === flat(old.formulas[key]) && f.formula !== formula) await store.putField({ ...f, formula }, cs);
+      }
+      const rank = store.fieldsByNote.get(n.id)?.get("rank");
+      if (rank && (!rank.options.tooltip || rank.options.tooltip.startsWith("Your rank is read from your"))) await store.putField({ ...rank, options: { ...rank.options, tooltip: rankTooltip() } }, cs);
+    }
+    // Items' Rank tag can be a Livelihood star too.
+    for (const fields of Array.from(store.fieldsByNote.values())) {
+      const f = fields.get("rank_tag");
+      if (f && f.type === "select" && (f.options.choices ?? []).join("|") === oldTags) await store.putField({ ...f, options: { ...f.options, choices: ["Unranked", ...LADDER_LABELS] } }, cs);
+    }
+  });
 }
