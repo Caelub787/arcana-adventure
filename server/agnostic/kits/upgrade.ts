@@ -16,8 +16,9 @@ import {
   // Levels 1–7 built the single-use abilities that level 8 turns into techniques.
   legacyAbilityTabContent as abilityTabContent, legacyAbilityTemplateSnapshot as abilityTemplateSnapshot, legacyAbilityPage as abilityPage,
   LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
-  abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, techniqueAbilityNode,
-  TECHNIQUE_VIA, TECHNIQUE_TEMPLATE_DESCRIPTION, INVENTORY_HELP, abilityColor,
+  abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
+  ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
+  CA_COPIES_FOLDER, adoptCharacterCopies,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
@@ -27,7 +28,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 8;
+export const CA_KIT_LEVEL = 9;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -48,6 +49,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 6) await upgrade6(store, characterTemplates);
   if (level < 7) await upgrade7(store, characterTemplates);
   if (level < 8) await upgrade8(store, characterTemplates);
+  if (level < 9) await upgrade9(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -606,7 +608,7 @@ async function upgrade8(store: ScopeStore, characterTemplates: AgNote[]) {
       const isKitTemplate = n.isTemplate && n.name === "CA Ability";
       await store.putNote({
         ...n, type: "technique",
-        ...(isKitTemplate ? { name: "CA Technique", templateMeta: { ...(n.templateMeta ?? { version: 1 }), description: TECHNIQUE_TEMPLATE_DESCRIPTION } } : {}),
+        ...(isKitTemplate ? { name: "CA Technique", templateMeta: { ...(n.templateMeta ?? { version: 1 }), description: ASPECT_TEMPLATE_DESCRIPTION } } : {}),
       }, cs);
       for (const a of store.actionsOf(n.id)) {
         const r = a.options?.roll;
@@ -659,7 +661,7 @@ async function upgrade8(store: ScopeStore, characterTemplates: AgNote[]) {
   for (const n of characters) {
     await editPage(n, (_doc, frag) => {
       const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Ability")[0];
-      if (tab && !findAll(tab, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "abilities.techniques").length) {
+      if (tab && !findAll(tab, (e) => e.nodeName === "agLinks" && String(e.getAttribute("label")).startsWith("abilities.")).length) {
         tab.delete(0, tab.length);
         appendNodes(tab, techniqueAbilityTab());
       }
@@ -670,6 +672,108 @@ async function upgrade8(store: ScopeStore, characterTemplates: AgNote[]) {
       }
       for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e) === LEGACY_INVENTORY_HELP)) {
         const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(INVENTORY_HELP))]);
+      }
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 9
+// Characters' items, abilities and traits become their own copies ("Player Owned
+// Copies"): picked or dragged onto a character, an original gives a copy and stays
+// as it is; a copy moves; one taken off stays among the copies to give again.
+async function upgrade9(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  await renameTechniquesToAspects(store, characters);
+  // Abilities' own pages: their techniques list gives copies too.
+  const abilities = Array.from(store.notes.values()).filter((n) => n.type === "ability" && store.fieldsByNote.get(n.id)?.get("tag_color"));
+  await store.run((cs) => adoptCharacterCopies(store, cs));
+  const giveCopies = (el: Y.XmlElement) => {
+    const cfg = (el.getAttribute("config") ?? {}) as any;
+    if (cfg.add && !cfg.add.copy) el.setAttribute("config", { ...cfg, add: { ...cfg.add, copy: true, copyFolder: CA_COPIES_FOLDER } } as any);
+  };
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && ["items", "traits", "abilities", "abilities.aspects"].includes(String(e.getAttribute("label"))))) giveCopies(el);
+      for (const [starts, text] of [["Each item's rolls are on its card", INVENTORY_HELP], ["Each ability is a set of techniques.", ABILITY_SET_HELP]] as const) {
+        for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).startsWith(starts) && textOf(e) !== text)) {
+          const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(text))]);
+        }
+      }
+    });
+  }
+  for (const n of abilities) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "aspects")) giveCopies(el);
+    });
+  }
+}
+
+// Techniques are called Ability Aspects: sheet type "aspect", connected to their
+// ability as "aspects"; the kit's wording on the pages follows. Text the GM wrote
+// is left alone (only the kit's own sentences change).
+const KIT_WORDING: Array<[string, string]> = [
+  [" Techniques", " Ability Aspects"],
+  ["  — its techniques' tags and cards on the character use it.", "  — its aspects' tags and cards on the character use it."],
+  ["Each technique is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.",
+    "Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays."],
+  ["rolled and paid by whoever has this technique's ability.", "rolled and paid by whoever has this aspect's ability."],
+  ["Passive changes this technique makes to whoever has its ability (leave empty if none).", "Passive changes this aspect makes to whoever has its ability (leave empty if none)."],
+  ["notes about this technique only the GM sees.", "notes about this aspect only the GM sees."],
+];
+const renameJson = (v: unknown) => JSON.parse(JSON.stringify(v).replace(/Techniques/g, "Aspects").replace(/techniques/g, "aspects").replace(/Technique/g, "Aspect").replace(/technique/g, "aspect").replace(/a aspect/g, "an aspect"));
+function kitWordingToAspects(frag: Y.XmlFragment) {
+  for (const el of findAll(frag, () => true)) {
+    for (const c of el.toArray()) {
+      if (!(c instanceof Y.XmlText)) continue;
+      const delta = c.toDelta() as Array<{ insert: unknown; attributes?: Record<string, unknown> }>;
+      let changed = false;
+      const next = delta.map((d) => {
+        if (typeof d.insert !== "string") return d;
+        let t = d.insert;
+        for (const [a, b] of KIT_WORDING) if (t.includes(a)) t = t.split(a).join(b);
+        if (t !== d.insert) changed = true;
+        return { ...d, insert: t };
+      });
+      if (changed) { c.delete(0, c.length); c.applyDelta(next); }
+    }
+    // The lists: their connection, what they add, their columns and empty text.
+    if (el.nodeName === "agLinks") {
+      for (const k of ["label", "config", "columns"]) {
+        const v = el.getAttribute(k) as unknown;
+        if (v === undefined || v === null) continue;
+        const r = renameJson(v);
+        if (JSON.stringify(r) !== JSON.stringify(v)) el.setAttribute(k, r as any);
+      }
+    }
+  }
+}
+async function renameTechniquesToAspects(store: ScopeStore, characters: AgNote[]) {
+  const techniques = Array.from(store.notes.values()).filter((n) => n.type === "technique");
+  const abilities = Array.from(store.notes.values()).filter((n) => n.type === "ability");
+  await store.run(async (cs) => {
+    for (const n of techniques) {
+      const kit = n.isTemplate && n.name === "CA Technique";
+      await store.putNote({ ...n, type: "aspect", ...(kit ? { name: "CA Ability Aspect", templateMeta: { ...(n.templateMeta ?? { version: 1 }), description: ASPECT_TEMPLATE_DESCRIPTION } } : {}) }, cs);
+    }
+    for (const l of Array.from(store.links.values())) {
+      if (l.label === "techniques" || l.reverseLabel === "techniques") {
+        await store.putLink({ ...l, label: l.label === "techniques" ? "aspects" : l.label, reverseLabel: l.reverseLabel === "techniques" ? "aspects" : l.reverseLabel }, cs);
+      }
+    }
+  });
+  const pages = async (n: AgNote) => {
+    await editPage(n, (_doc, frag) => kitWordingToAspects(frag));
+    for (const r of Array.from(store.regions.values()).filter((x) => x.noteId === n.id)) await editRegion(n, r.id, (frag) => kitWordingToAspects(frag));
+  };
+  for (const n of [...techniques, ...abilities]) await pages(n);
+  // Characters: their Ability tab is the kit's — the new one, with Ability Aspects.
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Ability")[0];
+      if (tab && findAll(tab, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "abilities.techniques").length) {
+        tab.delete(0, tab.length);
+        appendNodes(tab, techniqueAbilityTab());
       }
     });
   }

@@ -142,7 +142,7 @@ function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; o
         <Portrait note={note} size={34} radius={6} />
         <span className="min-w-0">
           <span className="block text-sm text-stone-100 truncate">{note.name || "Untitled"}</span>
-          <span className="block text-[10px] text-stone-500 truncate">{agTypeLabel(note.type)}{note.isTemplate ? ` template · v${note.templateMeta?.version ?? 1}` : ""}{template ? ` · ${template.name}` : ""}{viewer.isGM && note.ownerIds.length ? ` · ${note.ownerIds.map((id) => state.members.find((m) => m.userId === id)?.name ?? "?").join(", ")}` : ""}</span>
+          <span className="block text-[10px] text-stone-500 truncate">{agTypeLabel(note.type)}{note.isTemplate ? ` template · v${note.templateMeta?.version ?? 1}` : ""}{template ? ` · ${template.name}` : ""}{viewer.isGM && note.ownerIds.length ? ` · ${note.ownerIds.map((id) => state.members.find((m) => m.userId === id)?.name ?? "?").join(", ")}` : ""}{note.copyOf ? copyWhere(state, note.id) : ""}</span>
         </span>
       </button>
       {note.isTemplate && <Lock className="h-3.5 w-3.5 text-stone-600" />}
@@ -427,4 +427,10 @@ function StarterTemplates({ types }: { types: string[] }) {
       </button>
     </div>
   );
+}
+
+/** Where someone's copy is now: " · on Aria" (what it's attached to), or " · on no one" (put away). */
+function copyWhere(state: ReturnType<typeof useAg>["state"], noteId: string): string {
+  const on = Array.from(state.links.values()).filter((l) => l.fromNoteId === noteId).map((l) => state.notes.get(l.toNoteId)?.name).filter(Boolean);
+  return on.length ? ` · on ${on.join(", ")}` : " · on no one";
 }

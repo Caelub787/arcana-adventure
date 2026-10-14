@@ -530,7 +530,7 @@ export function RollsConfig({ noteId, attrs, update }: { noteId: string; attrs: 
         <input list="ag-rolls-via" value={attrs.via ?? ""} placeholder="(this sheet)" onChange={(e) => update({ via: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, "") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-rolls-via" />
         <datalist id="ag-rolls-via">{labels.map((l) => <option key={l} value={l} />)}{["holder", "owner", "ability.holder"].filter((l) => !labels.includes(l)).map((l) => <option key={l} value={l} />)}</datalist>
       </Row>
-      <div className="text-[10px] text-stone-500">The connection to the sheet that rolls and pays — e.g. <span className="font-mono">holder</span> on an ability, <span className="font-mono">owner</span> on an item, or a path through sheets: <span className="font-mono">ability.holder</span> on a technique (its ability's holder). Empty: this sheet rolls.</div>
+      <div className="text-[10px] text-stone-500">The connection to the sheet that rolls and pays — e.g. <span className="font-mono">holder</span> on an ability, <span className="font-mono">owner</span> on an item, or a path through sheets: <span className="font-mono">ability.holder</span> on an aspect (its ability's holder). Empty: this sheet rolls.</div>
       <Row label="Costs">
         <div className="flex flex-wrap items-center gap-1">
           {costs.map((c) => <span key={c} className="inline-flex items-center gap-1 h-6 px-1.5 rounded bg-stone-800 text-[11px] font-mono">{c}<button type="button" onClick={() => update({ costs: costs.filter((x) => x !== c) })} className="text-stone-500 hover:text-red-400">×</button></span>)}
@@ -583,7 +583,7 @@ function EffectsView(p: NodeViewProps) {
           <input list="ag-effects-via" value={a.via ?? ""} placeholder="(this sheet)" onChange={(e) => p.updateAttributes({ via: e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, "") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-effects-via" />
           <datalist id="ag-effects-via">{labels.map((l) => <option key={l} value={l} />)}{["bearer", "holder", "owner", "ability.holder"].filter((l) => !labels.includes(l)).map((l) => <option key={l} value={l} />)}</datalist>
         </Row>
-        <div className="text-[10px] text-stone-500">The connection to the sheet whose values change — <span className="font-mono">bearer</span> on a wound, <span className="font-mono">owner</span> on an item, <span className="font-mono">holder</span> on a trait, or a path: <span className="font-mono">ability.holder</span> on a technique. Empty: this sheet.</div>
+        <div className="text-[10px] text-stone-500">The connection to the sheet whose values change — <span className="font-mono">bearer</span> on a wound, <span className="font-mono">owner</span> on an item, <span className="font-mono">holder</span> on a trait, or a path: <span className="font-mono">ability.holder</span> on an aspect. Empty: this sheet.</div>
         <Row label="Only while"><input value={a.condition ?? ""} placeholder="(always)" onChange={(e) => p.updateAttributes({ condition: e.target.value })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" /></Row>
         <div className="text-[10px] text-stone-500">New effects start with this condition, e.g. <span className="font-mono">equipped</span> for gear.</div>
       </ConfigPopover>

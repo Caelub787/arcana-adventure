@@ -298,11 +298,34 @@ export function EditOnDoubleClick({ field, children, empty }: { field?: AgField;
         onTouchEnd={cancel} onTouchMove={cancel} onTouchCancel={cancel}
         data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
       {open && (
-        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={300} height={field!.type === "text" || field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
-          {field!.type === "dice" ? <DiceFormulaInput field={field!} /> : <FieldInput field={field!} className={field!.type === "text" || field!.type === "number" ? "w-full" : ""} />}
+        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={field!.type === "text" && !field!.options.isColor ? 460 : 300} height={field!.type === "text" && !field!.options.isColor ? 320 : field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
+          {field!.type === "dice" ? <DiceFormulaInput field={field!} />
+            : field!.type === "text" && !field!.options.isColor ? <TextAreaInput field={field!} />
+            : <FieldInput field={field!} className={field!.type === "number" ? "w-full" : ""} />}
         </AgPanel>
       )}
     </>
+  );
+}
+
+/**
+ * Text (a description…) in a box that fills its window and wraps, so all of it
+ * shows; resize the window for more room. Saves as you type (a moment after you
+ * stop) and when you leave the box.
+ */
+function TextAreaInput({ field }: { field: AgField }) {
+  const w = useFieldWriter();
+  const saved = String(field.value ?? "");
+  const [draft, setDraft] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const save = (v: string) => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } if (v !== String(field.value ?? "")) w.set(field, v); };
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return (
+    <textarea autoFocus value={draft ?? saved} aria-label={field.label} data-testid="ag-text-edit"
+      onChange={(e) => { const v = e.target.value; setDraft(v); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => save(v), 600); }}
+      onBlur={() => { if (draft !== null) save(draft); setDraft(null); }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="block w-full h-full min-h-[140px] resize-none bg-stone-900/80 border border-stone-700 rounded px-2 py-1.5 text-sm leading-relaxed text-stone-100 outline-none focus:border-amber-500/70 whitespace-pre-wrap break-words" />
   );
 }
 

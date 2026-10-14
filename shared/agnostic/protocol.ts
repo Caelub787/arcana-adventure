@@ -22,9 +22,10 @@ export type AgOp =
   /**
    * Put an existing sheet onto another (dragged from the sidebar onto a character):
    * connected the way the host's list for that kind of sheet adds them (an item into
-   * the inventory, an ability into the abilities, a technique into an ability).
+   * the inventory, an ability into the abilities, an aspect into an ability).
+   * fromNoteId: it was dragged off that sheet — it moves (off that one, onto this one).
    */
-  | { op: "note.attach"; hostNoteId: string; noteId: string }
+  | { op: "note.attach"; hostNoteId: string; noteId: string; label?: string; reverseLabel?: string; fromNoteId?: string }
   /** Templates this viewer may add from (players only see ones the GM allowed). */
   | { op: "note.creatableTemplates"; types?: string[] }
   /** Add a ready-made starter kit (templates, and optionally example sheets) to this scope. */

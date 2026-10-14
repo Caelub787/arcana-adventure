@@ -194,6 +194,12 @@ export interface AgNote {
   sortOrder: number;
   /** Bumped when the documents are replaced wholesale (restore / template switch); docs are named per epoch. */
   docEpoch: number;
+  /**
+   * A sheet's own copy of another — an item given to a character, with its own
+   * notes: what it was copied from. Its owners follow the sheets it's attached
+   * to; dragging it somewhere else moves it rather than copying it again.
+   */
+  copyOf?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -485,8 +491,13 @@ export interface AgLinksConfig {
   filterBy?: string;
   /** Card border coloured by this column's choice colour (e.g. rarity). */
   accentBy?: string;
-  /** Adding: which kinds of sheet, and what the new sheet calls this one (e.g. "owner"). */
-  add?: { types?: string[]; reverse?: string; existing?: boolean } | null;
+  /**
+   * Adding: which kinds of sheet, and what the new sheet calls this one (e.g. "owner").
+   * copy: an existing sheet added here (picked, or dragged from the sidebar) becomes this
+   * sheet's own copy, kept in `copyFolder`; the original stays as it was. A copy added
+   * somewhere else moves there.
+   */
+  add?: { types?: string[]; reverse?: string; existing?: boolean; copy?: boolean; copyFolder?: string } | null;
   remove?: "none" | "disconnect" | "delete";
   emptyText?: string;
 }

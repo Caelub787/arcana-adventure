@@ -68,7 +68,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   // Adding to a path list: first which sheet it goes on (e.g. which ability), then what.
   const [addHost, setAddHost] = useState<string>(noteId);
   const [pickingHost, setPickingHost] = useState<null | SelItem[]>(null);
-  // A path ("abilities.techniques") lists the sheets reached through others; parents = what each hangs off.
+  // A path ("abilities.aspects") lists the sheets reached through others; parents = what each hangs off.
   const parents = followWithParents(state, noteId, label);
   const ids = Array.from(parents.keys());
   const viaPath = isLinkPath(label);
@@ -108,6 +108,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   };
 
   const lastLabel = label.split(".").filter(Boolean).pop() ?? label;
+  /** Who a copy is on now ("Aria, Bren"). */
+  const holdersOf = (id: string) => Array.from(state.links.values()).filter((l) => l.fromNoteId === id && l.label === (config.add?.reverse || "owner")).map((l) => state.notes.get(l.toNoteId)?.name).filter(Boolean).join(", ");
   const openAddPath = () => {
     const hosts = follow(state, noteId, label.split(".").filter(Boolean).slice(0, -1).join("."));
     if (hosts.length === 1) { setAddHost(hosts[0]); void openAdd(hosts[0]); return; }
@@ -122,7 +124,14 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       if (viewer.isGM && config.add?.existing !== false) {
         for (const n of Array.from(state.notes.values())) {
           if (n.isTemplate || n.id === hostId || n.id === noteId || ids.includes(n.id) || (types && !types.includes(n.type))) continue;
-          items.push({ id: `n:${n.id}`, name: n.name || "Untitled", image: n.portrait, group: "Existing sheets", sub: `Connect this ${agTypeLabel(n.type).toLowerCase()}`, badge: agTypeLabel(n.type) });
+          // Lists that give copies: an original gives a copy (it stays as it is); someone's copy moves here.
+          const copyList = !!config.add?.copy;
+          items.push({
+            id: `n:${n.id}`, name: n.name || "Untitled", image: n.portrait,
+            group: copyList ? (n.copyOf ? "Copies (move here)" : "Originals (give a copy)") : "Existing sheets",
+            sub: copyList ? (n.copyOf ? `Move it here${holdersOf(n.id) ? ` from ${holdersOf(n.id)}` : ""}, notes and all` : "Give a copy — the original stays as it is") : `Connect this ${agTypeLabel(n.type).toLowerCase()}`,
+            badge: agTypeLabel(n.type),
+          });
         }
         if (types) for (const t of types) items.push({ id: `b:${t}`, name: `Blank ${agTypeLabel(t)}`, group: "New", sub: "An empty sheet to fill in", icon: <Plus className="h-4 w-4" /> });
       }
@@ -133,7 +142,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     const reverse = config.add?.reverse || "owner";
     const host = viaPath ? addHost : noteId;
     try {
-      if (id.startsWith("n:")) await request({ op: "link.create", fromNoteId: id.slice(2), toNoteId: host, label: reverse, reverseLabel: lastLabel });
+      if (id.startsWith("n:")) await request({ op: "note.attach", hostNoteId: host, noteId: id.slice(2), label: lastLabel, reverseLabel: reverse });
       else if (id.startsWith("t:")) await request({ op: "note.createLinked", hostNoteId: host, templateId: id.slice(2), label: lastLabel, reverseLabel: reverse });
       else if (id.startsWith("b:")) await request({ op: "note.createLinked", hostNoteId: host, type: id.slice(2), name: `New ${agTypeLabel(id.slice(2))}`, label: lastLabel, reverseLabel: reverse });
       toast({ title: "Added" });
@@ -146,6 +155,14 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       .then((ok) => ok && request({ op: "note.removeLinked", hostNoteId: parents.get(id) ?? noteId, noteId: id, mode: del ? "delete" : "disconnect" }).catch((e: any) => toast({ title: "Couldn't remove it", description: e.message, variant: "destructive" })));
   };
 
+  // Rows can be dragged onto another sheet (moves it there, off the sheet it hangs from) or onto the map.
+  const dragRow = (id: string) => (e: React.DragEvent) => {
+    if ((e.target as HTMLElement).closest?.("input, textarea, select")) { e.preventDefault(); return; }
+    e.stopPropagation();
+    e.dataTransfer.setData("application/character-id", `ag:${id}`);
+    e.dataTransfer.setData("application/ag-from", parents.get(id) ?? noteId);
+    e.dataTransfer.effectAllowed = "copyMove";
+  };
   const fontStyle: React.CSSProperties = { fontSize: look?.fontSize, color: look?.textColor };
   const toolbar = (config.search || config.filterBy || mayAdd || columns.length > 0) && (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -237,7 +254,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           const n = state.notes.get(id)!;
           const accent = accentOf(id);
           return (
-            <div key={id} role="button" tabIndex={0} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a, [data-no-open]")) openNote(id); }} onKeyDown={(e) => { if (e.key === "Enter") openNote(id); }}
+            <div key={id} role="button" tabIndex={0} draggable onDragStart={dragRow(id)} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a, [data-no-open]")) openNote(id); }} onKeyDown={(e) => { if (e.key === "Enter") openNote(id); }}
               className="flex items-center gap-3 p-2.5 rounded-lg bg-stone-900/80 border hover:brightness-110 cursor-pointer" style={{ borderColor: accent ?? look?.border ?? "#44403c" }} data-testid={`ag-links-row-${n.name}`}>
               <Portrait note={n} size={44} radius={8} className="shrink-0" />
               <div className="flex-1 min-w-0 space-y-1">
@@ -285,7 +302,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
             {rows.map((id) => {
               const n = state.notes.get(id)!;
               return (
-                <tr key={id} className="border-t border-stone-800 hover:bg-stone-800/40" data-testid={`ag-links-row-${n.name}`}>
+                <tr key={id} draggable onDragStart={dragRow(id)} className="border-t border-stone-800 hover:bg-stone-800/40" data-testid={`ag-links-row-${n.name}`}>
                   <td className="px-2 py-1"><button type="button" className="inline-flex items-center gap-1.5 text-amber-200 hover:underline text-left" onClick={() => openNote(id)}><Portrait note={n} size={20} radius={4} />{n.name}</button></td>
                   {columns.map((c) => <td key={c.ref} className="px-2 py-1">{cell(id, c)}</td>)}
                   {removeMode !== "none" && <td className="px-1">{removeBtn(id)}</td>}
@@ -431,6 +448,12 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
             const on = (cfg.add?.types ?? []).includes(t);
             return <button key={t} type="button" onClick={() => setCfg({ add: { ...cfg.add!, types: on ? cfg.add!.types!.filter((x) => x !== t) : [...(cfg.add!.types ?? []), t] } })} className={`h-7 px-2 rounded-full border text-[11px] ${on ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-400"}`}>{agTypeLabel(t)}</button>;
           }))}
+          {row("Copies", <>
+            <label className="text-xs inline-flex items-center gap-1" title="Picked or dragged here, an original gives this sheet its own copy (its own notes); someone's copy moves here instead.">
+              <input type="checkbox" className="accent-amber-500" checked={!!cfg.add.copy} onChange={(e) => setCfg({ add: { ...cfg.add!, copy: e.target.checked || undefined, copyFolder: e.target.checked ? (cfg.add!.copyFolder || "Copies") : undefined } })} data-testid="ag-links-copy" /> Give this sheet its own copy
+            </label>
+            {cfg.add.copy && <input value={cfg.add.copyFolder ?? "Copies"} placeholder="folder" title="The folder copies are kept in (they stay there when taken off, to give again)" onChange={(e) => setCfg({ add: { ...cfg.add!, copyFolder: e.target.value.slice(0, 80) } })} className="h-7 w-40 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs" data-testid="ag-links-copy-folder" />}
+          </>)}
           {row("They call it", <><input value={cfg.add.reverse ?? "owner"} onChange={(e) => setCfg({ add: { ...cfg.add!, reverse: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") } })} className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" /><span className="text-[10px] text-stone-500">so their formulas reach this sheet as @{cfg.add.reverse || "owner"}</span></>)}
         </>
       )}

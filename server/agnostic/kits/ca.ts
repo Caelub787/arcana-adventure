@@ -11,11 +11,15 @@ import { randomUUID } from "crypto";
 import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue } from "@shared/agnostic/types";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
+import { copySheet, markAsCopy, syncCopyOwners } from "../copies";
 import {
   buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, val, block, button, columns, section, tabs, links, canvas, table, rolls, effects,
 } from "./doc";
 
 export const CA_KIT_FOLDER = "Cultivator's Adventure";
+/** Where characters' own copies of items, abilities and traits are kept (and stay when taken off). */
+export const CA_COPIES_FOLDER = "Player Owned Copies";
+const COPY = { copy: true, copyFolder: CA_COPIES_FOLDER };
 
 // --------------------------------------------------------------------------- C.A. rules, as data
 const ATTRS = [
@@ -351,13 +355,13 @@ function characterTemplate(): AgSnapshot {
       { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" },
       { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" },
       { ref: "equipped", display: "toggle", label: "Equip" }, { ref: "", display: "rolls" },
-    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
+    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true, ...COPY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
     p(muted(INVENTORY_HELP)),
   ];
 
   // ---- Traits
   const traitsTab: DocNode[] = [
-    links("traits", [{ ref: "summary", display: "value", label: "" }], { layout: "cards", search: true, add: { types: ["trait"], reverse: "holder", existing: true }, remove: "disconnect", emptyText: "No traits added yet." }),
+    links("traits", [{ ref: "summary", display: "value", label: "" }], { layout: "cards", search: true, add: { types: ["trait"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "No traits added yet." }),
   ];
 
   const page: DocNode[] = [
@@ -372,44 +376,44 @@ function characterTemplate(): AgSnapshot {
   return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: chips, cv_attributes: attrBoxes });
 }
 
-// --------------------------------------------------------------------------- abilities & techniques
+// --------------------------------------------------------------------------- abilities & aspects
 // An Ability is a set (gravity control, ember arts…); each single use of it is a
-// Technique: its own small sheet with rolls, costs and effects, connected to the
-// ability (technique —ability→ ability —holder→ character). The character's
-// Ability tab lists the abilities, then every technique of every ability,
+// Aspect: its own small sheet with rolls, costs and effects, connected to the
+// ability (aspect —ability→ ability —holder→ character). The character's
+// Ability tab lists the abilities, then every aspect of every ability,
 // each tagged with the ability it belongs to.
-export const INVENTORY_HELP = "Each item's rolls are on its card (hold a roll for advantage, disadvantage or a modifier). Click an item to open it and set its rolls up. Equipped items' bonuses (and a backpack's extra carry weight) apply on their own. The remove button only takes an item off this character — it stays in the sidebar.";
-export const ABILITY_HELP = "Each ability is a set of techniques. Open one to see its techniques and make new ones. GM: Add (or drag an ability here from the sidebar) gives this character an ability; the remove button only takes it off this character.";
-export const TECHNIQUE_HELP = "Every technique from this character's abilities; the tag shows which ability it's from (click it to open the ability). Each roll shows what it rolls and costs; pressing it spends the cost first. Hold a roll for advantage, disadvantage or a modifier.";
+export const INVENTORY_HELP = "Each item's rolls are on its card (hold a roll for advantage, disadvantage or a modifier). Click an item to open it and set its rolls up. Equipped items' bonuses (and a backpack's extra carry weight) apply on their own. Items given here are this character's own copies (their own notes); the original stays to give again. Drag a copy onto someone else to move it; the remove button puts it away in “Player Owned Copies”.";
+export const ABILITY_HELP = "Each ability is a set of aspects. Open one to see its aspects and make new ones. GM: Add (or drag an ability here from the sidebar) gives this character their own copy of it, aspects and all; the remove button puts it away in “Player Owned Copies”.";
+export const ASPECT_HELP = "Every aspect from this character's abilities; the tag shows which ability it's from (click it to open the ability). Each roll shows what it rolls and costs; pressing it spends the cost first. Hold a roll for advantage, disadvantage or a modifier.";
 export const ABILITY_LIST_COLUMNS = [
-  { ref: "techniques", display: "connection", label: "Techniques" }, { ref: "description", display: "text" },
+  { ref: "aspects", display: "connection", label: "Aspects" }, { ref: "description", display: "text" },
 ];
 export const ABILITY_LIST_CONFIG = {
   layout: "cards", search: true, sortBy: "name", accentBy: "tag_color",
-  add: { types: ["ability"], reverse: "holder", existing: true }, remove: "disconnect", emptyText: "No abilities yet — the GM adds them with Add, or drags one here from the sidebar.",
+  add: { types: ["ability"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "No abilities yet — the GM adds them with Add, or drags one here from the sidebar.",
 };
-export const TECHNIQUE_COLUMNS = [
+export const ASPECT_COLUMNS = [
   { ref: "category", display: "badge" }, { ref: "range", display: "value", label: "Range" }, { ref: "duration", display: "value", label: "Duration" },
   { ref: "description", display: "text" }, { ref: "", display: "rolls" },
 ];
-/** Every technique of every ability the character has, tagged (and coloured) by its ability. */
-export const TECHNIQUE_LIST_COLUMNS = [{ ref: "ability", display: "connection" }, ...TECHNIQUE_COLUMNS];
-export const TECHNIQUE_LIST_CONFIG = {
+/** Every aspect of every ability the character has, tagged (and coloured) by its ability. */
+export const ASPECT_LIST_COLUMNS = [{ ref: "ability", display: "connection" }, ...ASPECT_COLUMNS];
+export const ASPECT_LIST_CONFIG = {
   layout: "cards", search: true, sortBy: "name", filterBy: "ability", accentBy: "ability",
-  add: { types: ["technique"], reverse: "ability", existing: true }, remove: "none", emptyText: "No techniques yet — open an ability to make one.",
+  add: { types: ["aspect"], reverse: "ability", existing: true, ...COPY }, remove: "none", emptyText: "No aspects yet — open an ability to make one.",
 };
-/** An ability's own list of its techniques. */
-export const ABILITY_TECHNIQUES_CONFIG = {
+/** An ability's own list of its aspects. */
+export const ABILITY_ASPECTS_CONFIG = {
   layout: "cards", search: true, sortBy: "name", filterBy: "category", accentBy: "category",
-  add: { types: ["technique"], reverse: "ability", existing: true }, remove: "disconnect", emptyText: "No techniques yet — press Add to make one.",
+  add: { types: ["aspect"], reverse: "ability", existing: true, ...COPY }, remove: "disconnect", emptyText: "No aspects yet — press Add to make one.",
 };
-export const TECHNIQUE_VIA = "ability.holder";
+export const ASPECT_VIA = "ability.holder";
 export const DEFAULT_ABILITY_COLOR = "#a78bfa";
 const ABILITY_TAG_COLORS = ["#a78bfa", "#f87171", "#34d399", "#60a5fa", "#fbbf24", "#f472b6", "#2dd4bf", "#fb923c"];
 /** A colour for the n-th ability (so a character's abilities don't all look alike). */
 export const abilityColor = (n: number) => ABILITY_TAG_COLORS[n % ABILITY_TAG_COLORS.length];
 
-/** The character's Ability tab: cultivation, its abilities, then all their techniques. */
+/** The character's Ability tab: cultivation, its abilities, then all their aspects. */
 export function abilityTabContent(): DocNode[] {
   return [
     columns([[p(icon("Flame", GILT, 18), " ", b("Cultivation"))], [pAlign("right", val("cultivation", { look: { bold: true } }))]], { ...SECTION_LOOK, ratio: "3:2", gap: 8 }),
@@ -417,67 +421,67 @@ export function abilityTabContent(): DocNode[] {
     h(3, icon("Sparkles", GILT, 18), " Abilities"),
     links("abilities", ABILITY_LIST_COLUMNS, ABILITY_LIST_CONFIG),
     p(muted(ABILITY_HELP)),
-    h(3, icon("Swords", GILT, 18), " Techniques"),
-    links("abilities.techniques", TECHNIQUE_LIST_COLUMNS, TECHNIQUE_LIST_CONFIG),
-    p(muted(TECHNIQUE_HELP)),
+    h(3, icon("Swords", GILT, 18), " Ability Aspects"),
+    links("abilities.aspects", ASPECT_LIST_COLUMNS, ASPECT_LIST_CONFIG),
+    p(muted(ASPECT_HELP)),
   ];
 }
 
 export function abilityTemplateSnapshot(): AgSnapshot { return abilityTemplate(); }
-export function techniqueTemplateSnapshot(): AgSnapshot { return techniqueTemplate(); }
+export function aspectTemplateSnapshot(): AgSnapshot { return aspectTemplate(); }
 
-/** An ability's page: what it is, its tag colour, its techniques, passive effects, GM notes. */
+/** An ability's page: what it is, its tag colour, its aspects, passive effects, GM notes. */
 export function abilityPage(gmRegionId: string | null): DocNode[] {
   return [
     block("description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
-    p(muted("Tag colour "), val("tag_color", { display: "input" }), muted("  — its techniques' tags and cards on the character use it.")),
-    h(3, icon("Swords", GILT, 16), " Techniques"),
-    links("techniques", TECHNIQUE_COLUMNS, ABILITY_TECHNIQUES_CONFIG),
-    p(muted("Each technique is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.")),
+    p(muted("Tag colour "), val("tag_color", { display: "input" }), muted("  — its aspects' tags and cards on the character use it.")),
+    h(3, icon("Swords", GILT, 16), " Ability Aspects"),
+    links("aspects", ASPECT_COLUMNS, ABILITY_ASPECTS_CONFIG),
+    p(muted("Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.")),
     ...effectsNodes("holder", "", "Passive changes this ability makes to its holder (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
 }
 
-/** The ability a technique belongs to, as a card at the top of its page. */
-export function techniqueAbilityNode(): DocNode {
-  return links("ability", [{ ref: "description", display: "text" }], { layout: "cards", accentBy: "tag_color", emptyText: "Not part of an ability yet — make it from an ability's Techniques, or connect it to one." });
+/** The ability an aspect belongs to, as a card at the top of its page. */
+export function aspectAbilityNode(): DocNode {
+  return links("ability", [{ ref: "description", display: "text" }], { layout: "cards", accentBy: "tag_color", emptyText: "Not part of an ability yet — make it from an ability's Aspects, or connect it to one." });
 }
-export const TECHNIQUE_TEMPLATE_DESCRIPTION = "A technique: one use of an ability — category, range, duration and as many rolls as it needs, each with its own dice and Energy / Focus cost.";
+export const ASPECT_TEMPLATE_DESCRIPTION = "An aspect: one use of an ability — category, range, duration and as many rolls as it needs, each with its own dice and Energy / Focus cost.";
 
-/** A technique's page: its ability, category, description, range / duration, its rolls, effects, GM notes. */
-export function techniquePage(gmRegionId: string | null): DocNode[] {
+/** An aspect's page: its ability, category, description, range / duration, its rolls, effects, GM notes. */
+export function aspectPage(gmRegionId: string | null): DocNode[] {
   return [
-    techniqueAbilityNode(),
+    aspectAbilityNode(),
     p(val("category", { display: "badge" })),
     block("description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
     p(muted("Range "), val("range", { look: { bold: true } }), "    ", muted("Duration "), val("duration", { look: { bold: true } })),
     h(3, icon("Dices", GILT, 16), " Rolls"),
-    rolls(TECHNIQUE_VIA, ["energy", "focus"], "#9f1239", SECTION_LOOK),
-    p(muted("Each roll has its own dice, bonus and Energy / Focus cost, rolled and paid by whoever has this technique's ability. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.")),
-    ...effectsNodes(TECHNIQUE_VIA, "", "Passive changes this technique makes to whoever has its ability (leave empty if none)."),
+    rolls(ASPECT_VIA, ["energy", "focus"], "#9f1239", SECTION_LOOK),
+    p(muted("Each roll has its own dice, bonus and Energy / Focus cost, rolled and paid by whoever has this aspect's ability. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.")),
+    ...effectsNodes(ASPECT_VIA, "", "Passive changes this aspect makes to whoever has its ability (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
 }
 
 function abilityTemplate(): AgSnapshot {
   const s = new Sheet();
-  s.text("description", "Description", "").text("tag_color", "Tag colour", DEFAULT_ABILITY_COLOR, { isColor: true, tooltip: "The colour of this ability's tag on its techniques, and of their cards on the character sheet." });
+  s.text("description", "Description", "").text("tag_color", "Tag colour", DEFAULT_ABILITY_COLOR, { isColor: true, tooltip: "The colour of this ability's tag on its aspects, and of their cards on the character sheet." });
   s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this ability only the GM sees."))], { view: "gm", edit: "gm" });
-  return s.snapshot({ type: "ability", name: "CA Ability", description: "An ability: a set of techniques (its single uses), each with its own rolls and costs." }, abilityPage("r_gm"));
+  return s.snapshot({ type: "ability", name: "CA Ability", description: "An ability: a set of aspects (its single uses), each with its own rolls and costs." }, abilityPage("r_gm"));
 }
 
-function techniqueTemplate(): AgSnapshot {
+function aspectTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("category", "Category", ABILITY_CATEGORIES, "Attack", ABILITY_COLORS)
     .text("range", "Range", "").text("duration", "Duration", "").text("description", "Description", "");
   // One roll to start; the GM adds more (an attack and its damage, two costs…) in the Rolls block.
-  s.roll("a_roll", "Roll", { via: TECHNIQUE_VIA, die: `@${TECHNIQUE_VIA}.anemos_die`, add: "arcana", costs: [{ key: "energy", amount: "10" }, { key: "focus", amount: "0" }] }, "die:d20", "#9f1239", 1);
-  s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this technique only the GM sees."))], { view: "gm", edit: "gm" });
-  return s.snapshot({ type: "technique", name: "CA Technique", description: TECHNIQUE_TEMPLATE_DESCRIPTION }, techniquePage("r_gm"));
+  s.roll("a_roll", "Roll", { via: ASPECT_VIA, die: `@${ASPECT_VIA}.anemos_die`, add: "arcana", costs: [{ key: "energy", amount: "10" }, { key: "focus", amount: "0" }] }, "die:d20", "#9f1239", 1);
+  s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this aspect only the GM sees."))], { view: "gm", edit: "gm" });
+  return s.snapshot({ type: "aspect", name: "CA Ability Aspect", description: ASPECT_TEMPLATE_DESCRIPTION }, aspectPage("r_gm"));
 }
 
-// ---- Before techniques (kit levels 1–7): an ability was one single use, held by the character.
+// ---- Before aspects (kit levels 1–7): an ability was one single use, held by the character.
 // Kept for the upgrade steps that bring old campaigns forward one level at a time.
 export const LEGACY_ABILITY_HELP = "Each roll shows what it rolls and costs; pressing it spends the cost first (it won't if there isn't enough). Hold a roll for advantage, disadvantage or a modifier. GM: Add gives this character a new ability or one that already exists; open an ability to add rolls and choose which show here.";
 export const LEGACY_INVENTORY_HELP = "Each item's rolls are on its card (hold a roll for advantage, disadvantage or a modifier). Click an item to open it and set its rolls up. Equipped items' bonuses (and a backpack's extra carry weight) apply on their own.";
@@ -750,7 +754,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
-  await add("technique", techniqueTemplate());
+  await add("aspect", aspectTemplate());
 
   await applyCATrackerSettings(store, cs);
 
@@ -783,21 +787,23 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     await connect(store, pill, hero, "owner", "items", cs);
     const trait = await createFrom(store, made.trait, "Iron Will", { summary: "Never breaks under fear — the GM may grant advantage on Focus rolls against it." }, cs);
     await connect(store, trait, hero, "holder", "traits", cs);
-    // Abilities (sets of techniques) and their techniques (single uses).
+    // Abilities (sets of aspects) and their aspects (single uses).
     const embers = await createFrom(store, made.ability, "Ember Arts", { description: "Shaping burning Anemos into weapons of flame.", tag_color: "#f97316" }, cs);
     const oath = await createFrom(store, made.ability, "Iron Oath", { description: "A sworn guardian's arts: drawing harm onto yourself and holding the line.", tag_color: "#60a5fa" }, cs);
     for (const a of [embers, oath]) await connect(store, a, hero, "holder", "abilities", cs);
-    const bulwark = await createFrom(store, made.technique, "Oathbound Bulwark", { category: "Defense", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
-    await setRoll(store, bulwark, "Roll", { die: `@${TECHNIQUE_VIA}.will_die`, add: "focus_skill", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
-    const lance = await createFrom(store, made.technique, "Ember Lance", { category: "Attack", range: "30 ft", description: "A spear of burning Anemos: roll to hit, then its fire damage." }, cs);
-    // An attack technique: an attack roll that pays, and a damage roll.
+    const bulwark = await createFrom(store, made.aspect, "Oathbound Bulwark", { category: "Defense", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
+    await setRoll(store, bulwark, "Roll", { die: `@${ASPECT_VIA}.will_die`, add: "focus_skill", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
+    const lance = await createFrom(store, made.aspect, "Ember Lance", { category: "Attack", range: "30 ft", description: "A spear of burning Anemos: roll to hit, then its fire damage." }, cs);
+    // An attack aspect: an attack roll that pays, and a damage roll.
     for (const a of store.actionsOf(lance.id)) if (a.options?.roll) await store.putAction({ ...a, name: "Attack", options: { ...a.options, roll: { ...a.options.roll, costs: [{ key: "energy", amount: "30" }, { key: "focus", amount: "0" }] } } }, cs);
-    await addRoll(store, lance, "Fire damage", { via: TECHNIQUE_VIA, count: "2", die: "6", add: "", bonus: "0", costs: [] }, "fa-solid fa-fire", "#c2410c", 2, cs);
-    const veil = await createFrom(store, made.technique, "Cinder Veil", { category: "Defense", range: "Self", duration: "1 minute", description: "Wreathe yourself in embers: attackers within reach take fire damage." }, cs);
+    await addRoll(store, lance, "Fire damage", { via: ASPECT_VIA, count: "2", die: "6", add: "", bonus: "0", costs: [] }, "fa-solid fa-fire", "#c2410c", 2, cs);
+    const veil = await createFrom(store, made.aspect, "Cinder Veil", { category: "Defense", range: "Self", duration: "1 minute", description: "Wreathe yourself in embers: attackers within reach take fire damage." }, cs);
     await setRoll(store, veil, "Roll", { count: "1", die: "4", add: "", costs: [{ key: "energy", amount: "15" }, { key: "focus", amount: "0" }] }, cs);
-    await connect(store, lance, embers, "ability", "techniques", cs);
-    await connect(store, veil, embers, "ability", "techniques", cs);
-    await connect(store, bulwark, oath, "ability", "techniques", cs);
+    await connect(store, lance, embers, "ability", "aspects", cs);
+    await connect(store, veil, embers, "ability", "aspects", cs);
+    await connect(store, bulwark, oath, "ability", "aspects", cs);
+    // What the example character has is theirs (in "Player Owned Copies").
+    await adoptCharacterCopies(store, cs);
     sheets = 16;
     if (store.scope.kind === "campaign" && store.settings) {
       const st = store.settings;
@@ -805,6 +811,33 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     }
   }
   return { templates: Object.keys(made).length, sheets };
+}
+
+/**
+ * What characters already have (items, abilities, traits) becomes their own copies,
+ * kept in "Player Owned Copies". One made for the character (no folder, or the kit's)
+ * simply becomes theirs; an original from one of the GM's folders stays where it is
+ * and the character gets a copy. One on several characters: each gets their own.
+ */
+export async function adoptCharacterCopies(store: ScopeStore, cs: ChangeSet) {
+  const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
+  const kinds: Record<string, string> = { item: "owner", ability: "holder", trait: "holder" };
+  for (const n of Array.from(store.notes.values())) {
+    if (n.isTemplate || n.copyOf || !kinds[n.type]) continue;
+    const held = store.linksOf(n.id).filter((l) => l.fromNoteId === n.id && l.label === kinds[n.type] && isPerson(store.notes.get(l.toNoteId)) && !store.notes.get(l.toNoteId)!.isTemplate);
+    if (!held.length) continue;
+    const original = !!n.folder && n.folder !== CA_KIT_FOLDER && n.folder !== CA_COPIES_FOLDER;
+    const keep = original ? null : held[0];
+    if (keep) { await markAsCopy(store, n.id, cs, CA_COPIES_FOLDER); await syncCopyOwners(store, n.id, cs); }
+    for (const l of held) {
+      if (l === keep) continue;
+      const who = store.notes.get(l.toNoteId)!;
+      const c = await copySheet(store, n.id, cs, { folder: CA_COPIES_FOLDER, ownerIds: who.ownerIds });
+      await store.removeLink(l.id, cs);
+      await store.putLink({ id: randomUUID(), fromNoteId: c.id, toNoteId: who.id, label: l.label, reverseLabel: l.reverseLabel, acl: { ...l.acl }, createdAt: Date.now() }, cs);
+      await syncCopyOwners(store, c.id, cs);
+    }
+  }
 }
 
 /** The tracker and tokens show HP and Energy the C.A. way (campaigns only). */

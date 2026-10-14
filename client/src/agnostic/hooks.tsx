@@ -161,8 +161,8 @@ function followOne(state: ScopeState, noteId: string, l: string): string[] {
 
 /**
  * Notes reached from noteId by a connection label, or a path of them:
- * "ability.holder" = the holder of this sheet's ability; "abilities.techniques"
- * = every technique of every ability this sheet has.
+ * "ability.holder" = the holder of this sheet's ability; "abilities.aspects"
+ * = every aspect of every ability this sheet has.
  */
 export function follow(state: ScopeState, noteId: string, label: string): string[] {
   return Array.from(followWithParents(state, noteId, label).keys());
@@ -181,7 +181,7 @@ export function followWithParents(state: ScopeState, noteId: string, label: stri
   return set;
 }
 
-/** Is this connection label a path through other sheets ("abilities.techniques")? */
+/** Is this connection label a path through other sheets ("abilities.aspects")? */
 export const isLinkPath = (label: string) => label.split(".").filter((x) => x && x !== "self").length > 1;
 
 export function connectionLabels(state: ScopeState, noteId: string): string[] {

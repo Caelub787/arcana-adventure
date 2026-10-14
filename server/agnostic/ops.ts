@@ -17,6 +17,7 @@ import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
 import * as snap from "./snapshot";
 import * as docs from "./docs";
+import { copySheet, markAsCopy, syncCopyOwners, syncCopiesOn } from "./copies";
 import { applyCAKit } from "./kits/ca";
 import { systemOfScope } from "./systemSeed";
 import * as repo from "./repo";
@@ -351,6 +352,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           };
         }
         await store.putNote(note, cs, aclChanged);
+        // Its own copies (items given to it…) are seen by whoever has it.
+        if (p.ownerIds !== undefined) await syncCopiesOn(store, note.id, cs);
         return { ok: true as const };
       });
     }
@@ -358,7 +361,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       requireGM(viewer);
       return store.run(async (cs) => {
         noteOf(store, body.id);
+        const attached = store.linksOf(body.id).filter((l) => l.toNoteId === body.id).map((l) => l.fromNoteId);
         await store.removeNote(body.id, cs);
+        for (const id of attached) await syncCopyOwners(store, id, cs);
         if (store.scope.kind === "campaign") void ctx.host.deleteTokensForNote(store.scope.id, body.id).catch(() => {}); // map tokens follow; nobody waits on it
         return { ok: true as const };
       });
@@ -404,6 +409,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     }
     case "note.createLinked": {
       const host = noteOf(store, body.hostNoteId);
+      const listCfg = (await listsOnSheet(store, host)).find((l) => l.label === labelKey(body.label))?.config;
       const template = body.templateId ? noteOf(store, body.templateId) : null;
       if (template && !template.isTemplate) fail("That isn't a template");
       if (!viewer.isGM) {
@@ -423,6 +429,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           await store.putNote(n, cs);
         }
         await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
+        // A list that gives copies: what's made in it is this sheet's own, kept with the other copies.
+        if (listCfg?.add?.copy) { await markAsCopy(store, n.id, cs, copyFolderOf(listCfg)); await syncCopyOwners(store, n.id, cs); }
         return { noteId: n.id };
       });
     }
@@ -431,18 +439,41 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const n = noteOf(store, body.noteId);
       if (host.id === n.id) fail("A sheet can't go onto itself");
       if (n.isTemplate) fail("Drag a sheet, not a template — make one from it first");
-      // The GM, or a player putting their own sheet onto their own character.
-      if (!viewer.isGM && !(n.ownerIds.includes(viewer.userId) && host.ownerIds.includes(viewer.userId))) fail("Only the GM can do that");
-      // The host's lists say where that kind of sheet goes (its page, and its sections).
-      const names = [noteDocName(host.id, host.docEpoch), ...Array.from(store.regions.values()).filter((r) => r.noteId === host.id).map((r) => regionDocName(r.id, host.docEpoch))];
-      const list = (await docs.linkListsOf(names)).find((l) => !l.label.includes(".") && Array.isArray(l.config?.add?.types) && l.config.add.types.includes(n.type));
+      const fromHost = body.fromNoteId && body.fromNoteId !== host.id ? store.notes.get(body.fromNoteId) : undefined;
+      // The GM, or a player putting their own sheet onto their own character (moving it off one of theirs).
+      if (!viewer.isGM && !(n.ownerIds.includes(viewer.userId) && host.ownerIds.includes(viewer.userId) && (!fromHost || fromHost.ownerIds.includes(viewer.userId)))) fail("Only the GM can do that");
+      // The host's lists say where that kind of sheet goes (its page, and its sections) — the
+      // one named when picked from a list's Add, else the one that takes this kind of sheet.
+      const lists = await listsOnSheet(store, host);
+      const wanted = body.label ? labelKey(body.label) : "";
+      const list = wanted ? lists.find((l) => l.label === wanted) ?? (viewer.isGM && body.reverseLabel ? { label: wanted, config: { add: { reverse: body.reverseLabel } } } : undefined)
+        : lists.find((l) => !l.label.includes(".") && Array.isArray(l.config?.add?.types) && l.config.add.types.includes(n.type));
       if (!list) fail(`${host.name || "That sheet"} has no list for ${n.type} sheets`);
-      const label = labelKey(list!.label), reverse = labelKey(list!.config.add.reverse) || "owner";
+      const label = labelKey(list!.label), reverse = labelKey(list!.config?.add?.reverse) || "owner";
+      const copies = !!list!.config?.add?.copy;
       return store.run(async (cs) => {
         const already = store.linksOf(n.id).some((l) => (l.fromNoteId === n.id && l.toNoteId === host.id && l.label === reverse) || (l.toNoteId === n.id && l.fromNoteId === host.id && l.label === label));
         if (already) return { ok: true as const, label, already: true };
-        await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
-        return { ok: true as const, label };
+        let item = n;
+        let how: "linked" | "copied" | "moved" = "linked";
+        if (fromHost) {
+          // Dragged from one sheet to another: off that one, onto this one (no new copy).
+          const off = store.linksOf(n.id).filter((l) => (l.fromNoteId === n.id && l.toNoteId === fromHost.id) || (l.toNoteId === n.id && l.fromNoteId === fromHost.id));
+          for (const l of off) await store.removeLink(l.id, cs);
+          how = "moved";
+        } else if (n.copyOf) {
+          // Someone's copy: it moves here (off the sheets it was on, in this kind of list).
+          const from = store.linksOf(n.id).filter((l) => l.fromNoteId === n.id && l.label === reverse && l.toNoteId !== host.id);
+          for (const l of from) await store.removeLink(l.id, cs);
+          how = from.length ? "moved" : "linked";
+        } else if (copies) {
+          // An original: this sheet gets its own copy; the original stays as it was.
+          item = await copySheet(store, n.id, cs, { folder: copyFolderOf(list!.config), ownerIds: host.ownerIds });
+          how = "copied";
+        }
+        await store.putLink({ id: randomUUID(), fromNoteId: item.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
+        await syncCopyOwners(store, item.id, cs);
+        return { ok: true as const, label, how, noteId: item.id };
       });
     }
     case "note.removeLinked": {
@@ -460,6 +491,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           if (store.scope.kind === "campaign") void ctx.host.deleteTokensForNote(store.scope.id, n.id).catch(() => {});
         } else {
           for (const l of links) await store.removeLink(l.id, cs);
+          // A copy taken off stays (with its notes) among the copies, for the GM to give again.
+          await syncCopyOwners(store, n.id, cs);
         }
         return { ok: true as const };
       });
@@ -583,6 +616,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         if (dupe) return { linkId: dupe.id };
         const l: AgLink = { id: randomUUID(), fromNoteId: from.id, toNoteId: to.id, label, reverseLabel, acl: normalizeAcl(body.acl), createdAt: Date.now() };
         await store.putLink(l, cs);
+        await syncCopyOwners(store, from.id, cs);
         return { linkId: l.id };
       });
     }
@@ -599,7 +633,12 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     }
     case "link.delete": {
       requireGM(viewer);
-      return store.run(async (cs) => { await store.removeLink(body.id, cs); return { ok: true as const }; });
+      return store.run(async (cs) => {
+        const l = store.links.get(body.id);
+        await store.removeLink(body.id, cs);
+        if (l) await syncCopyOwners(store, l.fromNoteId, cs);
+        return { ok: true as const };
+      });
     }
     case "modifier.upsert": {
       requireGM(viewer);
@@ -859,7 +898,7 @@ async function absorb(store: ScopeStore, f: AgField, delta: number, cs: ChangeSe
 const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
 /** The character a sheet stands for: itself, or the character/NPC it hangs off (a sword's owner). */
 function personOf(store: ScopeStore, note: AgNote): AgNote | undefined {
-  // The nearest character up its connections: a sword's owner, a technique's ability's holder.
+  // The nearest character up its connections: a sword's owner, an aspect's ability's holder.
   let level = [note.id];
   const seen = new Set(level);
   for (let depth = 0; depth < 4 && level.length; depth++) {
@@ -1066,3 +1105,10 @@ async function executeAction(
 }
 
 export { toFieldValue };
+
+/** Every connections list on a sheet (its page and its sections): connection + settings. */
+async function listsOnSheet(store: ScopeStore, host: AgNote): Promise<Array<{ label: string; config: any }>> {
+  const names = [noteDocName(host.id, host.docEpoch), ...Array.from(store.regions.values()).filter((r) => r.noteId === host.id).map((r) => regionDocName(r.id, host.docEpoch))];
+  return (await docs.linkListsOf(names)).map((l) => ({ ...l, label: l.label.split(".").map(labelKey).filter(Boolean).join(".") }));
+}
+const copyFolderOf = (config: any): string => (typeof config?.add?.copyFolder === "string" && config.add.copyFolder.trim() ? config.add.copyFolder.trim().slice(0, 80) : "Copies");

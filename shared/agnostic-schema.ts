@@ -23,6 +23,8 @@ export const agnosticNotes = pgTable("agnostic_notes", {
   folder: text("folder"),
   sortOrder: integer("sort_order").notNull().default(0),
   docEpoch: integer("doc_epoch").notNull().default(0),
+  /** Set on a sheet's own copy of another (an item given to a character): what it was copied from. */
+  copyOf: varchar("copy_of"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({ scopeIdx: index("agnostic_notes_scope_idx").on(t.scope, t.scopeId) }));
@@ -142,6 +144,7 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
     folder text,
     sort_order integer NOT NULL DEFAULT 0,
     doc_epoch integer NOT NULL DEFAULT 0,
+    copy_of varchar,
     created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now()
   )`,
@@ -241,6 +244,8 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   // Battlemap: a token can stand for any Agnostic note (portrait + live bars).
   `ALTER TABLE IF EXISTS tokens ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,
   `ALTER TABLE IF EXISTS agnostic_actions ADD COLUMN IF NOT EXISTS options jsonb`,
+  // A sheet's own copy of another (an item given to a character).
+  `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS copy_of varchar`,
   // Agnostic sheets in the campaign's initiative order (they aren't rows in characters).
   `ALTER TABLE IF EXISTS initiative_entries ALTER COLUMN character_id DROP NOT NULL`,
   `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,

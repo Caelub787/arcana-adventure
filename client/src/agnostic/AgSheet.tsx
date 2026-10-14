@@ -37,7 +37,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
   const { request } = useAg();
   const { toast } = useToast();
   // Sheets dragged from the sidebar onto this one go into its list for them (an item
-  // into the inventory, an ability into the abilities, a technique into an ability).
+  // into the inventory, an ability into the abilities, an aspect into an ability).
   const [dropping, setDropping] = useState(false);
   const isSheetDrag = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("application/character-id");
   const onDragOver = (e: React.DragEvent) => { if (!isSheetDrag(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; if (!dropping) setDropping(true); };
@@ -48,9 +48,18 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
     if (!raw.startsWith("ag:")) return;
     const id = raw.slice(3);
     const dropped = state.notes.get(id);
-    if (!dropped || id === noteId) return;
-    request<{ label?: string; already?: boolean }>({ op: "note.attach", hostNoteId: noteId, noteId: id })
-      .then((r) => toast({ title: r?.already ? `${dropped.name} is already there` : `Added ${dropped.name}`, description: r?.label ? `To ${state.notes.get(noteId)?.name ?? "this sheet"}'s ${r.label.replace(/_/g, " ")}.` : undefined }))
+    // Dragged off another sheet (its inventory card…): it moves from there to here.
+    const from = e.dataTransfer.getData("application/ag-from") || undefined;
+    if (!dropped || id === noteId || from === noteId) return;
+    request<{ label?: string; already?: boolean; how?: "linked" | "copied" | "moved" }>({ op: "note.attach", hostNoteId: noteId, noteId: id, fromNoteId: from })
+      .then((r) => {
+        const host = state.notes.get(noteId)?.name ?? "this sheet";
+        const where = r?.label ? `${host}'s ${r.label.replace(/_/g, " ")}` : host;
+        toast({
+          title: r?.already ? `${dropped.name} is already there` : r?.how === "copied" ? `Gave ${host} a copy of ${dropped.name}` : r?.how === "moved" ? `Moved ${dropped.name} to ${host}` : `Added ${dropped.name}`,
+          description: r?.already ? undefined : r?.how === "copied" ? `In ${where}. It's their own (notes and all); the original stays as it is.` : `In ${where}.`,
+        });
+      })
       .catch((err: any) => toast({ title: "Couldn't add it", description: err.message, variant: "destructive" }));
   };
   useEffect(() => agClient.onConnection(() => setConnected(agClient.connected)), []);

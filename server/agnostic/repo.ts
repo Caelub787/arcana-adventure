@@ -25,6 +25,7 @@ export function rowToNote(r: typeof agnosticNotes.$inferSelect): AgNote {
     acl: normalizeAcl(r.acl, true, { view: "everyone", edit: "gm" }),
     bodyAcl: normalizeAcl(r.bodyAcl, true),
     tokenBars: r.tokenBars ?? null, folder: r.folder, sortOrder: r.sortOrder, docEpoch: r.docEpoch,
+    copyOf: r.copyOf ?? null,
     createdAt: ms(r.createdAt), updatedAt: ms(r.updatedAt),
   };
 }
@@ -97,6 +98,7 @@ const noteRow = (n: AgNote) => ({
   id: n.id, scope: n.scope, scopeId: n.scopeId, type: n.type, isTemplate: n.isTemplate, templateMeta: n.templateMeta,
   templateId: n.templateId, templateVersion: n.templateVersion, name: n.name, portrait: n.portrait, ownerIds: n.ownerIds,
   acl: n.acl, bodyAcl: n.bodyAcl, tokenBars: n.tokenBars, folder: n.folder, sortOrder: n.sortOrder, docEpoch: n.docEpoch,
+  copyOf: n.copyOf ?? null,
   createdAt: new Date(n.createdAt), updatedAt: new Date(n.updatedAt),
 });
 export async function upsertNote(n: AgNote) {
@@ -147,7 +149,7 @@ export async function deleteComponent(id: string) { await db.delete(agnosticComp
 // --- write-behind (store.ts) -----------------------------------------------------
 // Same rows as the functions above, queued: the change is already live in
 // memory and on every screen; the database follows in order, in batches.
-const NOTE_UPDATE = ["scope", "scopeId", "type", "isTemplate", "templateMeta", "templateId", "templateVersion", "name", "portrait", "ownerIds", "acl", "bodyAcl", "tokenBars", "folder", "sortOrder", "docEpoch", "updatedAt"];
+const NOTE_UPDATE = ["scope", "scopeId", "type", "isTemplate", "templateMeta", "templateId", "templateVersion", "name", "portrait", "ownerIds", "acl", "bodyAcl", "tokenBars", "folder", "sortOrder", "docEpoch", "copyOf", "updatedAt"];
 const FIELD_UPDATE = ["noteId", "key", "label", "type", "value", "formula", "options", "acl", "sortOrder", "templateFieldId"];
 const REGION_UPDATE = ["acl", "inline", "label", "templateRegionId"];
 const LINK_UPDATE = ["label", "reverseLabel", "acl"];
