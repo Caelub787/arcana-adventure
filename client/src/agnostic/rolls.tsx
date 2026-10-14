@@ -69,18 +69,24 @@ export function rollSummary(state: State, action: Pick<AgAction, "noteId" | "opt
   return { roll, cost: cost || null };
 }
 
-/** A roll's button with what it rolls and costs beside it. */
+/**
+ * A roll as one chip: its button, and what it rolls and costs beside it (dice
+ * over cost), framed in the button's colour — so a row of them packs tightly
+ * whatever the button looks like (icon only, or named).
+ */
 export function RollButton({ action, compact }: { action: AgActionView; compact?: boolean }) {
   const { state } = useAg();
   const sum = rollSummary(state, action);
+  const color = action.color && /^#|^rgb/.test(action.color) ? action.color : "#78716c";
+  const info = !!(sum.roll || sum.cost);
   return (
-    <span className="inline-flex flex-col items-start gap-0.5" data-no-open>
+    <span className="inline-flex items-center gap-1.5 rounded-lg border p-0.5 max-w-full" data-no-open data-testid={`ag-roll-chip-${action.name}`}
+      style={info ? { borderColor: `color-mix(in srgb, ${color} 45%, transparent)`, background: `color-mix(in srgb, ${color} 9%, transparent)`, paddingRight: 8 } : { borderColor: "transparent", padding: 0 }}>
       <ActionButton actionId={action.id} compact={compact} look={{ height: compact ? 28 : 30, fontSize: 12 }} />
-      {(sum.roll || sum.cost) && (
-        <span className="text-[10px] leading-tight text-stone-400 pl-0.5" data-testid={`ag-roll-caption-${action.name}`}>
-          {sum.roll && <span className="text-amber-200/90 font-mono">{sum.roll}</span>}
-          {sum.roll && sum.cost && <span className="text-stone-600"> · </span>}
-          {sum.cost && <span className="text-cyan-300/90">{sum.cost}</span>}
+      {info && (
+        <span className="flex flex-col justify-center text-[10.5px] leading-[1.15] min-w-0" data-testid={`ag-roll-caption-${action.name}`}>
+          {sum.roll && <span className="text-amber-200/90 font-mono whitespace-nowrap">{sum.roll}</span>}
+          {sum.cost && <span className="text-cyan-300/90 whitespace-nowrap">{sum.cost}</span>}
         </span>
       )}
     </span>
@@ -92,7 +98,7 @@ export function RollsList({ noteId, compact }: { noteId: string; compact?: boole
   const { state } = useAg();
   const list = actionsOfNote(state.actions, noteId).filter((a) => a.options?.listed !== false);
   if (!list.length) return null;
-  return <span className="flex flex-wrap items-start gap-1.5" data-no-open data-testid="ag-rolls-list">{list.map((a) => <RollButton key={a.id} action={a} compact={compact} />)}</span>;
+  return <span className="flex flex-wrap items-center gap-1.5" data-no-open data-testid="ag-rolls-list">{list.map((a) => <RollButton key={a.id} action={a} compact={compact} />)}</span>;
 }
 
 // --------------------------------------------------------------------------- the Rolls block
