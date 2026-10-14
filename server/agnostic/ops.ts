@@ -1000,7 +1000,9 @@ async function executeAction(
       }
     } else if (step.type === "modify") {
       try {
-        const ref = parseFormula(step.target);
+        // The target can be worked out from the sheet: "@owner.{raise_key}" changes whichever value raise_key names.
+        const target = step.target.includes("{") ? interpolate(step.target, (e) => store.computer().evalIn(action.noteId, e, { locals, roots }).value) : step.target;
+        const ref = parseFormula(target);
         if (ref.t !== "ref") fail("Change target must be a field");
         const { noteIds, key } = comp.targetsOf(action.noteId, (ref as any).path, (ref as any).abs, roots);
         const amount = asNumber(comp.evalIn(action.noteId, step.value, { locals, roots }).value as any);

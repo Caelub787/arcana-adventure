@@ -90,10 +90,12 @@ const focusAt = (idx: number) => 6 + idx;
 /** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
 export const USABLE_LADDER = LADDER.usable;
 /** Point budgets: every star (rank_index step) adds one attribute point and one skill (modifier) point. */
-export const ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + rank_index";
-export const SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index";
-export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per 3 levels + one per star.";
-export const SKILL_BUDGET_NOTE = "8 + one per level + one per star; up to 6 back from skills below 0.";
+// Attribute points: +1 per main rank (Silver, Gold…). Skill points: +1 per star — a rank up is one step, so one point.
+// Training items add bonus points (and pay for the values they raise directly).
+export const ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + floor(rank_index / 5) + bonus_attr_points";
+export const SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index + bonus_skill_points";
+export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per 3 levels + one per rank (Silver, Gold…) + bonus points from training items.";
+export const SKILL_BUDGET_NOTE = "8 + one per level + one per star (a rank up counts once) + bonus points from training items; up to 6 back from skills below 0.";
 export const TEMP_HP_COLOR = "#22c55e";
 export const TEMP_ENERGY_COLOR = "#ec4899";
 export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
@@ -233,6 +235,8 @@ function characterTemplate(): AgSnapshot {
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
   const negatives = SKILLS.map((k) => `min(base(${k.key}), 0)`).join(" + ");
   const positives = SKILLS.map((k) => `max(base(${k.key}), 0)`).join(" + ");
+  s.num("bonus_attr_points", "Bonus attribute points", 0, { min: 0, tooltip: "Extra attribute points from training items (manuals, pills, elixirs…). They add to the budget." })
+    .num("bonus_skill_points", "Bonus skill points", 0, { min: 0, tooltip: "Extra skill points from training items. They add to the budget." });
   s.calc("attr_budget", "Attribute budget", ATTR_BUDGET_FORMULA).calc("attr_used", "Attribute points used", attrSum)
     .calc("attr_points", "Attribute Points", `concat(attr_used, " / ", attr_budget, if(attr_used > attr_budget, " (too many)", ""))`, "text");
   for (const k of SKILLS) s.num(k.key, `${k.name} (${ABBR[k.parent]})`, 0, { min: -2, max: 10 });
@@ -418,7 +422,8 @@ export function effectsNodes(via: string, condition: string, help: string): DocN
 export function itemRollsNodes(): DocNode[] {
   return [h(3, icon("Dices", GILT, 16), " Rolls"), rolls("owner", [], "#b45309", SECTION_LOOK)];
 }
-export const CA_ITEM_TEMPLATE_NAMES = ["CA Weapon", "CA Armor", "CA Consumable", "CA Rune", "CA Container", "CA Currency", "CA Ammunition", "CA Item"];
+export const CA_ITEM_TEMPLATE_NAMES = ["CA Weapon", "CA Armor", "CA Consumable", "CA Rune", "CA Container", "CA Currency", "CA Ammunition", "CA Item", "CA Training Item"];
+export function trainingTemplateSnapshot(): AgSnapshot { return itemTemplate("Training"); }
 
 function abilityTemplate(): AgSnapshot {
   const s = new Sheet();
@@ -431,11 +436,14 @@ function abilityTemplate(): AgSnapshot {
 }
 
 // --------------------------------------------------------------------------- items
-type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous";
+type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training";
+
+/** What a training item can raise: every attribute and skill, by name → value key. */
+const RAISABLE = [...ATTRS.map((a) => ({ name: a.name, key: a.key, kind: "attribute" })), ...SKILLS.map((k) => ({ name: k.name, key: k.key, kind: "skill" }))];
 
 function itemTemplate(kind: ItemKind): AgSnapshot {
   const s = new Sheet();
-  s.choice("item_type", "Type", ITEM_TYPES, kind, ITEM_TYPE_COLORS)
+  s.choice("item_type", "Type", ITEM_TYPES, kind === "Training" ? "Consumable" : kind, ITEM_TYPE_COLORS)
     .choice("rarity", "Rarity", RARITIES, "Common", RARITY_COLORS)
     .choice("rank_tag", "Rank", ["Unranked", ...LADDER_LABELS], "Unranked")
     .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" ? 0 : 1, { min: 0, step: 0.1 })
@@ -456,6 +464,35 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
     s.roll("a_strike", "Strike", { via: "owner", die: "20" }, "die:d20", "#b45309", 1);
     s.roll("a_damage", "Damage", { via: "owner", die: "8" }, "die:d8", "#b91c1c", 2);
     body.push(p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } })));
+  }
+  if (kind === "Training") {
+    // Manuals, pills, elixirs: using one raises a value for good, or grants points to spend.
+    // A value it raises comes with a matching bonus point, so it never eats the points already earned.
+    s.choice("raises", "Raises", ["Nothing", ...RAISABLE.map((r) => r.name)], "Nothing")
+      .num("raise_by", "Raises by", 1, { min: 1, max: 10 })
+      .calc("raise_key", "Value it raises", RAISABLE.reduceRight((acc, r) => `if(raises == "${r.name}", "${r.key}", ${acc})`, `""`), "text")
+      .calc("raise_kind", "Kind it raises", RAISABLE.reduceRight((acc, r) => `if(raises == "${r.name}", "${r.kind}", ${acc})`, `""`), "text")
+      .num("grants_attr_points", "Grants attribute points", 0, { min: 0 })
+      .num("grants_skill_points", "Grants skill points", 0, { min: 0 });
+    const use = s.action("a_train", "Use", [
+      { type: "message", text: "{name} has to be in someone's inventory to be used.", when: "count(@owner.name) == 0" },
+      { type: "stop", when: "count(@owner.name) == 0" },
+      { type: "modify", target: "@owner.{raise_key}", op: "add", value: "raise_by", when: 'raise_key != ""' },
+      { type: "modify", target: "@owner.bonus_attr_points", op: "add", value: "raise_by", when: 'raise_kind == "attribute"' },
+      { type: "modify", target: "@owner.bonus_skill_points", op: "add", value: "raise_by", when: 'raise_kind == "skill"' },
+      { type: "modify", target: "@owner.bonus_attr_points", op: "add", value: "grants_attr_points", when: "grants_attr_points > 0" },
+      { type: "modify", target: "@owner.bonus_skill_points", op: "add", value: "grants_skill_points", when: "grants_skill_points > 0" },
+      { type: "message", text: "{@owner.name} used {name}." },
+      { type: "modify", target: "qty", op: "subtract", value: "1" },
+      { type: "remove", target: "self", when: "qty <= 0" },
+    ], "#7c3aed", "owners", { icon: "fa-solid fa-scroll", showName: true, showIcon: true, listed: true, sortOrder: 0 });
+    body.push(
+      h(3, icon("BookOpen", "#c084fc", 16), " Training"),
+      p(muted("RAISES "), val("raises", { display: "input" }), muted("  BY "), val("raise_by", { display: "input" })),
+      p(muted("GRANTS "), val("grants_attr_points", { display: "input" }), muted(" attribute points  "), val("grants_skill_points", { display: "input" }), muted(" skill points")),
+      p(button(use, "Use")),
+      p(muted("Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.")),
+    );
   }
   if (kind === "Armor") {
     s.num("armor_dc", "DC bonus", 1);
@@ -523,8 +560,8 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
     ...(body.length ? [hr(), ...body] : []),
   ];
   return s.snapshot({
-    type: "item", name: kind === "Miscellaneous" ? "CA Item" : `CA ${kind}`, playersCanCreate: true,
-    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets." }[kind],
+    type: "item", name: kind === "Miscellaneous" ? "CA Item" : kind === "Training" ? "CA Training Item" : `CA ${kind}`, playersCanCreate: true,
+    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend." }[kind],
   }, page);
 }
 
@@ -603,7 +640,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   const made: Record<string, AgNote> = {};
   const add = async (key: string, s: AgSnapshot) => { made[key] = await snap.createFromSnapshot(store, s, {}, cs); };
   await add("character", characterTemplate());
-  for (const k of ["Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous"] as ItemKind[]) await add(k, itemTemplate(k));
+  for (const k of ["Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
@@ -635,6 +672,8 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     await connect(store, cut, hero, "bearer", "wounds", cs);
     await store.putModifier({ id: randomUUID(), noteId: arrow.id, via: "bearer", targetKey: "athletics", op: "add", amount: "-2", condition: null, label: "Goblin arrow" }, cs);
     await store.putModifier({ id: randomUUID(), noteId: cut.id, via: "bearer", targetKey: "speed", op: "add", amount: "-5", condition: null, label: "Shallow cut" }, cs);
+    const pill = await createFrom(store, made.Training, "Bloodmarrow Pill", { rarity: "Rare", qty: 1, weight: 0.1, value: 300, raises: "Might", raise_by: 1 }, cs);
+    await connect(store, pill, hero, "owner", "items", cs);
     const trait = await createFrom(store, made.trait, "Iron Will", { summary: "Never breaks under fear — the GM may grant advantage on Focus rolls against it." }, cs);
     await connect(store, trait, hero, "holder", "traits", cs);
     const bulwark = await createFrom(store, made.ability, "Oathbound Bulwark", { category: "Defense", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
@@ -644,7 +683,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     for (const a of store.actionsOf(lance.id)) if (a.options?.roll) await store.putAction({ ...a, name: "Attack", options: { ...a.options, roll: { ...a.options.roll, costs: [{ key: "energy", amount: "30" }, { key: "focus", amount: "0" }] } } }, cs);
     await addRoll(store, lance, "Fire damage", { via: "holder", count: "2", die: "6", add: "", bonus: "0", costs: [] }, "fa-solid fa-fire", "#c2410c", 2, cs);
     for (const a of [bulwark, lance]) await connect(store, a, hero, "holder", "abilities", cs);
-    sheets = 12;
+    sheets = 13;
     if (store.scope.kind === "campaign" && store.settings) {
       const st = store.settings;
       if (!st.tracker.pinned.includes(hero.id)) await store.putSettings({ ...st, tracker: { ...st.tracker, pinned: [...st.tracker.pinned, hero.id] } }, cs);

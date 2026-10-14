@@ -17,12 +17,12 @@ import {
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
-  RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder,
+  RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 6;
+export const CA_KIT_LEVEL = 7;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -41,6 +41,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 4) await upgrade4(store, characterTemplates);
   if (level < 5) await upgrade5(store, characterTemplates);
   if (level < 6) await upgrade6(store, characterTemplates);
+  if (level < 7) await upgrade7(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -537,4 +538,43 @@ async function upgrade6(store: ScopeStore, characterTemplates: AgNote[]) {
       if (f && f.type === "select" && (f.options.choices ?? []).join("|") === oldTags) await store.putField({ ...f, options: { ...f.options, choices: ["Unranked", ...LADDER_LABELS] } }, cs);
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 7
+// Attribute points: one per main rank (not per star); skill points stay one per
+// star. Training items (manuals, pills…) raise values for good or grant points,
+// through bonus point values on the character.
+async function upgrade7(store: ScopeStore, characterTemplates: AgNote[]) {
+  const flat = (x: string | null | undefined) => (x ?? "").replace(/\s+/g, "");
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const oldAttr = ["4+floor(level/3)", "4+floor(level/3)+rank_index"];
+  const oldSkill = ["8+(level-1)+skill_reclaimed", "8+(level-1)+skill_reclaimed+rank_index"];
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      const fields = store.fieldsByNote.get(n.id);
+      const level = fields?.get("level");
+      for (const [key, label] of [["bonus_attr_points", "Bonus attribute points"], ["bonus_skill_points", "Bonus skill points"]] as const) {
+        if (fields?.get(key)) continue;
+        await store.putField({ id: randomUUID(), noteId: n.id, key, label, type: "number", value: 0, formula: null, options: { min: 0, tooltip: `Extra ${key === "bonus_attr_points" ? "attribute" : "skill"} points from training items (manuals, pills, elixirs…). They add to the budget.` }, acl: { view: "inherit", edit: "inherit" }, sortOrder: level?.sortOrder ?? 0, templateFieldId: null }, cs);
+      }
+      const a = store.fieldsByNote.get(n.id)?.get("attr_budget");
+      if (a && oldAttr.includes(flat(a.formula))) await store.putField({ ...a, formula: ATTR_BUDGET_FORMULA }, cs);
+      const k = store.fieldsByNote.get(n.id)?.get("skill_budget");
+      if (k && oldSkill.includes(flat(k.formula))) await store.putField({ ...k, formula: SKILL_BUDGET_FORMULA }, cs);
+    }
+    if (!Array.from(store.notes.values()).some((x) => x.isTemplate && x.name === "CA Training Item")) {
+      await snap.createFromSnapshot(store, trainingTemplateSnapshot(), {}, cs);
+    }
+  });
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).startsWith("Attributes can't go below 0.") && textOf(e) !== ATTR_BUDGET_NOTE)) {
+        const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(ATTR_BUDGET_NOTE))]);
+      }
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).startsWith("8 + one per level") && textOf(e) !== SKILL_BUDGET_NOTE)) {
+        const parent = para.parent as Y.XmlElement | Y.XmlFragment; const i = parent.toArray().indexOf(para); parent.delete(i, 1); insertNodes(parent, i, [p(muted(SKILL_BUDGET_NOTE))]);
+      }
+    });
+  }
 }
