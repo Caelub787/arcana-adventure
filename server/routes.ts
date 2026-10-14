@@ -31,6 +31,7 @@ import { getStore as getAgnosticStore } from "./agnostic/store";
 import { canViewNote as canViewAgNote, canSeeAction as canSeeAgAction } from "@shared/agnostic/acl";
 import multer from "multer";
 import sharp from "sharp";
+import { registerAgImageRoutes, saveAgImageDataUrl } from "./agnostic/images";
 import fs from "fs";
 import path from "path";
 
@@ -500,11 +501,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const t of removed) broadcastToCampaign(campaignId, { type: "token_deleted", tokenId: t.id });
     },
     // A whole image from the image library (or pasted) becomes a saved file.
-    saveImage: async (dataUrl) => {
-      const m = /^data:image\/[a-z0-9.+-]+;base64,(.+)$/i.exec(dataUrl);
-      if (!m) throw new Error("Not an image");
-      return processAndSaveImage(Buffer.from(m[1], "base64"), "agnostic");
-    },
+    // Kept in the database: the server's disk doesn't survive a redeploy.
+    saveImage: (dataUrl) => saveAgImageDataUrl(dataUrl),
     // An Agnostic sheet's "join initiative" step: one row per sheet, re-rolling replaces it.
     joinInitiative: async (campaignId, sheet, value) => {
       const existing = await db.select({ id: initiativeEntries.id }).from(initiativeEntries)
@@ -18022,6 +18020,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // List images in a Google Drive folder
+  // Agnostic sheets' pictures (kept in the database).
+  registerAgImageRoutes(app, requireAuth);
+
   app.get("/api/drive/images", requireAuth, async (req, res) => {
     try {
       const folderId = req.query.folderId as string | undefined;

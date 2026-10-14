@@ -119,8 +119,10 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const openAdd = async (hostId = noteId) => {
     try {
       const types = config.add?.types?.length ? config.add.types : undefined;
-      const { templates } = await request<{ templates: Array<{ id: string; name: string; type: string; portrait: string | null; description: string | null }> }>({ op: "note.creatableTemplates", types });
-      const items: SelItem[] = templates.map((t) => ({ id: `t:${t.id}`, name: t.name, image: t.portrait, group: "New", sub: t.description || `New ${agTypeLabel(t.type)}`, badge: agTypeLabel(t.type), icon: <Package className="h-4 w-4" /> }));
+      // Lists that only take existing sheets (a character's items: the originals live in the sidebar).
+      const makeNew = config.add?.createNew !== false;
+      const { templates } = makeNew ? await request<{ templates: Array<{ id: string; name: string; type: string; portrait: string | null; description: string | null }> }>({ op: "note.creatableTemplates", types }) : { templates: [] };
+      const items: SelItem[] = (templates ?? []).map((t) => ({ id: `t:${t.id}`, name: t.name, image: t.portrait, group: "New", sub: t.description || `New ${agTypeLabel(t.type)}`, badge: agTypeLabel(t.type), icon: <Package className="h-4 w-4" /> }));
       if (viewer.isGM && config.add?.existing !== false) {
         for (const n of Array.from(state.notes.values())) {
           if (n.isTemplate || n.id === hostId || n.id === noteId || ids.includes(n.id) || (types && !types.includes(n.type))) continue;
@@ -133,7 +135,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
             badge: agTypeLabel(n.type),
           });
         }
-        if (types) for (const t of types) items.push({ id: `b:${t}`, name: `Blank ${agTypeLabel(t)}`, group: "New", sub: "An empty sheet to fill in", icon: <Plus className="h-4 w-4" /> });
+        if (types && makeNew) for (const t of types) items.push({ id: `b:${t}`, name: `Blank ${agTypeLabel(t)}`, group: "New", sub: "An empty sheet to fill in", icon: <Plus className="h-4 w-4" /> });
       }
       setAdding(items);
     } catch (e: any) { toast({ title: "Couldn't load", description: e.message, variant: "destructive" }); }
@@ -448,6 +450,9 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
             const on = (cfg.add?.types ?? []).includes(t);
             return <button key={t} type="button" onClick={() => setCfg({ add: { ...cfg.add!, types: on ? cfg.add!.types!.filter((x) => x !== t) : [...(cfg.add!.types ?? []), t] } })} className={`h-7 px-2 rounded-full border text-[11px] ${on ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-400"}`}>{agTypeLabel(t)}</button>;
           }))}
+          {row("New sheets", <label className="text-xs inline-flex items-center gap-1" title="Off: Add only offers sheets that already exist (from the sidebar); nothing new is made in this list.">
+            <input type="checkbox" className="accent-amber-500" checked={cfg.add.createNew !== false} onChange={(e) => setCfg({ add: { ...cfg.add!, createNew: e.target.checked ? undefined : false } })} data-testid="ag-links-create-new" /> Add can make new ones from templates
+          </label>)}
           {row("Copies", <>
             <label className="text-xs inline-flex items-center gap-1" title="Picked or dragged here, an original gives this sheet its own copy (its own notes); someone's copy moves here instead.">
               <input type="checkbox" className="accent-amber-500" checked={!!cfg.add.copy} onChange={(e) => setCfg({ add: { ...cfg.add!, copy: e.target.checked || undefined, copyFolder: e.target.checked ? (cfg.add!.copyFolder || "Copies") : undefined } })} data-testid="ag-links-copy" /> Give this sheet its own copy

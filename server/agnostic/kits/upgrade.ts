@@ -29,7 +29,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 10;
+export const CA_KIT_LEVEL = 11;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -52,6 +52,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 8) await upgrade8(store, characterTemplates);
   if (level < 9) await upgrade9(store, characterTemplates);
   if (level < 10) await upgrade10(store, characterTemplates);
+  if (level < 11) await upgrade11(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -839,4 +840,25 @@ async function upgrade10(store: ScopeStore, characterTemplates: AgNote[]) {
       replacePara(frag, "Every aspect from this character's abilities", [p(muted(ASPECT_HELP))]);
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 11
+// A character's items, traits and abilities (and an ability's abilities within)
+// are only added — from the sidebar, as the character's own copy — never made
+// new right there (a sheet made inside a character had no original to copy).
+async function upgrade11(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const abilities = Array.from(store.notes.values()).filter((n) => n.type === "ability" && store.fieldsByNote.get(n.id)?.get("tag_color"));
+  const addOnly = (labels: string[]) => (_doc: Y.Doc, frag: Y.XmlFragment) => {
+    for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && labels.includes(String(e.getAttribute("label"))))) {
+      const cfg = (el.getAttribute("config") ?? {}) as any;
+      if (cfg.add && cfg.add.createNew !== false) el.setAttribute("config", { ...cfg, add: { ...cfg.add, createNew: false } } as any);
+    }
+  };
+  for (const n of characters) {
+    await editPage(n, addOnly(["items", "traits", "abilities"]));
+    for (const r of Array.from(store.regions.values()).filter((x) => x.noteId === n.id)) await editRegion(n, r.id, (frag) => addOnly(["items", "traits", "abilities"])(null as any, frag));
+  }
+  for (const n of abilities) await editPage(n, addOnly(["abilities"]));
 }

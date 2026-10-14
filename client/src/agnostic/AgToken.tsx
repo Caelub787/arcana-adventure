@@ -3,6 +3,7 @@
 // allowed) to change it, and the sheet, tracker and every client update.
 import React from "react";
 import type { AgTokenBar } from "@shared/agnostic/types";
+import { Portrait } from "./widgets";
 import { canViewNote } from "@shared/agnostic/acl";
 import { useAgMaybe, resolveRef } from "./hooks";
 import { ResourceBar } from "./widgets";
@@ -18,7 +19,8 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
   const barH = Math.max(5, Math.min(10, tokenSize / 8));
   return (
     <>
-      {note.portrait && <img src={note.portrait} alt="" className="absolute inset-0 w-full h-full object-cover rounded-xl pointer-events-none" draggable={false} />}
+      {/* The kind's icon until the picture loads (and if it can't). */}
+      <Portrait note={note} size="100%" radius={12} className="absolute inset-0 pointer-events-none !border-0 !bg-stone-800/90" />
       {(showName || resolved.length > 0) && (
         <div className="absolute z-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-px" style={{ bottom: 2, width: tokenSize * 0.92 }}
           onPointerDown={(e) => { if ((e.target as HTMLElement).closest("[data-ag-token-bar]")) e.stopPropagation(); }}

@@ -2,12 +2,12 @@
 // the scope store and writes back through ops — the same HP shows (and
 // changes) identically on a sheet, the player tracker and a battlemap token.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Minus, Plus, Dices, Image as ImageIcon, Loader2, User as UserIcon, Skull as SkullIcon, Package as PackageIcon, Sparkles as SparklesIcon, Swords as SwordsIcon, Star as StarIcon, HeartPulse as HeartPulseIcon, MapPin as MapPinIcon, Dna as DnaIcon, StickyNote as StickyNoteIcon } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
 import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience, AgRollMods } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
-import { useAg, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
+import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, AgSelector, PickField } from "./float";
@@ -418,8 +418,16 @@ function ImageFieldInput({ field, className }: { field: AgField; className?: str
 
 export async function uploadImage(file: File): Promise<string> {
   const dataUrl = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file); });
-  const { url } = await api.uploadBase64Image(dataUrl);
-  return url;
+  return storeAgImage(dataUrl);
+}
+
+/** Keep a picture (a data: URL) for sheets — in the database, so it's there for everyone, for good. */
+export async function storeAgImage(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith("data:")) return dataUrl;
+  const res = await fetch("/api/agnostic/image", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl }) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.url) throw new Error(body.error || "Couldn't save that picture");
+  return body.url as string;
 }
 
 /** One field shown the way the GM picked. */
@@ -699,12 +707,60 @@ export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll:
 }
 
 // --- notes ------------------------------------------------------------------------------------
+/** The icon a kind of sheet shows until (or instead of) its picture. */
+const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  character: UserIcon, npc: SkullIcon, item: PackageIcon, ability: SparklesIcon, aspect: SwordsIcon, trait: StarIcon,
+  wound: HeartPulseIcon, location: MapPinIcon, species: DnaIcon, note: StickyNoteIcon,
+};
+/** A stored picture's small version (lists, cards, tokens), when it has one. */
+export const thumbOf = (src: string, px: number) => (src.startsWith("/api/ag-image/") && px <= 128 ? `${src}?thumb=1` : src);
+
+/**
+ * A sheet's picture. Its kind's icon shows at once and stays until the picture
+ * has loaded (or if it can't), so lists never wait on images or show broken ones.
+ */
 export function Portrait({ note, size = 48, radius = 8, className = "" }: { note: AgNote | undefined; size?: number | string; radius?: number; className?: string }) {
   const style: React.CSSProperties = { width: size, height: size, borderRadius: radius };
-  if (!note?.portrait) {
-    return <div className={`bg-stone-800 border border-stone-700 grid place-items-center text-stone-500 font-semibold ${className}`} style={style}>{(note?.name ?? "?").slice(0, 1).toUpperCase()}</div>;
-  }
-  return <img src={note.portrait} alt={note.name} className={`object-cover ${className}`} style={style} draggable={false} />;
+  const src = note?.portrait ?? null;
+  const ag = useAgMaybe();
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+  useEffect(() => setState("loading"), [src]);
+  const px = typeof size === "number" ? size : 999;
+  const Icon = TYPE_ICONS[note?.type ?? ""] ?? null;
+  const placeholder = Icon
+    ? <Icon className="text-stone-500" style={{ width: "55%", height: "55%" }} />
+    : <span className="text-stone-500 font-semibold">{(note?.name ?? "?").slice(0, 1).toUpperCase()}</span>;
+  return (
+    <div className={`relative overflow-hidden bg-stone-800 border border-stone-700 grid place-items-center shrink-0 ${className}`} style={style} data-portrait-state={src ? state : "none"}>
+      {(!src || state !== "ok") && placeholder}
+      {src && state !== "error" && (
+        <img src={thumbOf(src, px * 2 > 128 ? 999 : px)} alt="" loading="lazy" decoding="async" draggable={false}
+          className="absolute inset-0 w-full h-full object-cover transition-opacity duration-200" style={{ opacity: state === "ok" ? 1 : 0 }}
+          onLoad={(e) => { setState("ok"); if (note && ag?.realViewer.isGM) void healPortrait(note, e.currentTarget, ag.request); }} onError={() => setState("error")} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pictures saved before they were kept in the database were files on the server,
+ * lost at the next redeploy — but the GM's browser often still has them. When it
+ * shows one, it's put back (into the database) and the sheet points at it, so
+ * everyone sees it again. Once per picture.
+ */
+const healed = new Set<string>();
+async function healPortrait(note: AgNote, img: HTMLImageElement, request: (op: any) => Promise<any>) {
+  const src = note.portrait ?? "";
+  if (!src.startsWith("/uploads/") || healed.has(src) || !img.naturalWidth) return;
+  healed.add(src);
+  try {
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    canvas.width = Math.round(img.naturalWidth * scale); canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const url = await storeAgImage(canvas.toDataURL("image/webp", 0.9));
+    await request({ op: "note.update", id: note.id, patch: { portrait: url } });
+  } catch { /* leave it; it'll try again next time the page loads */ }
 }
 
 export function NoteChip({ noteId }: { noteId: string }) {

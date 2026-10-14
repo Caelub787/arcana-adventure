@@ -497,7 +497,7 @@ export interface AgLinksConfig {
    * sheet's own copy, kept in `copyFolder`; the original stays as it was. A copy added
    * somewhere else moves there.
    */
-  add?: { types?: string[]; reverse?: string; existing?: boolean; copy?: boolean; copyFolder?: string } | null;
+  add?: { types?: string[]; reverse?: string; existing?: boolean; copy?: boolean; copyFolder?: string; /** false: only existing sheets can be added (nothing new is made here). */ createNew?: boolean } | null;
   remove?: "none" | "disconnect" | "delete";
   emptyText?: string;
 }

@@ -20,6 +20,8 @@ export const CA_KIT_FOLDER = "Cultivator's Adventure";
 /** Where characters' own copies of items, abilities and traits are kept (and stay when taken off). */
 export const CA_COPIES_FOLDER = "Player Owned Copies";
 const COPY = { copy: true, copyFolder: CA_COPIES_FOLDER };
+/** A character's lists only take what already exists (made in the sidebar), never make new ones — each gets its own copy. */
+const ADD_ONLY = { ...COPY, createNew: false };
 
 // --------------------------------------------------------------------------- C.A. rules, as data
 const ATTRS = [
@@ -355,13 +357,13 @@ function characterTemplate(): AgSnapshot {
       { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" },
       { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" },
       { ref: "equipped", display: "toggle", label: "Equip" }, { ref: "", display: "rolls" },
-    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true, ...COPY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
+    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
     p(muted(INVENTORY_HELP)),
   ];
 
   // ---- Traits
   const traitsTab: DocNode[] = [
-    links("traits", [{ ref: "summary", display: "value", label: "" }], { layout: "cards", search: true, add: { types: ["trait"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "No traits added yet." }),
+    links("traits", [{ ref: "summary", display: "value", label: "" }], { layout: "cards", search: true, add: { types: ["trait"], reverse: "holder", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No traits added yet." }),
   ];
 
   const page: DocNode[] = [
@@ -390,7 +392,7 @@ export const ABILITY_LIST_COLUMNS = [
 ];
 export const ABILITY_LIST_CONFIG = {
   layout: "cards", search: true, sortBy: "name", accentBy: "tag_color",
-  add: { types: ["ability"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "No abilities yet — the GM adds them with Add, or drags one here from the sidebar.",
+  add: { types: ["ability"], reverse: "holder", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No abilities yet — the GM adds them with Add, or drags one here from the sidebar.",
 };
 export const ASPECT_COLUMNS = [
   { ref: "category", display: "badge" }, { ref: "range", display: "value", label: "Range" }, { ref: "duration", display: "value", label: "Duration" },
@@ -405,7 +407,7 @@ export const ASPECT_LIST_CONFIG = {
 /** Abilities inside an ability (a trapped creature's powers inside "Soul Prison"): their aspects are its holder's too. */
 export const SUB_ABILITY_CONFIG = {
   layout: "cards", search: true, sortBy: "name", accentBy: "tag_color",
-  add: { types: ["ability"], reverse: "holder", existing: true, ...COPY }, remove: "disconnect", emptyText: "None — press Add, or drag an ability here (from the sidebar, or off another sheet).",
+  add: { types: ["ability"], reverse: "holder", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "None — press Add, or drag an ability here (from the sidebar, or off another sheet).",
 };
 export const SUB_ABILITY_HELP = "Abilities inside this one: their aspects are the character's too, rolled and paid by them. Unlink one (the remove button) and all its aspects go with it; it stays in “Player Owned Copies” to put back later.";
 /** An ability's own list of its aspects. */

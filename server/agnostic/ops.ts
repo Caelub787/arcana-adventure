@@ -372,6 +372,14 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       requireGM(viewer);
       return store.run(async (cs) => {
         const n = noteOf(store, body.id);
+        if (n.copyOf) {
+          // Duplicating someone's copy gives a normal sheet (with what's inside it, e.g. an
+          // ability's aspects): the GM's, kept where its original is (or with its kind).
+          const original = store.notes.get(n.copyOf);
+          const folder = original && !original.isTemplate && !original.copyOf ? original.folder : null;
+          const dup = await copySheet(store, n.id, cs, { folder, ownerIds: [], asOriginal: true });
+          return { noteId: dup.id };
+        }
         const s = await snap.takeSnapshot(store, n.id);
         const copy = await snap.createFromSnapshot(store, s, { name: `${n.name} (copy)` }, cs);
         return { noteId: copy.id };
@@ -410,6 +418,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "note.createLinked": {
       const host = noteOf(store, body.hostNoteId);
       const listCfg = (await listsOnSheet(store, host)).find((l) => l.label === labelKey(body.label))?.config;
+      // A list that only takes existing sheets (a character's items: they're added, not made there).
+      if (listCfg?.add?.createNew === false) fail("Nothing new can be made here — add one from the sidebar (drag it here, or Add → pick it)");
       const template = body.templateId ? noteOf(store, body.templateId) : null;
       if (template && !template.isTemplate) fail("That isn't a template");
       if (!viewer.isGM) {
@@ -862,9 +872,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   return { ok: true };
 }
 
-/** A whole image pasted in (a data: URL from the image library or the clipboard) is saved as a file; a link stays as it is. */
+/** A whole image pasted in (a data: URL from the image library or the clipboard) is stored (in the database); a link stays as it is. */
 async function storedImage(host: HostHooks, v: string): Promise<string> {
-  if (v.length <= 4096 || !/^data:image\//.test(v) || !host.saveImage) return v;
+  if (!/^data:image\//.test(v) || !host.saveImage) return v;
   try { return await host.saveImage(v); } catch { fail("Couldn't save that image — try uploading it"); }
   return v;
 }

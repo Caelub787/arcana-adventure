@@ -13,7 +13,7 @@ import { AgEditor, ActiveEditorProvider, EditorToolbar } from "./editor/AgEditor
 import { FieldsPanel } from "./FieldsPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
 import { SettingsPanel } from "./SettingsPanel";
-import { Portrait, CommitInput, uploadImage } from "./widgets";
+import { Portrait, CommitInput, uploadImage, storeAgImage } from "./widgets";
 import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
 import { ShareDialog } from "./AgNotesBrowser";
 import { GuideButton } from "./AgGuide";
@@ -155,7 +155,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
         setBusy(true);
         try { await setPortrait(await uploadImage(f)); } catch (err: any) { toast({ title: "Upload failed", description: err.message, variant: "destructive" }); } finally { setBusy(false); }
       }} />
-      {browse && <ImageBrowser floating saveToFile open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setPortrait(src); setBrowse(false); }} />}
+      {browse && <ImageBrowser floating open onOpenChange={(o) => { if (!o) setBrowse(false); }} onSelect={(src) => { setBrowse(false); setBusy(true); storeAgImage(src).then(setPortrait).catch((e) => toast({ title: "Couldn't use that picture", description: e.message, variant: "destructive" })).finally(() => setBusy(false)); }} />}
       <div className="min-w-0 flex-1">
         {canEditHeader
           ? <CommitInput value={note.name} onCommit={(name) => request({ op: "note.update", id: noteId, patch: { name } })} className="w-full h-9 text-lg font-semibold bg-transparent border-transparent hover:border-stone-700 text-amber-100" aria-label="Name" data-testid="ag-name" />

@@ -15,11 +15,12 @@ import * as snap from "./snapshot";
 const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
 
 /** Make a copy of `sourceId` (and what's inside it), kept in `folder`. Not connected to anything yet. */
-export async function copySheet(store: ScopeStore, sourceId: string, cs: ChangeSet, opts: { folder: string | null; ownerIds: string[] }, seen = new Set<string>()): Promise<AgNote> {
+export async function copySheet(store: ScopeStore, sourceId: string, cs: ChangeSet, opts: { folder: string | null; ownerIds: string[]; asOriginal?: boolean }, seen = new Set<string>()): Promise<AgNote> {
   const source = store.notes.get(sourceId)!;
   seen.add(sourceId);
   const s = await snap.takeSnapshot(store, sourceId);
-  const copy = await snap.createFromSnapshot(store, s, { name: source.name, folder: opts.folder, ownerIds: [...opts.ownerIds], copyOf: source.copyOf ?? source.id, isTemplate: false, templateMeta: null }, cs);
+  // asOriginal: a normal sheet (a duplicate of someone's copy), not anybody's copy.
+  const copy = await snap.createFromSnapshot(store, s, { name: source.name, folder: opts.folder, ownerIds: [...opts.ownerIds], copyOf: opts.asOriginal ? null : source.copyOf ?? source.id, isTemplate: false, templateMeta: null }, cs);
   // What's inside it: sheets connected into it (an aspect's "ability", a rune's "socket").
   for (const l of store.linksOf(sourceId)) {
     if (l.toNoteId !== sourceId || seen.has(l.fromNoteId) || seen.size > 60) continue;

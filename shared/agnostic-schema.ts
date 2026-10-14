@@ -111,6 +111,19 @@ export const agnosticComponents = pgTable("agnostic_components", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({ scopeIdx: index("agnostic_components_scope_idx").on(t.scope, t.scopeId) }));
 
+/**
+ * Pictures used by Agnostic sheets (portraits, image values, pictures in pages),
+ * kept in the database so they survive restarts and redeploys (the server's own
+ * disk doesn't). Base64 WebP; a small thumbnail for lists and tokens.
+ */
+export const agnosticImages = pgTable("agnostic_images", {
+  id: varchar("id").primaryKey(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(),
+  thumb: text("thumb"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const agnosticSettings = pgTable("agnostic_settings", {
   campaignId: varchar("campaign_id").primaryKey(),
   settings: jsonb("settings").$type<AgCampaignSettings>().notNull(),
@@ -235,6 +248,13 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
     campaign_id varchar PRIMARY KEY,
     settings jsonb NOT NULL,
     updated_at timestamp NOT NULL DEFAULT now()
+  )`,
+  `CREATE TABLE IF NOT EXISTS agnostic_images (
+    id varchar PRIMARY KEY,
+    mime text NOT NULL,
+    data text NOT NULL,
+    thumb text,
+    created_at timestamp NOT NULL DEFAULT now()
   )`,
   `CREATE TABLE IF NOT EXISTS agnostic_scope_meta (
     scope_key text PRIMARY KEY,
