@@ -8,13 +8,13 @@
 // Each scope is filled once (a marker in agnostic_scope_meta); deleting what
 // it got never brings it back. Plain Agnostic starts empty, as before.
 import { agnosticSystemKit } from "@shared/systems";
-import { agLibraryScope, agLibrarySystem, scopeKey, type AgScope } from "@shared/agnostic/types";
+import { agLibraryScope, agLibrarySystem, scopeKey, parseScopeKey, type AgScope } from "@shared/agnostic/types";
 import { storage } from "../storage";
 import * as repo from "./repo";
 import { getStore, type ScopeStore } from "./store";
 import * as snap from "./snapshot";
 import { applyCAKit, applyCATrackerSettings } from "./kits/ca";
-import { upgradeCAKit, markKitCurrent } from "./kits/upgrade";
+import { upgradeCAKit, markKitCurrent, CA_KIT_LEVEL } from "./kits/upgrade";
 
 const marker = (key: string) => `system-seed:${key}`;
 
@@ -55,4 +55,21 @@ export async function seedSystemContent(store: ScopeStore) {
   // Filled from an up-to-date master (or the kit itself): no upgrades to run.
   if (store.scope.kind === "admin") await markKitCurrent(store); else await upgradeCAKit(store);
   console.log(`[agnostic] ${system}: filled ${store.key} with the system's templates`);
+}
+
+/**
+ * On start: bring every CA scope (admin library, libraries, campaigns) up to
+ * the current kit, so new kit content (e.g. a new template) is already there
+ * in campaigns nobody has opened since the deploy.
+ */
+export async function upgradeAllKitScopes() {
+  const keys = await repo.seedKeysBelow("kit-upgrade:", CA_KIT_LEVEL);
+  let n = 0;
+  for (const k of keys) {
+    const scope = parseScopeKey(k.slice("kit-upgrade:".length));
+    if (!scope) continue;
+    try { await getStore(scope); n++; }
+    catch (e) { console.error(`[agnostic] couldn't bring ${k} up to date`, e); }
+  }
+  if (n) console.log(`[agnostic] CA kit: brought ${n} scope(s) up to date on start`);
 }

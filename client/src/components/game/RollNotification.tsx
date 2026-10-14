@@ -35,6 +35,8 @@ export interface RollNotification {
   customColor?: string;
   /** The chat line shows calculationBreakdown (the working) instead of just the result. */
   chatBreakdown?: boolean;
+  /** The popup card leaves the working out (it's kept for roll history and chat). */
+  hideBreakdown?: boolean;
 }
 
 function darkenColor(hex: string): string {
@@ -240,7 +242,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
               <span className="text-white/70 truncate">{notification.label}</span>
             </div>
             
-            {notification.calculationBreakdown && (
+            {notification.calculationBreakdown && !notification.hideBreakdown && (
               <div className="text-white/60 text-xs mt-0.5 truncate">
                 {notification.calculationBreakdown}
               </div>
@@ -441,6 +443,7 @@ export function triggerRollNotification(notification: Omit<RollNotification, 'id
       isHealing: notification.isHealing,
       customColor: notification.customColor,
       ...(notification.chatBreakdown ? { chatBreakdown: true } : {}),
+      ...(notification.hideBreakdown ? { hideBreakdown: true } : {}),
     });
   }
 }

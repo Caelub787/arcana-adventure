@@ -38,7 +38,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   const { state, openNote, viewer, system } = useAg();
   const [designing, setDesigning] = useState(false);
   const [history, setHistory] = useState<string | null>(null);
-  // CA Agnostic: rolls show their working, and the tracker keeps a roll history button.
+  // CA Agnostic: the tracker card keeps a roll history button.
   const ca = system === "ca-agnostic";
   const play = usePlayView();
   const settings = state.settings;
@@ -72,7 +72,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
           {notes.map((n) => {
             const card = cardFor(settings, n.id, n.type);
             return (
-              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border} working={ca} onHistory={ca ? () => setHistory(n.id) : undefined}>
+              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border} onHistory={ca ? () => setHistory(n.id) : undefined}>
                 <div
                   role="button"
                   tabIndex={0}
@@ -172,7 +172,7 @@ export function tumbleRange(r: Pick<RollFeedLike, "breakdown" | "dieType" | "tex
   return [1, 20];
 }
 
-function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHistory }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; working?: boolean; onHistory?: () => void }) {
+function TrackerSlot({ note, rolls, tray, side, accent, children, onHistory }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; onHistory?: () => void }) {
   const latest = rolls[0];
   const key = (r?: RollFeedLike) => (r ? r.id ?? `${r.ts}-${r.total}-${r.text ?? r.label}` : undefined);
   const lastSeen = useRef<string | undefined>(key(latest));
@@ -216,7 +216,7 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
     return () => { window.removeEventListener("resize", measure); window.removeEventListener("scroll", measure, true); };
   }, [open]);
   const sideways = side === "left" || side === "right";
-  const trayW = sideways ? TRAY_SIDE_W : working && latest?.breakdown ? TRAY_W + 70 : TRAY_W;
+  const trayW = sideways ? TRAY_SIDE_W : TRAY_W;
   const GAP = 6;
   const trayPos: React.CSSProperties = !rect ? { left: -9999, top: -9999 }
     : side === "below" ? { left: rect.left + rect.width / 2, top: rect.bottom + GAP, transform: "translateX(-50%)" }
@@ -241,10 +241,9 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
           <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}
             className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 py-1 transition-all duration-300 ease-out"
             style={{ width: trayW, minHeight: sideways ? TRAY_H - 6 : TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
-            title={latest.breakdown ? `${latest.text || latest.label || "Roll"}: ${latest.breakdown}` : "Recent rolls"} data-testid={`ag-dice-tray-${note.name}`}>
+            title="Recent rolls" data-testid={`ag-dice-tray-${note.name}`}>
             <span className="text-[10px] text-stone-300 truncate max-w-full leading-tight">{latest.text || latest.label || "Roll"}</span>
             <span className={`text-xl font-bold leading-tight ${rolling !== null ? "animate-pulse" : ""}`} style={{ color }}>{rolling ?? latest.total ?? ""}</span>
-            {working && latest.breakdown && rolling === null && <span className={`text-[9px] font-mono text-stone-400 leading-tight max-w-full text-center ${sideways ? "line-clamp-3" : "line-clamp-2"}`} data-testid="ag-dice-tray-working">{latest.breakdown}</span>}
           </button>
         </div>,
         document.body,
@@ -252,14 +251,8 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, working, onHis
       {history && (
         <AgPanel title={<span className="inline-flex items-center gap-1.5"><Dices className="h-4 w-4 text-amber-400" />{note.name || "Sheet"} — recent rolls</span>} onClose={() => setHistory(false)} width={320} height={360} testId="ag-dice-history">
           <div className="space-y-1">
-            {rolls.slice(0, 30).map((r, i) => working
-              ? <RollRow key={key(r) ?? i} r={r} color={color} />
-              : (
-              <div key={key(r) ?? i} className="flex items-center gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
-                <span className="flex-1 min-w-0 truncate">{r.text || r.label || "Roll"}</span>
-                {r.total !== null && r.total !== undefined && <span className="font-mono font-bold" style={{ color }}>{r.total}</span>}
-              </div>
-            ))}
+            {/* Roll history and chat are where a roll's working shows (not the tray or the popup). */}
+            {rolls.slice(0, 30).map((r, i) => <RollRow key={key(r) ?? i} r={r} color={color} />)}
             {!rolls.length && <div className="text-xs text-stone-500">No rolls yet.</div>}
           </div>
         </AgPanel>

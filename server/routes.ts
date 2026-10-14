@@ -2672,7 +2672,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               const detailText = detail.length > 0 ? ` ${detail.join(' ')}` : '';
               const totalText = typeof notification.total === 'number' ? ` = ${notification.total}` : '';
-              // CA Agnostic rolls carry their working ("1d20 [14] + 3 Athletics = 17"): chat shows it whole.
+              // Agnostic rolls carry their working ("1d20 [14] + 3 Athletics = 17"): chat shows it whole.
               const working = notification.chatBreakdown && typeof notification.calculationBreakdown === 'string'
                 ? String(notification.calculationBreakdown).slice(0, 600) : '';
               const rollText = (working

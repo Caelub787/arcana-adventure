@@ -1,7 +1,7 @@
 // Persistence for the Agnostic data layer. Rows ↔ shared entity types.
 // All writes go through the in-memory ScopeStore first (store.ts); this file
 // only knows how to read a scope and write individual rows.
-import { and, eq, inArray, or, desc } from "drizzle-orm";
+import { and, eq, inArray, or, desc, like, lt } from "drizzle-orm";
 import { db } from "../db";
 import {
   agnosticNotes, agnosticFields, agnosticRegions, agnosticLinks, agnosticModifiers, agnosticActions,
@@ -194,6 +194,12 @@ export async function saveSettings(campaignId: string, settings: AgCampaignSetti
 export async function getSeedLevel(scopeKey: string): Promise<number> {
   const [row] = await db.select({ seedLevel: agnosticScopeMeta.seedLevel }).from(agnosticScopeMeta).where(eq(agnosticScopeMeta.scopeKey, scopeKey));
   return row?.seedLevel ?? 0;
+}
+/** Markers under a prefix ("kit-upgrade:") whose level is below `below`. */
+export async function seedKeysBelow(prefix: string, below: number): Promise<string[]> {
+  const rows = await db.select({ scopeKey: agnosticScopeMeta.scopeKey }).from(agnosticScopeMeta)
+    .where(and(like(agnosticScopeMeta.scopeKey, `${prefix}%`), lt(agnosticScopeMeta.seedLevel, below)));
+  return rows.map((r) => r.scopeKey);
 }
 export async function setSeedLevel(scopeKey: string, seedLevel: number) {
   await db.insert(agnosticScopeMeta).values({ scopeKey, seedLevel, updatedAt: new Date() })

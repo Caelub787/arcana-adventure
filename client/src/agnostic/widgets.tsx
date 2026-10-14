@@ -508,7 +508,7 @@ const HOLD_MS = 450;
  * modifier first. Render `ui` next to whatever presses it.
  */
 export function useActionRunner(actionId: string) {
-  const { state, request, scope, system } = useAg();
+  const { state, request, scope } = useAg();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<null | { choices: AgActionChoice[]; idx: number; picked: Record<string, string>; mods: AgRollMods }>(null);
@@ -529,8 +529,8 @@ export function useActionRunner(actionId: string) {
         triggerRollNotification({
           type: r.name === "initiative" ? "initiative" : "custom", label, result: r.total, total: r.total, username: roller, characterName: roller,
           calculationBreakdown: r.breakdown, customColor: action.color ?? undefined,
-          // CA Agnostic: the chat line shows the working (dice, modifiers, total).
-          chatBreakdown: system === "ca-agnostic" || undefined,
+          // The working (dice, modifiers, total) goes to chat and roll history, not the popup.
+          chatBreakdown: true, hideBreakdown: true,
         }, broadcast);
       }
       if (res.result.messages.length) toast({ title: action.name, description: res.result.messages.join("\n") });

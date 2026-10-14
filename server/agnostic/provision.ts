@@ -8,7 +8,7 @@ import * as repo from "./repo";
 import { getStore, type ScopeStore, type ChangeSet } from "./store";
 import * as snap from "./snapshot";
 import { applyCAKit } from "./kits/ca";
-import { markSystemSeeded } from "./systemSeed";
+import { markSystemSeeded, upgradeAllKitScopes } from "./systemSeed";
 
 interface Provision {
   /** Marker name: never change it for an entry that has shipped. */
@@ -110,4 +110,6 @@ export async function runAgnosticProvisioning() {
     try { await provision(p); }
     catch (e) { console.error(`[agnostic] provisioning "${p.id}" for ${p.email} failed; will try again next start`, e); }
   }
+  // Every CA Agnostic library and campaign gets new kit content now, not when it's next opened.
+  await upgradeAllKitScopes().catch((e) => console.error("[agnostic] kit upgrade sweep failed", e));
 }
