@@ -1,7 +1,7 @@
 // One Agnostic sheet: portrait + name, then the GM's free-form document.
 // GMs also get the sheet's data (Values), Connections and Settings.
 import React, { useEffect, useRef, useState } from "react";
-import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2 } from "lucide-react";
+import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2, Share2 } from "lucide-react";
 import { agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel } from "./float";
@@ -15,16 +15,18 @@ import { ConnectionsPanel } from "./ConnectionsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { Portrait, CommitInput, uploadImage } from "./widgets";
 import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
+import { ShareDialog } from "./AgNotesBrowser";
 import { GuideButton } from "./AgGuide";
 import { usePlayView } from "./viewMode";
 
 type Tab = "sheet" | "fields" | "links" | "settings";
 
 export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => void }) {
-  const { state, realViewer, previewUserId, key: scopeKeyStr } = useAg();
+  const { state, realViewer, previewUserId, key: scopeKeyStr, system, scope } = useAg();
   const perms = usePerms(noteId);
   const note = perms.note;
   const [tabState, setTab] = useState<Tab>("sheet");
+  const [sharing, setSharing] = useState(false);
   const play = usePlayView();
   // Player view: no Links / Settings (building tools); fall back to the page.
   const tab: Tab = play && (tabState === "links" || tabState === "settings") ? "sheet" : tabState;
@@ -70,10 +72,15 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
           <div className="ml-auto flex items-center gap-1 shrink-0">
             {!connected && <span className="text-[10px] text-red-300 inline-flex items-center gap-1" title="Reconnecting — your edits will sync when it's back"><WifiOff className="h-3 w-3" /> offline</span>}
             {lastUndo && <button type="button" onClick={() => undoLast(scopeKeyStr)} className="h-7 px-1.5 rounded text-[11px] text-stone-400 hover:text-stone-100 hover:bg-stone-800 inline-flex items-center gap-1" title={`Undo ${lastUndo.label} (Ctrl+Z)`}><Undo2 className="h-3.5 w-3.5" /></button>}
+            {/* CA Agnostic: the GM shares this sheet with players from right here, on every tab. */}
+            {realViewer.isGM && system === "ca-agnostic" && scope.kind === "campaign" && !note.isTemplate && (
+              <button type="button" onClick={() => setSharing(true)} className="h-7 px-2 rounded text-[11px] text-amber-200 hover:bg-stone-800 inline-flex items-center gap-1 border border-amber-800/60" title="Share with players" data-testid="ag-sheet-share"><Share2 className="h-3.5 w-3.5" /> Share</button>
+            )}
             {realViewer.isGM && <PreviewSelect />}
             <GuideButton compact topic={tab === "fields" ? "values" : tab === "links" ? "connections" : tab === "settings" ? "templates" : "sheets"} />
           </div>
         </div>
+        {sharing && <ShareDialog note={note} onClose={() => setSharing(false)} />}
         {previewUserId && <div className="px-3 py-1 text-[11px] bg-sky-950/60 text-sky-200 border-b border-sky-900 shrink-0">Previewing as {state.members.find((m) => m.userId === previewUserId)?.name ?? "player"} — exactly what they can see and change.</div>}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {tab === "sheet" && <SheetBody noteId={noteId} />}

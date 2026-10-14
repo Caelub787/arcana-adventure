@@ -181,7 +181,19 @@ export class AgComputer {
       ref: (p, a, o) => this.resolve(noteId, p, a, opts.roots, opts.rollDie, o?.base),
       local: (n) => opts.locals?.[n],
       rollDie: opts.rollDie,
+      // In a roll, values are named in the working ("1d8[5] + 2 Athletics").
+      name: opts.rollDie ? (p, a) => this.labelOf(noteId, p, a, opts.roots) : undefined,
     });
+  }
+
+  /** The label of the value a path ends at (one sheet only), for roll workings. */
+  labelOf(noteId: string, path: string[], abs?: string, roots?: Record<string, string[]>): string | undefined {
+    try {
+      const { noteIds, key } = this.targetsOf(noteId, path, abs, roots);
+      if (noteIds.length !== 1) return undefined;
+      const f = this.field(noteIds[0], key);
+      return f?.label || undefined;
+    } catch { return undefined; }
   }
 
   /** Which notes a FieldRef path (without the final key) points to — for action "modify" targets. */

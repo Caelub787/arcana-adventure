@@ -3,7 +3,7 @@
 // JSON columns are defined in shared/agnostic/types.ts.
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
-import type { AgAcl, AgActionStep, AgCampaignSettings, AgFieldOptions, AgLayout, AgSnapshot, AgTemplateMeta, AgTokenBar } from "./agnostic/types";
+import type { AgAcl, AgActionOptions, AgActionStep, AgCampaignSettings, AgFieldOptions, AgLayout, AgSnapshot, AgTemplateMeta, AgTokenBar } from "./agnostic/types";
 
 export const agnosticNotes = pgTable("agnostic_notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -86,6 +86,7 @@ export const agnosticActions = pgTable("agnostic_actions", {
   steps: jsonb("steps").$type<AgActionStep[]>().notNull(),
   acl: jsonb("acl").$type<AgAcl>().notNull(),
   color: text("color"),
+  options: jsonb("options").$type<AgActionOptions>(),
 }, (t) => ({ noteIdx: index("agnostic_actions_note_idx").on(t.noteId) }));
 
 export const agnosticVersions = pgTable("agnostic_versions", {
@@ -203,7 +204,8 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
     name text NOT NULL,
     steps jsonb NOT NULL,
     acl jsonb NOT NULL,
-    color text
+    color text,
+    options jsonb
   )`,
   `CREATE INDEX IF NOT EXISTS agnostic_actions_note_idx ON agnostic_actions (note_id)`,
   `CREATE TABLE IF NOT EXISTS agnostic_versions (
@@ -238,4 +240,11 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   )`,
   // Battlemap: a token can stand for any Agnostic note (portrait + live bars).
   `ALTER TABLE IF EXISTS tokens ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,
+  `ALTER TABLE IF EXISTS agnostic_actions ADD COLUMN IF NOT EXISTS options jsonb`,
+  // Agnostic sheets in the campaign's initiative order (they aren't rows in characters).
+  `ALTER TABLE IF EXISTS initiative_entries ALTER COLUMN character_id DROP NOT NULL`,
+  `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,
+  `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_name text`,
+  `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_portrait text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS initiative_entries_campaign_agnostic_unique ON initiative_entries (campaign_id, agnostic_note_id)`,
 ];

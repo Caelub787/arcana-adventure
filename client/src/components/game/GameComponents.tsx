@@ -10513,7 +10513,8 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     staleTime: 2000, // Cache for 2s to prevent flash re-fetches
   });
 
-  const entries = initiativeData?.entries || [];
+  // Agnostic sheets join the order without a character row: they go by their sheet id, name and portrait.
+  const entries = (initiativeData?.entries || []).map((e: any) => (e.characterId ? e : { ...e, characterId: e.agnosticNoteId ?? e.id }));
   const inCombat = initiativeData?.inCombat || false;
   const currentTurnCharacterId = initiativeData?.currentTurnCharacterId;
 
@@ -10584,12 +10585,14 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
 
   const getCharacterName = (characterId: string) => {
     const char = characters.find(c => c.id === characterId);
-    return char?.name || 'Unknown';
+    return char?.name || entries.find((e: any) => e.characterId === characterId)?.agnosticName || 'Unknown';
   };
 
   const getCharacterPortrait = (characterId: string) => {
     const char = characters.find(c => c.id === characterId);
     if (char?.portrait) return char.portrait;
+    const agnostic = entries.find((e: any) => e.characterId === characterId && e.agnosticNoteId);
+    if (agnostic) return agnostic.agnosticPortrait || undefined;
     if (char?.race && allSpecies.length > 0) {
       const species = speciesMap.get(char.race);
       if (species?.defaultImage) return species.defaultImage;
@@ -11446,6 +11449,8 @@ export type PinnedRollFeedEntry = {
   text: string;
   total: number | null;
   ts: number;
+  /** The roll's working ("1d20 [14] + 3 Athletics = 17"), where the roll carried one. */
+  breakdown?: string;
   // e.g. "d20", "d6" - drives the tumble animation's random range so it
   // never flashes a number the actual die couldn't land on.
   dieType?: string;

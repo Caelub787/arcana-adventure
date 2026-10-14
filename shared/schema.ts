@@ -1421,14 +1421,23 @@ export const initiativeEntries = pgTable("initiative_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   sceneId: varchar("scene_id").references(() => scenes.id, { onDelete: "cascade" }),
-  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  // Null for an Agnostic sheet (agnosticNoteId instead).
+  characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   value: integer("value").notNull(), // Initiative roll result (1d20 + Finesse)
   isHidden: boolean("is_hidden").default(false).notNull(), // GM can hide characters from players
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Agnostic systems: the sheet in the order, and its name/portrait when it joined.
+  agnosticNoteId: varchar("agnostic_note_id"),
+  agnosticName: text("agnostic_name"),
+  agnosticPortrait: text("agnostic_portrait"),
 }, (table) => ({
   uniqueCampaignCharacter: uniqueIndex("initiative_entries_campaign_char_unique").on(
     table.campaignId,
     table.characterId
+  ),
+  uniqueCampaignAgnostic: uniqueIndex("initiative_entries_campaign_agnostic_unique").on(
+    table.campaignId,
+    table.agnosticNoteId
   ),
 }));
 

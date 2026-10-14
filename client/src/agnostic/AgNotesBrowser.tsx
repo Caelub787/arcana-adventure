@@ -216,7 +216,7 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
 }
 
 /** Who sees a sheet, who owns it — in one place, from the list. */
-function ShareDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
+export function ShareDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
   const { state, request } = useAg();
   const { toast } = useToast();
   const note = state.notes.get(initial.id) ?? initial;

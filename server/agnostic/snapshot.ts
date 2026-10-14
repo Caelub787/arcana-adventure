@@ -24,7 +24,7 @@ export async function takeSnapshot(store: ScopeStore, noteId: string): Promise<A
     note: meta,
     fields: store.fieldsOf(noteId).map(({ eff: _x, err: _y, ...f }) => ({ ...f })),
     regions: regions.map((r) => ({ ...r })),
-    actions: store.actionsOf(noteId).map((a) => ({ ...a, steps: [...a.steps] })),
+    actions: store.actionsOf(noteId).map((a) => ({ ...a, steps: [...a.steps], ...(a.options ? { options: JSON.parse(JSON.stringify(a.options)) } : {}) })),
     modifiers: store.modifiersOf(noteId).map((m) => ({ ...m })),
     docs: docStates,
   };

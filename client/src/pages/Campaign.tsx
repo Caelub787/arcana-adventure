@@ -7519,6 +7519,7 @@ export default function Campaign() {
           total: typeof n.total === 'number' ? n.total : null,
           ts: typeof n.ts === 'number' ? n.ts : Date.now(),
           dieType: n.dieType || undefined,
+          breakdown: typeof n.calculationBreakdown === 'string' ? n.calculationBreakdown : undefined,
           // These are the rolls that already happened. Flagged rather than
           // compared against a mount timestamp, because a row's `ts` can come
           // from the server while "now" comes from this machine, and two
@@ -7541,6 +7542,7 @@ export default function Campaign() {
         total: typeof n.total === 'number' ? n.total : null,
         ts: typeof n.ts === 'number' ? n.ts : Date.now(),
         dieType: n.dieType || undefined,
+        breakdown: typeof n.calculationBreakdown === 'string' ? n.calculationBreakdown : undefined,
       };
       setRollFeed(prev => (prev.some(p => p.id === entry.id) ? prev : [entry, ...prev].slice(0, 50)));
     };

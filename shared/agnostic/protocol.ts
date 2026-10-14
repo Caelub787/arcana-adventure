@@ -2,7 +2,7 @@
 // Every mutation is an `op`; the server applies it, then pushes the resulting
 // entity changes to every connected viewer that is allowed to see them.
 import type {
-  AgAcl, AgAction, AgActionResult, AgActionStep, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField,
+  AgAcl, AgAction, AgActionOptions, AgActionResult, AgActionStep, AgRollMods, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField,
   AgFieldOptions, AgFieldType, AgLayout, AgLink, AgModifier, AgNote, AgRegion, AgScope, AgTokenBar, AgValue, AgVersionMeta,
 } from "./types";
 
@@ -36,9 +36,9 @@ export type AgOp =
   | { op: "link.delete"; id: string }
   | { op: "modifier.upsert"; modifier: Omit<AgModifier, "id"> & { id?: string } }
   | { op: "modifier.delete"; id: string }
-  | { op: "action.upsert"; action: { id?: string; noteId: string; name: string; steps: AgActionStep[]; acl?: AgAcl; color?: string | null } }
+  | { op: "action.upsert"; action: { id?: string; noteId: string; name: string; steps: AgActionStep[]; acl?: AgAcl; color?: string | null; options?: AgActionOptions } }
   | { op: "action.delete"; id: string }
-  | { op: "action.run"; id: string; targetNoteIds?: string[]; choices?: Record<string, string> }
+  | { op: "action.run"; id: string; targetNoteIds?: string[]; choices?: Record<string, string>; mods?: AgRollMods }
   | { op: "action.prepare"; id: string; targetNoteIds?: string[] }
   | { op: "settings.update"; settings: AgCampaignSettings }
   | { op: "component.upsert"; component: { id?: string; name: string; params: string[]; layout: AgLayout } }
@@ -56,14 +56,15 @@ export type AgOpResult =
   | { noteId: string }
   | { versionId: string }
   | { versions: AgVersionMeta[] }
-  | { result: AgActionResult; noteName: string; rollerName?: string }
+  | { result: AgActionResult; noteName: string; rollerName?: string; initiative?: { name: string; total: number } }
   | { bundle: AgExportBundle }
   | { value: AgValue | AgValue[]; error?: string }
   | { ok: true }
   | Record<string, unknown>;
 
 /** Action as sent to viewers: steps only for those who may design. */
-export type AgActionView = Omit<AgAction, "steps"> & { steps: AgActionStep[] | null };
+/** Players get a button without its steps; `asks` says it starts with a "choose" (so the client asks first). */
+export type AgActionView = Omit<AgAction, "steps"> & { steps: AgActionStep[] | null; asks?: boolean };
 
 export type AgClientMsg =
   | { t: "scope.sub"; scope: AgScope }

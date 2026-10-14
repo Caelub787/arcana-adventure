@@ -13,18 +13,19 @@ export interface DocText { text: string; marks?: Record<string, Record<string, u
 
 const isText = (n: DocNode | DocText): n is DocText => typeof (n as DocText).text === "string";
 
-function fill(parent: Y.XmlFragment | Y.XmlElement, nodes: Array<DocNode | DocText>) {
+function fill(parent: Y.XmlFragment | Y.XmlElement, nodes: Array<DocNode | DocText>, at?: number) {
   let text: Y.XmlText | null = null;
+  let pos = at ?? parent.length;
   for (const n of nodes) {
     if (isText(n)) {
       if (!n.text) continue;
-      if (!text) { text = new Y.XmlText(); parent.insert(parent.length, [text]); }
+      if (!text) { text = new Y.XmlText(); parent.insert(pos++, [text]); }
       text.insert(text.length, n.text, n.marks ?? {});
       continue;
     }
     text = null;
     const el = new Y.XmlElement(n.type);
-    parent.insert(parent.length, [el]);
+    parent.insert(pos++, [el]);
     for (const [k, v] of Object.entries(n.attrs ?? {})) if (v !== null && v !== undefined) el.setAttribute(k, v as any);
     if (n.content?.length) fill(el, n.content);
   }
@@ -32,6 +33,8 @@ function fill(parent: Y.XmlFragment | Y.XmlElement, nodes: Array<DocNode | DocTe
 
 /** Append nodes to an existing element of a live document (kit upgrades). */
 export function appendNodes(parent: Y.XmlFragment | Y.XmlElement, nodes: DocNode[]) { fill(parent, nodes); }
+/** Insert nodes at a position in an existing element of a live document (kit upgrades). */
+export function insertNodes(parent: Y.XmlFragment | Y.XmlElement, index: number, nodes: DocNode[]) { fill(parent, nodes, index); }
 
 /** A whole document (and its canvases) as the base64 Yjs state the server stores. */
 export function buildDocState(nodes: DocNode[], canvases: Record<string, Record<string, unknown>[]> = {}): string {
@@ -74,6 +77,8 @@ export const tabs = (tabsId: string, list: Array<{ title: string; icon?: string;
   ({ type: "agTabs", attrs: { tabsId, look }, content: list.map((tb) => ({ type: "agTab", attrs: { title: tb.title, icon: tb.icon ?? "", color: "" }, content: tb.content.length ? tb.content : [p()] })) });
 export const links = (label: string, cols: unknown[], config: Record<string, unknown>, look: Record<string, unknown> = {}): DocNode =>
   ({ type: "agLinks", attrs: { label, columns: cols, config, look } });
+/** A sheet's rolls (see the Rolls block): who rolls and pays, and the costs new rolls start with. */
+export const rolls = (via: string, costs: string[], color = "", look: Record<string, unknown> = {}): DocNode => ({ type: "agRolls", attrs: { via, costs, color, look } });
 export const canvas = (canvasId: string, width: number, height: number, look: Record<string, unknown> = {}): DocNode =>
   ({ type: "agCanvas", attrs: { canvasId, width, height, background: "", look } });
 export const table = (rows: Array<Array<DocNode[]>>, header = true): DocNode => ({

@@ -296,7 +296,60 @@ export type AgActionStep =
   /** Delete a sheet: "self" (the sheet the button is on) or a chosen one. */
   | ({ type: "remove"; target: string } & AgStepBase)
   /** End the button here (with "Only if": e.g. stop when there isn't enough Energy). */
-  | ({ type: "stop" } & AgStepBase);
+  | ({ type: "stop" } & AgStepBase)
+  /**
+   * Roll and put the sheet into the campaign's initiative order with the result
+   * (the sheet itself if it's a character / NPC, else the character it hangs off).
+   */
+  | ({ type: "initiative"; expr: string; label?: string } & AgStepBase);
+
+/** Something a roll spends from the sheet that rolls, e.g. Energy. */
+export interface AgRollCost {
+  /** Value key on the rolling sheet ("energy"). */
+  key: string;
+  /** Formula on this sheet: how much ("10"). */
+  amount: string;
+}
+
+/**
+ * A roll set up with simple boxes instead of steps: how many dice, what size,
+ * what's added, and what it costs. Runs before any steps the action also has.
+ */
+export interface AgRollSpec {
+  /** The connection from this sheet to the sheet that rolls and pays ("holder", "owner"); "" = this sheet. */
+  via: string;
+  /** How many dice (formula). */
+  count: string;
+  /** Die size (formula): "20", or a value on the roller such as "@holder.might_die". */
+  die: string;
+  /** A value on the roller added to the roll, e.g. a skill ("athletics"); "" for none. */
+  add: string;
+  /** A flat bonus (formula on this sheet). */
+  bonus: string;
+  costs: AgRollCost[];
+}
+
+/** How a button looks and where it shows, plus an optional simple roll. */
+export interface AgActionOptions {
+  roll?: AgRollSpec;
+  /** Button icon: a Font Awesome class ("fa-solid fa-dice-d20") or an icon name ("Dices"). */
+  icon?: string;
+  /** Show the name on the button (default yes). */
+  showName?: boolean;
+  /** Show the icon on the button (default yes). */
+  showIcon?: boolean;
+  /** Show this button on the sheets this one belongs to (a character's ability list or inventory). Default yes. */
+  listed?: boolean;
+  /** Order among the sheet's buttons. */
+  sortOrder?: number;
+}
+
+/** Long-press a roll: advantage / disadvantage and a one-off modifier. */
+export interface AgRollMods {
+  mode?: "adv" | "dis" | null;
+  /** Added to the total of every roll this press makes. */
+  bonus?: number;
+}
 
 /** What a "choose" step offers before the button runs. */
 export interface AgActionChoice {
@@ -313,6 +366,7 @@ export interface AgAction {
   /** view = who can see the button, edit = who can press it. */
   acl: AgAcl;
   color: string | null;
+  options?: AgActionOptions;
 }
 
 export interface AgActionResultRoll {
@@ -326,6 +380,8 @@ export interface AgActionResult {
   rolls: AgActionResultRoll[];
   changes: { noteId: string; key: string; from: AgValue; to: AgValue }[];
   messages: string[];
+  /** An initiative step put this sheet into the order. */
+  initiative?: { noteId: string; name: string; total: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -391,8 +447,11 @@ export interface AgComponentDef {
 export interface AgLinkColumn {
   ref: string;
   label?: string;
-  /** button: `ref` is the name of a button on each connected sheet (e.g. "use"); text: long text shown in full. */
-  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text";
+  /**
+   * button: `ref` is the name of a button on each connected sheet (e.g. "use"); text: long text shown in full;
+   * rolls: every button on the connected sheet marked "show on the character sheet", with what it rolls and costs.
+   */
+  display?: "value" | "input" | "bar" | "badge" | "toggle" | "button" | "text" | "rolls";
   /** Bars: the max value (another key on the same sheet). */
   maxRef?: string;
   color?: string;

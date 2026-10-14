@@ -75,7 +75,7 @@ function fieldView(f: AgField, viewer: AgViewer): AgField {
   return viewer.isGM || f.type === "dice" ? f : { ...f, formula: null };
 }
 function actionView(a: AgAction, viewer: AgViewer): AgActionView {
-  return { ...a, steps: viewer.isGM ? a.steps : null };
+  return { ...a, steps: viewer.isGM ? a.steps : null, asks: a.steps.some((st) => st.type === "choose") };
 }
 
 function visible(store: ScopeStore, kind: Kind, id: string, viewer: AgViewer): unknown | null {

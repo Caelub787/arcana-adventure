@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, Dices, Image as ImageIcon, Loader2 } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
-import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience } from "@shared/agnostic/types";
+import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience, AgRollMods } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
@@ -18,6 +18,7 @@ import { mergeLook, defaultLabelPos } from "./lookUtil";
 import { LinksTable } from "./links";
 import { AgIcon } from "./icons";
 import { TipIcon } from "./tips";
+import { RollIcon } from "./rollIcons";
 
 // --- battlemap / tracker targets ("@target" in actions) -----------------------------
 let currentTargets: string[] = [];
@@ -462,43 +463,52 @@ function FieldDisplayCore({ noteId, refPath, maxRef, display, label, showLabel =
 }
 
 // --- actions -------------------------------------------------------------------------------
-export function ActionButton({ actionId, label, className = "", look }: { actionId: string; label?: string; className?: string; look?: AgLook }) {
-  const { state, request, scope, realViewer, viewer } = useAg();
+/** Pressing and holding a roll (or right-clicking it) asks for advantage / disadvantage / a modifier first. */
+const HOLD_MS = 450;
+
+export function ActionButton({ actionId, label, className = "", look, compact }: { actionId: string; label?: string; className?: string; look?: AgLook; compact?: boolean }) {
+  const { state, request, scope, realViewer, viewer, system } = useAg();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
-  const [picking, setPicking] = useState<null | { choices: AgActionChoice[]; idx: number; picked: Record<string, string> }>(null);
+  const [picking, setPicking] = useState<null | { choices: AgActionChoice[]; idx: number; picked: Record<string, string>; mods: AgRollMods }>(null);
+  const [asking, setAsking] = useState(false);
+  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
   const action = state.actions.get(actionId);
   const { canRun } = usePerms(action?.noteId);
   if (!action) return realViewer.isGM && !viewer.isGM ? null : realViewer.isGM ? <span className="text-xs text-red-400">[missing action]</span> : null;
   const allowed = canRun(actionId);
-  const run = async () => {
+  const opts = action.options ?? {};
+  const run = async (mods: AgRollMods = {}) => {
     if (!allowed || busy) return;
     // Buttons that ask "which one?" (e.g. which wound a potion heals) get the options first.
-    if (action.steps?.some((st) => st.type === "choose")) {
+    if (action.asks || action.steps?.some((st) => st.type === "choose")) {
       setBusy(true);
       try {
         const { choices } = await request<{ choices: AgActionChoice[] }>({ op: "action.prepare", id: actionId, targetNoteIds: getAgTargets() });
         const empty = choices.find((c) => !c.options.length);
         if (empty) { toast({ title: action.name, description: `Nothing to choose: ${empty.prompt}` }); return; }
-        setPicking({ choices, idx: 0, picked: {} });
+        if (!choices.length) { setBusy(false); await go({}, mods); return; }
+        setPicking({ choices, idx: 0, picked: {}, mods });
       } catch (e: any) { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }
       finally { setBusy(false); }
       return;
     }
-    await go({});
+    await go({}, mods);
   };
-  const go = async (choices: Record<string, string>) => {
+  const go = async (choices: Record<string, string>, mods: AgRollMods) => {
     setBusy(true);
     try {
-      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string; rollerName?: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices });
+      const res = await request<{ result: import("@shared/agnostic/types").AgActionResult; noteName: string; rollerName?: string }>({ op: "action.run", id: actionId, targetNoteIds: getAgTargets(), choices, mods });
       const broadcast = scope.kind === "campaign";
       // A sword's or an ability's roll is the character's roll (their player tracker card shows it).
       const roller = res.rollerName || res.noteName;
       for (const r of res.result.rolls) {
         const label = roller !== res.noteName && !r.label.includes(res.noteName) ? `${res.noteName}: ${r.label}` : r.label;
         triggerRollNotification({
-          type: "custom", label, result: r.total, total: r.total, username: roller, characterName: roller,
+          type: r.name === "initiative" ? "initiative" : "custom", label, result: r.total, total: r.total, username: roller, characterName: roller,
           calculationBreakdown: r.breakdown, customColor: action.color ?? undefined,
+          // CA Agnostic: the chat line shows the working (dice, modifiers, total).
+          chatBreakdown: system === "ca-agnostic" || undefined,
         }, broadcast);
       }
       if (res.result.messages.length) toast({ title: action.name, description: res.result.messages.join("\n") });
@@ -511,25 +521,41 @@ export function ActionButton({ actionId, label, className = "", look }: { action
       setBusy(false);
     }
   };
+  const cancelHold = () => { if (hold.current.timer) { clearTimeout(hold.current.timer); hold.current.timer = null; } };
+  const showName = opts.showName !== false || (!opts.icon && !look?.iconName);
+  const iconEl = busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    : look?.iconName ? <AgIcon name={look.iconName} size={14} color={look.iconColor} />
+    : opts.icon ? (opts.showIcon === false ? null : <RollIcon icon={opts.icon} size={compact ? 14 : 16} color={look?.iconColor} />)
+    : look?.icon === false || opts.showIcon === false ? null : <Dices className="h-3.5 w-3.5" />;
+  const text = label || action.name;
   return (
     <>
     <button
       type="button"
-      onClick={run}
+      onClick={(e) => { if (hold.current.fired) { hold.current.fired = false; e.preventDefault(); return; } void run(); }}
+      onPointerDown={(e) => {
+        if (!allowed || (e.pointerType === "mouse" && e.button !== 0)) return;
+        hold.current.fired = false; cancelHold();
+        hold.current.timer = setTimeout(() => { hold.current.fired = true; hold.current.timer = null; setAsking(true); }, HOLD_MS);
+      }}
+      onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
+      onContextMenu={(e) => { if (!allowed) return; e.preventDefault(); e.stopPropagation(); cancelHold(); setAsking(true); }}
       disabled={!allowed || busy}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 h-8 text-sm font-medium border shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-md ${showName ? "px-3" : "px-2"} h-8 text-sm font-medium border shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed select-none touch-manipulation ${className}`}
       style={{
         background: look?.color ?? action.color ?? "#92400e", borderColor: look?.border ?? "rgba(0,0,0,.4)", color: look?.textColor ?? "#fff",
         height: look?.height, minWidth: look?.minWidth, fontSize: look?.fontSize, borderRadius: look?.radius,
-        fontWeight: look?.bold ? 700 : undefined, fontStyle: look?.italic ? "italic" : undefined,
+        fontWeight: look?.bold ? 700 : undefined, fontStyle: look?.italic ? "italic" : undefined, WebkitTouchCallout: "none",
       }}
-      title={allowed ? action.name : "You can't use this"}
+      title={allowed ? `${action.name} — hold (or right-click) for advantage, disadvantage or a modifier` : "You can't use this"}
+      aria-label={text}
       data-testid={`ag-action-${action.name}`}
     >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : look?.iconName ? <AgIcon name={look.iconName} size={14} color={look.iconColor} /> : look?.icon === false ? null : <Dices className="h-3.5 w-3.5" />}
-      {label || action.name}
+      {iconEl}
+      {showName && text}
     </button>
     {look?.tooltip && <TipIcon text={look.tooltip} className="ml-1" />}
+    {asking && <RollModsPanel name={text} onClose={() => setAsking(false)} onRoll={(mods) => { setAsking(false); void run(mods); }} />}
     {picking && (() => {
       const c = picking.choices[picking.idx];
       return (
@@ -540,7 +566,7 @@ export function ActionButton({ actionId, label, className = "", look }: { action
           onPick={(id) => {
             const picked = { ...picking.picked, [c.name]: id };
             if (picking.idx + 1 < picking.choices.length) setPicking({ ...picking, idx: picking.idx + 1, picked });
-            else { setPicking(null); void go(picked); }
+            else { setPicking(null); void go(picked, picking.mods); }
           }}
           keepOpen
           testId="ag-action-choose"
@@ -548,6 +574,43 @@ export function ActionButton({ actionId, label, className = "", look }: { action
       );
     })()}
     </>
+  );
+}
+
+/** Advantage / disadvantage and a one-off modifier for a single press. */
+export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll: (mods: AgRollMods) => void; onClose: () => void }) {
+  const [mode, setMode] = useState<"adv" | "dis" | null>(null);
+  const [bonus, setBonus] = useState(0);
+  const [text, setText] = useState("0");
+  const set = (n: number) => { const v = Math.max(-999, Math.min(999, Math.round(n))); setBonus(v); setText(String(v)); };
+  const opt = (m: "adv" | "dis" | null, label: string, hint: string, color: string) => (
+    <button type="button" onClick={() => setMode(m)} className={`flex-1 rounded-lg border px-2 py-2 text-left transition-colors ${mode === m ? "bg-stone-800" : "bg-stone-950/60 hover:bg-stone-800/60"}`} style={{ borderColor: mode === m ? color : "#44403c" }} data-testid={`ag-rollmods-${m ?? "normal"}`}>
+      <div className="text-sm font-semibold" style={{ color: mode === m ? color : "#e7e5e4" }}>{label}</div>
+      <div className="text-[10px] text-stone-500 leading-tight">{hint}</div>
+    </button>
+  );
+  return (
+    <AgPanel title={<span>Roll options — {name}</span>} onClose={onClose} width={380} height={330} testId="ag-rollmods"
+      footer={<>
+        <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800" data-testid="ag-rollmods-cancel">Cancel</button>
+        <button type="button" onClick={() => onRoll({ mode, bonus })} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1.5" data-testid="ag-rollmods-roll"><Dices className="h-4 w-4" /> Roll</button>
+      </>}>
+      <div className="flex gap-1.5">
+        {opt("adv", "Advantage", "Roll twice, keep the higher", "#22c55e")}
+        {opt(null, "Normal", "One roll", "#d4a24c")}
+        {opt("dis", "Disadvantage", "Roll twice, keep the lower", "#ef4444")}
+      </div>
+      <div>
+        <div className="text-[11px] text-stone-400 mb-1">Temporary modifier (this roll only)</div>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => set(bonus - 1)} className="h-9 w-9 grid place-items-center rounded border border-stone-700 bg-stone-800 text-stone-200"><Minus className="h-4 w-4" /></button>
+          <input value={text} inputMode="numeric" onChange={(e) => { setText(e.target.value); const n = Number(e.target.value); if (Number.isFinite(n)) setBonus(Math.round(n)); }} onBlur={() => set(bonus)}
+            className="h-9 w-20 text-center bg-stone-950 border border-stone-700 rounded text-sm" data-testid="ag-rollmods-bonus" />
+          <button type="button" onClick={() => set(bonus + 1)} className="h-9 w-9 grid place-items-center rounded border border-stone-700 bg-stone-800 text-stone-200"><Plus className="h-4 w-4" /></button>
+          <div className="flex gap-1 ml-1">{[-2, 2, 5].map((n) => <button key={n} type="button" onClick={() => set(bonus + n)} className="h-9 px-2 rounded bg-stone-800 text-xs text-stone-300">{n > 0 ? `+${n}` : n}</button>)}</div>
+        </div>
+      </div>
+    </AgPanel>
   );
 }
 

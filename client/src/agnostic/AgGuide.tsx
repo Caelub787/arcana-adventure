@@ -399,6 +399,7 @@ const TOPICS: Topic[] = [
           <li>Name it, add steps, choose its colour and who can see and press it.</li>
           <li>Save and insert. Buttons also go on canvases, player tracker cards and components.</li>
         </Steps>
+        <P><b>Hold a roll</b> (or right-click it) for <Ui>Advantage</Ui> (roll twice, keep the higher), <Ui>Disadvantage</Ui> (keep the lower) or a temporary modifier for that one roll, then <Ui>Roll</Ui>. Every roll button works this way. <Ui>Join initiative</Ui> rolls and puts the sheet (or the character it belongs to) into the campaign's initiative order. The <Ui>Rolls</Ui> insert builds rolls from boxes instead of steps — dice, die, an added value, a bonus, costs, an icon (dice, themed icons, or any Font Awesome icon pasted in) — and chooses which show on the character sheet.</P>
         <P><Ui>Stop here</Ui> ends the button early — give it an <Ui>Only if</Ui> (after a message saying why), e.g. stop when <Code>@holder.energy &lt; energy_cost</Code>. A roll's “Shown as” can use <Code>{"{name}"}</Code> and other values. A roll made from an item or ability counts as its character's roll (it shows on their player tracker card).</P>
         <Tip><Code>@target</Code> means the token(s) currently targeted on the battlemap, so one “Attack” button can roll and take HP off whatever is targeted.</Tip>
       </>
@@ -460,7 +461,9 @@ const TOPICS: Topic[] = [
           <li>Rank: <Code>tier(energy_pool, 0, 20, 30, …)</Code> finds the step on the ladder; <Code>choose(rank_index, 20, 25, …)</Code> reads Max HP off a list.</li>
           <li>Skill rolls: <Code>roll(1, might_die) + athletics</Code>.</li>
           <li>Points spent use <Code>base(athletics)</Code>, so a wound's −2 doesn't give points back.</li>
-          <li>Abilities are their own sheets (<b>CA Ability</b>) held by a character, listed on the Ability tab with search, filters and a <Ui>Use</Ui> button. Use checks <Code>usable</Code>, <Ui>Stop here</Ui>s if there isn't enough Energy/Focus, takes the cost off <Code>@holder.energy</Code> / <Code>@holder.focus</Code>, then rolls <Code>roll(dice_count, die) + skill_bonus + bonus</Code> and the effect dice. The GM adds one with <Ui>Add</Ui> on a character's Ability tab and opens it to set its cost, roll and effect.</li>
+          <li>Abilities are their own sheets (<b>CA Ability</b>) held by a character, listed on the Ability tab with search and filters. Each ability has <b>Rolls</b>: as many as you like (an attack and its damage, two with different costs…), each with its own name, dice, die (fixed or the holder's attribute die), a value it adds (a skill), a bonus and an Energy / Focus cost. Pressing one spends the cost first — or says why it can't. Tick <Ui>Button on the character sheet</Ui> for the ones that show on the Ability tab. Items have the same Rolls (a weapon starts with Strike and Damage).</li>
+          <li><Ui>Roll initiative</Ui> on the Overview rolls <Code>1d20 + finesse</Code> and puts the character into the Initiative list (the <Ui>Join initiative</Ui> step).</li>
+          <li>New sheets start hidden from players — use <Ui>Share</Ui> (on the sheet, or right-click it in the list) to give them out.</li>
           <li>Heal a wound: <Ui>Choose a sheet</Ui> from <Code>@owner.wounds</Code> filtered by severity, then <Ui>Remove a sheet</Ui> <Code>$wound</Code> (the pick), then take one off <Code>qty</Code> and remove the potion when it's at 0.</li>
         </Bullets>
         <H>Adding more ranks later</H>
@@ -506,7 +509,7 @@ const TOPICS: Topic[] = [
           <li>Edit the card design with the layout editor: portrait, name, bars, values, buttons, last roll, components. Make several cards and choose which kind of sheet (or which sheet) uses which.</li>
         </Steps>
         <P>Clicking a card opens the sheet; bars and buttons on the card work directly.</P>
-        <P><b>It's the dice tray.</b> Every roll made as that sheet — its buttons, its items' and abilities' buttons, its owner's own rolls — slides out from its card, tumbles, settles on the total and tucks away. Hover the card to see the last roll again; click the roll for the recent ones. Turn it off in <Ui>Design the player tracker</Ui> → <Ui>Dice tray</Ui>.</P>
+        <P><b>It's the dice tray.</b> Every roll made as that sheet — its buttons, its items' and abilities' buttons, its owner's own rolls — slides out from its card, tumbles, settles on the total and tucks away. Hover the card to see the last roll again; click the roll for the recent ones. In CA Agnostic each roll shows its working (the dice, what was added, the total) here, in chat and in the tracker's <Ui>Roll history</Ui> button. Turn the tray off in <Ui>Design the player tracker</Ui> → <Ui>Dice tray</Ui>.</P>
         <H>Tokens</H>
         <Bullets>
           <li>Drag a sheet from the list onto the map, or right-click it → <Ui>Place on battlemap</Ui>. Any sheet can be a token; double-click a token to open its sheet.</li>

@@ -4383,6 +4383,7 @@ export class GameWebSocket {
     calculationBreakdown?: string;
     isHealing?: boolean;
     customColor?: string;
+    chatBreakdown?: boolean;
   }) {
     if (!this.campaignId) {
       return;

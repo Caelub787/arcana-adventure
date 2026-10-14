@@ -496,6 +496,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const removed = await db.delete(tokensTable).where(eq(tokensTable.agnosticNoteId, noteId)).returning({ id: tokensTable.id });
       for (const t of removed) broadcastToCampaign(campaignId, { type: "token_deleted", tokenId: t.id });
     },
+    // An Agnostic sheet's "join initiative" step: one row per sheet, re-rolling replaces it.
+    joinInitiative: async (campaignId, sheet, value) => {
+      const existing = await db.select({ id: initiativeEntries.id }).from(initiativeEntries)
+        .where(and(eq(initiativeEntries.campaignId, campaignId), eq(initiativeEntries.agnosticNoteId, sheet.noteId))).limit(1);
+      if (existing[0]) {
+        await db.update(initiativeEntries).set({ value, agnosticName: sheet.name, agnosticPortrait: sheet.portrait }).where(eq(initiativeEntries.id, existing[0].id));
+      } else {
+        await db.insert(initiativeEntries).values({ campaignId, characterId: null, agnosticNoteId: sheet.noteId, agnosticName: sheet.name, agnosticPortrait: sheet.portrait, value, isHidden: false });
+      }
+      broadcastToCampaign(campaignId, { type: "initiative_update", campaignId });
+    },
   });
 
   httpServer.on("upgrade", (req, socket, head) => {
@@ -2630,7 +2641,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               const detailText = detail.length > 0 ? ` ${detail.join(' ')}` : '';
               const totalText = typeof notification.total === 'number' ? ` = ${notification.total}` : '';
-              const rollText = `${parts.join(' ')}:${detailText}${totalText}`.replace(/\s+/g, ' ').trim();
+              // CA Agnostic rolls carry their working ("1d20 [14] + 3 Athletics = 17"): chat shows it whole.
+              const working = notification.chatBreakdown && typeof notification.calculationBreakdown === 'string'
+                ? String(notification.calculationBreakdown).slice(0, 600) : '';
+              const rollText = (working
+                ? `${parts.join(' ')}: ${working}`
+                : `${parts.join(' ')}:${detailText}${totalText}`).replace(/\s+/g, ' ').trim();
               rollChatMessage = await storage.createChatMessage({
                 campaignId,
                 userId: authenticatedUserId,
@@ -4376,20 +4392,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (campaign.inCombat) {
         const rawInit = await storage.getCampaignInitiative(campaign.id);
         const visibleInit = rawInit.filter(e => !e.isHidden);
-        const initCharIds = visibleInit.map(e => e.characterId);
+        const initCharIds = visibleInit.map(e => e.characterId).filter((id): id is string => !!id);
         const initChars = initCharIds.length > 0
           ? await storage.getCharactersByIds(initCharIds)
           : [];
         const initCharMap = new Map(initChars.map(c => [c.id, c]));
         initiative = visibleInit.map(e => {
-          const ch = initCharMap.get(e.characterId);
+          // Agnostic sheets aren't characters: they carry their own name and portrait.
+          const entryId = e.characterId ?? e.agnosticNoteId ?? e.id;
+          const ch = e.characterId ? initCharMap.get(e.characterId) : undefined;
           return {
             id: e.id,
-            characterId: e.characterId,
-            name: ch?.nickname || ch?.name || "Unknown",
-            portrait: ch?.portrait ?? null,
+            characterId: entryId,
+            name: ch?.nickname || ch?.name || e.agnosticName || "Unknown",
+            portrait: ch?.portrait ?? e.agnosticPortrait ?? null,
             value: e.value,
-            isCurrentTurn: campaign.currentTurnCharacterId === e.characterId,
+            isCurrentTurn: campaign.currentTurnCharacterId === entryId,
           };
         });
       }

@@ -10,13 +10,14 @@ import { Fragment } from "@tiptap/pm/model";
 import type { AgLayout, AgLayoutItem, AgLook } from "@shared/agnostic/types";
 import { regionDocName } from "@shared/agnostic/types";
 import { describeAudience } from "@shared/agnostic/acl";
-import { useAg, useAgMaybe, useMemberName } from "../hooks";
+import { useAg, useAgMaybe, useMemberName, connectionLabels } from "../hooks";
 import { FieldDisplay, ActionButton, ChartWidget, LinksTable, NoteChip, ComponentView, LayoutView } from "../widgets";
 import { LayoutEditor, RefList } from "../LayoutEditor";
 import { RefPicker, AclEditor, ComponentPicker } from "../pickers";
 import { AgPanel, agConfirm } from "../float";
 import { AgIcon, IconGrid } from "../icons";
 import { LinksConfigEditor } from "../links";
+import { RollsBlock } from "../rolls";
 import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, type LookKind } from "../look";
@@ -516,6 +517,57 @@ export const AgLinks = Node.create({
   addNodeView: () => ReactNodeViewRenderer(LinksView, { stopEvent: stopInside }),
 });
 
+/** Settings of a Rolls block: who rolls and pays, and what new rolls can cost. */
+export function RollsConfig({ noteId, attrs, update }: { noteId: string; attrs: any; update: (a: any) => void }) {
+  const ag = useAgMaybe();
+  const labels = ag ? connectionLabels(ag.state, noteId) : [];
+  const costs: string[] = Array.isArray(attrs.costs) ? attrs.costs : [];
+  const [cost, setCost] = useState("");
+  return (
+    <div className="space-y-2">
+      <Row label="Who rolls">
+        <input list="ag-rolls-via" value={attrs.via ?? ""} placeholder="(this sheet)" onChange={(e) => update({ via: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })} className="h-7 w-full bg-stone-900 border border-stone-700 rounded px-1.5 text-xs font-mono" data-testid="ag-rolls-via" />
+        <datalist id="ag-rolls-via">{labels.map((l) => <option key={l} value={l} />)}{["holder", "owner"].filter((l) => !labels.includes(l)).map((l) => <option key={l} value={l} />)}</datalist>
+      </Row>
+      <div className="text-[10px] text-stone-500">The connection to the sheet that rolls and pays — e.g. <span className="font-mono">holder</span> on an ability, <span className="font-mono">owner</span> on an item. Empty: this sheet rolls.</div>
+      <Row label="Costs">
+        <div className="flex flex-wrap items-center gap-1">
+          {costs.map((c) => <span key={c} className="inline-flex items-center gap-1 h-6 px-1.5 rounded bg-stone-800 text-[11px] font-mono">{c}<button type="button" onClick={() => update({ costs: costs.filter((x) => x !== c) })} className="text-stone-500 hover:text-red-400">×</button></span>)}
+          <input value={cost} onChange={(e) => setCost(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter" && cost) { update({ costs: [...costs.filter((x) => x !== cost), cost] }); setCost(""); } }} placeholder="energy ⏎" className="h-6 w-20 bg-stone-900 border border-stone-700 rounded px-1 text-[11px] font-mono" />
+        </div>
+      </Row>
+      <div className="text-[10px] text-stone-500">Values on that sheet every new roll starts with a cost box for (e.g. energy, focus).</div>
+      <Row label="Colour"><input type="color" value={attrs.color || "#9f1239"} onChange={(e) => update({ color: e.target.value })} className="h-7 w-12 bg-transparent" /></Row>
+    </div>
+  );
+}
+
+function RollsView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  const ag = useAgMaybe();
+  if (!ctx || !ag) return <NodeViewWrapper />;
+  const a = p.node.attrs;
+  const look = nodeLook(a);
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="rolls" frame={{ look, onLook: lookUpdater(p) }} tools={<>
+      <ConfigPopover title="Rolls" look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
+        <RollsConfig noteId={ctx.noteId} attrs={a} update={(x) => p.updateAttributes(x)} />
+      </ConfigPopover>
+      <ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
+    </>}>
+      <div contentEditable={false}><RollsBlock noteId={ctx.noteId} attrs={{ via: a.via ?? "", costs: Array.isArray(a.costs) ? a.costs : [], color: a.color || undefined }} /></div>
+    </Shell>
+  );
+}
+
+export const AgRolls = Node.create({
+  name: "agRolls", group: "block", atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ via: { default: "" }, costs: { default: [] }, color: { default: "" }, look: { default: {} } }),
+  parseHTML: () => [{ tag: "div[data-ag-rolls]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-rolls": "" })],
+  addNodeView: () => ReactNodeViewRenderer(RollsView, { stopEvent: stopInside }),
+});
+
 function NoteLinkView(p: NodeViewProps) {
   return (
     <NodeViewWrapper as="span" className={p.selected ? "ring-1 ring-amber-400 rounded-full" : ""}>
@@ -744,5 +796,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgNoteLink, AgComponent];
 

@@ -48,6 +48,7 @@ const rowToModifier = (r: typeof agnosticModifiers.$inferSelect): AgModifier => 
 });
 const rowToAction = (r: typeof agnosticActions.$inferSelect): AgAction => ({
   id: r.id, noteId: r.noteId, name: r.name, steps: r.steps ?? [], acl: normalizeAcl(r.acl), color: r.color,
+  ...(r.options ? { options: r.options } : {}),
 });
 const rowToComponent = (r: typeof agnosticComponents.$inferSelect): AgComponentDef => ({
   id: r.id, scope: r.scope as AgComponentDef["scope"], scopeId: r.scopeId, name: r.name, params: r.params ?? [], layout: r.layout, updatedAt: ms(r.updatedAt),
@@ -133,7 +134,7 @@ export async function upsertModifier(m: AgModifier) {
 export async function deleteModifier(id: string) { await db.delete(agnosticModifiers).where(eq(agnosticModifiers.id, id)); }
 
 export async function upsertAction(a: AgAction) {
-  await db.insert(agnosticActions).values(a).onConflictDoUpdate({ target: agnosticActions.id, set: { name: a.name, steps: a.steps, acl: a.acl, color: a.color } });
+  await db.insert(agnosticActions).values(a).onConflictDoUpdate({ target: agnosticActions.id, set: { name: a.name, steps: a.steps, acl: a.acl, color: a.color, options: a.options ?? null } });
 }
 export async function deleteAction(id: string) { await db.delete(agnosticActions).where(eq(agnosticActions.id, id)); }
 
@@ -151,13 +152,13 @@ const FIELD_UPDATE = ["noteId", "key", "label", "type", "value", "formula", "opt
 const REGION_UPDATE = ["acl", "inline", "label", "templateRegionId"];
 const LINK_UPDATE = ["label", "reverseLabel", "acl"];
 const MODIFIER_UPDATE = ["via", "targetKey", "op", "amount", "condition", "label"];
-const ACTION_UPDATE = ["name", "steps", "acl", "color"];
+const ACTION_UPDATE = ["name", "steps", "acl", "color", "options"];
 const COMPONENT_UPDATE = ["name", "params", "layout", "updatedAt"];
 const DOC_UPDATE = ["state", "updatedAt"];
 const regionRow = (r: AgRegion) => ({ id: r.id, noteId: r.noteId, acl: r.acl, inline: r.inline, label: r.label, templateRegionId: r.templateRegionId });
 const linkRow = (l: AgLink) => ({ id: l.id, fromNoteId: l.fromNoteId, toNoteId: l.toNoteId, label: l.label, reverseLabel: l.reverseLabel, acl: l.acl, createdAt: new Date(l.createdAt) });
 const modifierRow = (m: AgModifier) => ({ id: m.id, noteId: m.noteId, via: m.via, targetKey: m.targetKey, op: m.op, amount: m.amount, condition: m.condition, label: m.label });
-const actionRow = (a: AgAction) => ({ id: a.id, noteId: a.noteId, name: a.name, steps: a.steps, acl: a.acl, color: a.color });
+const actionRow = (a: AgAction) => ({ id: a.id, noteId: a.noteId, name: a.name, steps: a.steps, acl: a.acl, color: a.color, options: a.options ?? null });
 const componentRow = (c: AgComponentDef) => ({ id: c.id, scope: c.scope, scopeId: c.scopeId, name: c.name, params: c.params, layout: c.layout, updatedAt: new Date(c.updatedAt) });
 
 export const later = {

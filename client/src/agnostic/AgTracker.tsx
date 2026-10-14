@@ -20,7 +20,7 @@ import { GuideButton } from "./AgGuide";
 import type { AgTokenBar } from "@shared/agnostic/types";
 
 /** A roll as the campaign's roll feed carries it (newest first). */
-export interface RollFeedLike { id?: string; userId?: string; username?: string; characterName?: string; text?: string; label?: string; total?: number | null; ts?: number; timestamp?: number; dieType?: string; historical?: boolean }
+export interface RollFeedLike { id?: string; userId?: string; username?: string; characterName?: string; text?: string; label?: string; total?: number | null; ts?: number; timestamp?: number; dieType?: string; historical?: boolean; breakdown?: string }
 
 export function cardFor(settings: AgCampaignSettings, noteId: string, type: string): AgTrackerCard {
   const t = settings.tracker;
@@ -34,8 +34,11 @@ export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean
 }
 
 function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
-  const { state, openNote, viewer } = useAg();
+  const { state, openNote, viewer, system } = useAg();
   const [designing, setDesigning] = useState(false);
+  const [history, setHistory] = useState(false);
+  // CA Agnostic: rolls show their working, and the tracker keeps a roll history button.
+  const ca = system === "ca-agnostic";
   const play = usePlayView();
   const settings = state.settings;
   if (!settings) return null;
@@ -69,7 +72,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
           {notes.map((n) => {
             const card = cardFor(settings, n.id, n.type);
             return (
-              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border}>
+              <TrackerSlot key={n.id} note={n} rolls={rollsOf(n)} tray={tray} side={trayFrom} accent={card.layout.border} working={ca}>
                 <div
                   role="button"
                   tabIndex={0}
@@ -85,13 +88,62 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
               </TrackerSlot>
             );
           })}
+          {ca && notes.length > 0 && (
+            <button type="button" onClick={() => setHistory(true)} className="pointer-events-auto shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-300 hover:text-amber-300" title="Roll history" data-testid="ag-tracker-history"><Dices className="h-4 w-4" /></button>
+          )}
           {viewer.isGM && !play && (
             <button type="button" onClick={() => setDesigning(true)} className="pointer-events-auto shrink-0 self-center h-8 w-8 grid place-items-center rounded-full bg-stone-900/80 border border-stone-700 text-stone-400 hover:text-amber-300" title="Design the player tracker" data-testid="ag-tracker-design"><Settings2 className="h-4 w-4" /></button>
           )}
         </div>
       </div>
       {designing && <TrackerDesigner onClose={() => setDesigning(false)} />}
+      {history && <RollHistory notes={notes} rollsOf={rollsOf} onClose={() => setHistory(false)} />}
     </>
+  );
+}
+
+/** Every recent roll by the sheets on the player tracker, with its working; filter by sheet. */
+function RollHistory({ notes, rollsOf, onClose }: { notes: AgNote[]; rollsOf: (n: AgNote) => RollFeedLike[]; onClose: () => void }) {
+  const [only, setOnly] = useState<string | null>(null);
+  const rows = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ r: RollFeedLike; who: AgNote }> = [];
+    for (const n of notes) for (const r of rollsOf(n)) {
+      const k = r.id ?? `${r.ts}-${r.total}-${r.text}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ r, who: n });
+    }
+    return out.sort((a, b) => (b.r.ts ?? b.r.timestamp ?? 0) - (a.r.ts ?? a.r.timestamp ?? 0));
+  }, [notes, rollsOf]);
+  const shown = only ? rows.filter((x) => x.who.id === only) : rows;
+  return (
+    <AgPanel title={<span className="inline-flex items-center gap-1.5"><Dices className="h-4 w-4 text-amber-400" />Roll history</span>} onClose={onClose} width={420} height={520} testId="ag-roll-history">
+      <div className="flex flex-wrap gap-1">
+        <button type="button" onClick={() => setOnly(null)} className={`h-7 px-2.5 rounded-full border text-[11px] ${!only ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-400"}`}>Everyone</button>
+        {notes.map((n) => <button key={n.id} type="button" onClick={() => setOnly(n.id)} className={`h-7 px-2.5 rounded-full border text-[11px] ${only === n.id ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-400"}`}>{n.name || "Untitled"}</button>)}
+      </div>
+      <div className="space-y-1.5">
+        {shown.slice(0, 60).map(({ r, who }, i) => <RollRow key={(r.id ?? "") + i} r={r} who={only ? null : who.name} />)}
+        {!shown.length && <div className="text-xs text-stone-500">No rolls yet.</div>}
+      </div>
+    </AgPanel>
+  );
+}
+
+const timeOf = (r: RollFeedLike) => { const t = r.ts ?? r.timestamp; return t ? new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
+
+/** One roll: what, by whom, its working and its total. */
+function RollRow({ r, who, color = "#d4a24c" }: { r: RollFeedLike; who?: string | null; color?: string }) {
+  return (
+    <div className="rounded-md border border-stone-800 bg-stone-950/60 px-2 py-1.5" data-testid="ag-roll-row">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="flex-1 min-w-0 truncate text-stone-200">{who && <span className="text-stone-500">{who} · </span>}{r.text || r.label || "Roll"}</span>
+        <span className="text-[10px] text-stone-600 shrink-0">{timeOf(r)}</span>
+        {r.total !== null && r.total !== undefined && <span className="font-mono font-bold text-sm shrink-0" style={{ color }}>{r.total}</span>}
+      </div>
+      {r.breakdown && <div className="mt-0.5 font-mono text-[10.5px] leading-snug text-stone-400 break-words" data-testid="ag-roll-working">{r.breakdown}</div>}
+    </div>
   );
 }
 
@@ -102,7 +154,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
 type TraySide = "below" | "above" | "left" | "right";
 const TRAY_W = 150, TRAY_H = 62, REVEAL_MS = 3200;
 
-function TrackerSlot({ note, rolls, tray, side, accent, children }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode }) {
+function TrackerSlot({ note, rolls, tray, side, accent, children, working }: { note: AgNote; rolls: RollFeedLike[]; tray: boolean; side: TraySide; accent?: string; children: React.ReactNode; working?: boolean }) {
   const latest = rolls[0];
   const key = (r?: RollFeedLike) => (r ? r.id ?? `${r.ts}-${r.total}-${r.text ?? r.label}` : undefined);
   const lastSeen = useRef<string | undefined>(key(latest));
@@ -146,18 +198,21 @@ function TrackerSlot({ note, rolls, tray, side, accent, children }: { note: AgNo
       {tray && latest && (
         <div className="absolute z-10" style={{ ...sideStyle, pointerEvents: open ? "auto" : "none" }}>
           <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}
-            className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 transition-all duration-300 ease-out"
-            style={{ width: TRAY_W, height: TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
-            title="Recent rolls" data-testid={`ag-dice-tray-${note.name}`}>
+            className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 py-1 transition-all duration-300 ease-out"
+            style={{ width: working && latest.breakdown ? TRAY_W + 70 : TRAY_W, minHeight: TRAY_H, background: "rgba(19,20,28,0.95)", borderColor: color, opacity: open ? 1 : 0, transform: open ? "none" : hidden, boxShadow: rolling !== null ? `0 0 12px 2px color-mix(in srgb, ${color} 55%, transparent)` : undefined }}
+            title={latest.breakdown ? `${latest.text || latest.label || "Roll"}: ${latest.breakdown}` : "Recent rolls"} data-testid={`ag-dice-tray-${note.name}`}>
             <span className="text-[10px] text-stone-300 truncate max-w-full leading-tight">{latest.text || latest.label || "Roll"}</span>
             <span className={`text-xl font-bold leading-tight ${rolling !== null ? "animate-pulse" : ""}`} style={{ color }}>{rolling ?? latest.total ?? ""}</span>
+            {working && latest.breakdown && rolling === null && <span className="text-[9px] font-mono text-stone-400 leading-tight max-w-full line-clamp-2 text-center" data-testid="ag-dice-tray-working">{latest.breakdown}</span>}
           </button>
         </div>
       )}
       {history && (
         <AgPanel title={<span className="inline-flex items-center gap-1.5"><Dices className="h-4 w-4 text-amber-400" />{note.name || "Sheet"} — recent rolls</span>} onClose={() => setHistory(false)} width={320} height={360} testId="ag-dice-history">
           <div className="space-y-1">
-            {rolls.slice(0, 30).map((r, i) => (
+            {rolls.slice(0, 30).map((r, i) => working
+              ? <RollRow key={key(r) ?? i} r={r} color={color} />
+              : (
               <div key={key(r) ?? i} className="flex items-center gap-2 text-xs text-stone-300 border-b border-stone-800 pb-1 last:border-0">
                 <span className="flex-1 min-w-0 truncate">{r.text || r.label || "Roll"}</span>
                 {r.total !== null && r.total !== undefined && <span className="font-mono font-bold" style={{ color }}>{r.total}</span>}

@@ -229,6 +229,8 @@ export interface EvalContext {
   local?(name: string): FValue | undefined;
   /** Supplying this enables dice; omitted → dice are an error (fields must be deterministic). */
   rollDie?(sides: number): number;
+  /** Rolls: what a value is called, so the working reads "+ 2 Athletics" rather than "+ 2". */
+  name?(path: string[], abs?: string): string | undefined;
 }
 
 export interface EvalResult {
@@ -292,7 +294,8 @@ export function evaluate(node: FNode, ctx: EvalContext): EvalResult {
       }
       case "ref": {
         const v = ctx.ref(n.path, n.abs);
-        return { v, s: fmt(v) };
+        const called = ctx.name?.(n.path, n.abs);
+        return { v, s: called ? `${fmt(v)} ${called}` : fmt(v) };
       }
       case "dice": {
         if (!ctx.rollDie) throw new FormulaError("Dice can only be used in roll buttons");

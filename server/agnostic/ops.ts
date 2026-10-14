@@ -3,7 +3,7 @@
 // player from changing something.
 import { randomUUID } from "crypto";
 import type {
-  AgAcl, AgAction, AgActionChoice, AgActionResult, AgActionStep, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
+  AgAcl, AgAction, AgActionChoice, AgActionOptions, AgActionResult, AgActionStep, AgCampaignSettings, AgRollMods, AgRollSpec, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
   AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
 } from "@shared/agnostic/types";
 import { defaultCampaignSettings, isValidKey, slugifyKey } from "@shared/agnostic/types";
@@ -17,11 +17,14 @@ import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
 import * as snap from "./snapshot";
 import { applyCAKit } from "./kits/ca";
+import { systemOfScope } from "./systemSeed";
 import * as repo from "./repo";
 
 export interface HostHooks {
   /** Remove battlemap tokens that stood for a deleted note. */
   deleteTokensForNote(campaignId: string, noteId: string): Promise<void>;
+  /** Put a sheet into the campaign's initiative order (or update its place). */
+  joinInitiative?(campaignId: string, sheet: { noteId: string; name: string; portrait: string | null }, value: number): Promise<void>;
 }
 
 export class OpError extends Error {}
@@ -159,10 +162,45 @@ function cleanSteps(raw: unknown): AgActionStep[] {
       steps.push({ type: "message", text: String(s.text ?? "").slice(0, 1000) });
     } else if (s?.type === "stop") {
       steps.push({ type: "stop" });
+    } else if (s?.type === "initiative") {
+      const expr = String(s.expr ?? "").slice(0, 500) || "1d20";
+      try { parseFormula(expr); } catch (e) { fail(`Initiative: ${(e as Error).message}`); }
+      steps.push({ type: "initiative", expr, label: s.label ? String(s.label).slice(0, 80) : undefined });
     }
     if (when && steps.length > before) steps[steps.length - 1].when = when;
   }
   return steps;
+}
+
+/** A button's look and its simple roll, bounded and checked like everything else. */
+function cleanActionOptions(raw: unknown): AgActionOptions | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as any;
+  const out: AgActionOptions = {};
+  const formula = (v: unknown, what: string, d: string) => {
+    const t = String(v ?? "").slice(0, 500).trim() || d;
+    try { parseFormula(t); } catch (e) { fail(`${what}: ${(e as Error).message}`); }
+    return t;
+  };
+  if (o.roll && typeof o.roll === "object") {
+    const r = o.roll;
+    out.roll = {
+      via: labelKey(r.via ?? "") || "",
+      count: formula(r.count, "Dice", "1"),
+      die: formula(r.die, "Die", "20"),
+      add: typeof r.add === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.add) ? r.add : "",
+      bonus: formula(r.bonus, "Bonus", "0"),
+      costs: (Array.isArray(r.costs) ? r.costs : []).slice(0, 8)
+        .filter((c: any) => c && typeof c.key === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(c.key))
+        .map((c: any) => ({ key: c.key, amount: formula(c.amount, "Cost", "0") })),
+    };
+  }
+  if (typeof o.icon === "string" && o.icon.trim()) out.icon = o.icon.trim().slice(0, 120);
+  if (typeof o.showName === "boolean") out.showName = o.showName;
+  if (typeof o.showIcon === "boolean") out.showIcon = o.showIcon;
+  if (typeof o.listed === "boolean") out.listed = o.listed;
+  if (typeof o.sortOrder === "number" && Number.isFinite(o.sortOrder)) out.sortOrder = o.sortOrder;
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** The sheets a "choose" step offers: its connection path, filtered, and only ones this viewer can see. */
@@ -248,6 +286,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "note.create": {
       requireGM(viewer);
       const name = cleanLabel(body.name) || "Untitled";
+      const hiddenByDefault = (await systemOfScope(store.scope).catch(() => null)) === "ca-agnostic";
       const type = labelKey(body.type) || "note";
       return store.run(async (cs) => {
         if (body.templateId) {
@@ -264,7 +303,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           isTemplate: !!body.isTemplate, templateMeta: body.isTemplate ? { version: 1 } : null,
           // A template's own permissions are what its sheets start with; the
           // template itself is always GM-only (see acl.ts templateGuard).
-          acl: { view: "everyone", edit: "gm" },
+          // CA Agnostic: nothing is visible to players until the GM shares it.
+          acl: { view: hiddenByDefault ? "owners" : "everyone", edit: "gm" },
         });
         await store.putNote(n, cs);
         let order = 0;
@@ -570,7 +610,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           id: existing?.id ?? randomUUID(), noteId: a.noteId, name: cleanLabel(a.name, 80) || "Action", steps,
           acl: a.acl ? normalizeAcl(a.acl) : existing?.acl ?? { view: "inherit", edit: "owners" },
           color: a.color ? String(a.color).slice(0, 40) : existing?.color ?? null,
+          options: a.options !== undefined ? cleanActionOptions(a.options) : existing?.options,
         };
+        if (!action.options) delete action.options;
         await store.putAction(action, cs);
         return { actionId: action.id };
       });
@@ -605,14 +647,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       const note = noteOf(store, action.noteId);
       if (!canRunAction(action, note, viewer)) fail("You can't use that");
       const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
+      const mods = cleanMods(body.mods);
       return store.run(async (cs) => {
-        const result = await executeAction(store, action, targets, cs, { viewer, choices: body.choices ?? {}, host: ctx.host });
+        const result = await executeAction(store, action, targets, cs, { viewer, choices: body.choices ?? {}, host: ctx.host, mods });
         // Who the roll belongs to: the sheet itself if it's a character/NPC, else the
         // character it hangs off (a sword's owner, an ability's holder) — so the roll
         // lands under that character's player tracker card.
-        const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
-        let roller = isPerson(note) ? note : undefined;
-        if (!roller) for (const l of Array.from(store.links.values())) if (l.fromNoteId === note.id && isPerson(store.notes.get(l.toNoteId))) { roller = store.notes.get(l.toNoteId); break; }
+        const roller = personOf(store, note);
         return { result, noteName: note.name, rollerName: roller?.name ?? note.name };
       });
     }
@@ -715,7 +756,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
             note: { ...t.note, isTemplate: true, templateMeta: { version: 1, description: t.note.templateMeta?.description }, ownerIds: [], templateId: null, templateVersion: null, name: cleanLabel(t.note.name) || "Imported template" },
             fields: (t.fields ?? []).map((f) => ({ ...f, options: cleanOptions(f.options), acl: normalizeAcl(f.acl) })),
             regions: (t.regions ?? []).map((r) => ({ ...r, acl: normalizeAcl(r.acl) })),
-            actions: (t.actions ?? []).map((a) => ({ ...a, steps: cleanSteps(a.steps), acl: normalizeAcl(a.acl) })),
+            actions: (t.actions ?? []).map((a) => ({ ...a, steps: cleanSteps(a.steps), acl: normalizeAcl(a.acl), options: cleanActionOptions(a.options) })),
             modifiers: t.modifiers ?? [],
             docs: Object.fromEntries(Object.entries(t.docs ?? {}).filter(([, v]) => typeof v === "string" && v.length < 5_000_000)),
           };
@@ -751,14 +792,114 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   return { ok: true };
 }
 
+const isPerson = (n?: AgNote) => !!n && (n.type === "character" || n.type === "npc");
+/** The character a sheet stands for: itself, or the character/NPC it hangs off (a sword's owner). */
+function personOf(store: ScopeStore, note: AgNote): AgNote | undefined {
+  if (isPerson(note)) return note;
+  for (const l of Array.from(store.links.values())) if (l.fromNoteId === note.id && isPerson(store.notes.get(l.toNoteId))) return store.notes.get(l.toNoteId);
+  return undefined;
+}
+
+function cleanMods(raw: unknown): AgRollMods {
+  const m = (raw && typeof raw === "object" ? raw : {}) as any;
+  const bonus = Number(m.bonus);
+  return { mode: m.mode === "adv" || m.mode === "dis" ? m.mode : null, bonus: Number.isFinite(bonus) ? Math.max(-1000, Math.min(1000, Math.round(bonus))) : 0 };
+}
+const round2 = (x: number) => Math.round(x * 100) / 100;
+const signed = (x: number) => (x < 0 ? `− ${round2(-x)}` : `+ ${round2(x)}`);
+
+/**
+ * Roll an expression once, or twice keeping the better/worse (advantage /
+ * disadvantage), then add the press's one-off modifier. The working says which.
+ */
+function rollWithMods(once: () => { total: number; breakdown: string }, mods: AgRollMods): { total: number; breakdown: string } {
+  let r = once();
+  if (mods.mode) {
+    const r2 = once();
+    const keepSecond = mods.mode === "adv" ? r2.total > r.total : r2.total < r.total;
+    const kept = keepSecond ? r2 : r, dropped = keepSecond ? r : r2;
+    r = { total: kept.total, breakdown: `${kept.breakdown}  (${mods.mode === "adv" ? "advantage" : "disadvantage"}: kept ${round2(kept.total)}, dropped ${round2(dropped.total)})` };
+  }
+  if (mods.bonus) r = { total: r.total + mods.bonus, breakdown: `${r.breakdown} ${signed(mods.bonus)} temp` };
+  return r;
+}
+
+/** Roll a step's expression (a lone dice value rolls its own dice so the working shows them). */
+function rollExpr(store: ScopeStore, noteId: string, exprIn: string, locals: Record<string, any>, roots: Record<string, string[]>, mods: AgRollMods) {
+  const comp = store.computer();
+  let expr = exprIn, at = noteId;
+  try {
+    const node = parseFormula(exprIn);
+    if (node.t === "ref") {
+      const { noteIds, key } = comp.targetsOf(noteId, node.path, node.abs, roots);
+      const f = noteIds.length === 1 ? store.fieldsByNote.get(noteIds[0])?.get(key) : undefined;
+      if (f?.type === "dice" && f.formula?.trim()) { expr = f.formula; at = f.noteId; }
+    }
+  } catch { /* fall through to the plain evaluation, which reports the error */ }
+  const r = rollWithMods(() => { const e = comp.evalIn(at, expr, { rollDie, locals, roots }); return { total: asNumber(e.value as any), breakdown: e.breakdown }; }, mods);
+  return { total: r.total, breakdown: `${r.breakdown} = ${round2(r.total)}` };
+}
+
+/**
+ * A button's simple roll: check and spend its costs on the rolling sheet, then
+ * roll the dice and add the value and bonus. Returns false when it couldn't go
+ * ahead (nothing to roll with, or not enough to pay).
+ */
+async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec, cs: ChangeSet, result: AgActionResult, locals: Record<string, any>, roots: Record<string, string[]>, mods: AgRollMods): Promise<boolean> {
+  const comp = store.computer();
+  const me = store.notes.get(action.noteId)!;
+  const via = spec.via;
+  const rollerId = via ? comp.follow(action.noteId, via)[0] : action.noteId;
+  if (!rollerId) { result.messages.push(`${me.name || "This"} isn't connected to anyone to roll it (needs a “${via}”).`); return false; }
+  const roller = store.notes.get(rollerId)!;
+  const num = (expr: string, d: number) => { try { return asNumber(comp.evalIn(action.noteId, expr || String(d), { locals, roots }).value as any); } catch (e) { result.messages.push(`⚠ ${(e as Error).message}`); return d; } };
+
+  // Costs: all checked first, so nothing is spent unless everything can be.
+  const costs = spec.costs.map((c) => ({ c, f: store.fieldsByNote.get(rollerId)?.get(c.key), amount: num(c.amount, 0) })).filter((x) => x.amount !== 0);
+  for (const { c, f, amount } of costs) {
+    if (!f || f.type === "formula" || f.type === "dice") { result.messages.push(`⚠ ${roller.name} has no “${c.key}” to spend.`); return false; }
+    const have = asNumber((comp.effOf(f).eff as any) ?? 0);
+    if (have < amount) { result.messages.push(`Not enough ${f.label} for ${action.name}: it needs ${round2(amount)} and ${roller.name} has ${round2(have)}.`); return false; }
+  }
+  for (const { f, amount } of costs) {
+    const cur = store.fieldsByNote.get(rollerId)?.get(f!.key) ?? f!;
+    const from = cur.value;
+    const to = coerceValue(cur, asNumber((from as any) ?? 0) - amount);
+    await store.putField({ ...cur, value: to }, cs);
+    result.changes.push({ noteId: rollerId, key: cur.key, from, to });
+  }
+
+  const count = Math.max(1, Math.min(100, Math.floor(num(spec.count, 1))));
+  const die = Math.max(1, Math.min(1000, Math.floor(num(spec.die, 20))));
+  const after = store.computer();
+  const addField = spec.add ? store.fieldsByNote.get(rollerId)?.get(spec.add) : undefined;
+  const addVal = addField ? asNumber((after.effOf(addField).eff as any) ?? 0) : 0;
+  const bonus = num(spec.bonus, 0);
+  const r = rollWithMods(() => {
+    const dice = Array.from({ length: count }, () => rollDie(die));
+    const sum = dice.reduce((a, b) => a + b, 0);
+    return { total: sum, breakdown: `${count}d${die} [${dice.join(", ")}]` };
+  }, { mode: mods.mode });
+  let total = r.total, breakdown = r.breakdown;
+  if (addField && addVal) { total += addVal; breakdown += ` ${signed(addVal)} ${addField.label}`; }
+  if (bonus) { total += bonus; breakdown += ` ${signed(bonus)} bonus`; }
+  if (mods.bonus) { total += mods.bonus; breakdown += ` ${signed(mods.bonus)} temp`; }
+  const spent = costs.map(({ f, amount }) => `${round2(amount)} ${f!.label}`).join(", ");
+  locals.roll = total;
+  result.rolls.push({ name: "roll", label: action.name, expr: `${count}d${die}`, total, breakdown: `${breakdown} = ${round2(total)}${spent ? `  · spent ${spent}` : ""}` });
+  return true;
+}
+
 /** Run an action's steps with the GM-authored authority of the action itself. */
 async function executeAction(
   store: ScopeStore, action: AgAction, targetNoteIds: string[], cs: ChangeSet,
-  run: { viewer: AgViewer; choices: Record<string, string>; host: HostHooks },
+  run: { viewer: AgViewer; choices: Record<string, string>; host: HostHooks; mods?: AgRollMods },
 ): Promise<AgActionResult> {
   const result: AgActionResult = { rolls: [], changes: [], messages: [] };
   const locals: Record<string, any> = {};
   const roots: Record<string, string[]> = { target: targetNoteIds, targets: targetNoteIds, source: [action.noteId] };
+  const mods: AgRollMods = run.mods ?? {};
+  if (action.options?.roll && !(await runRollSpec(store, action, action.options.roll, cs, result, locals, roots, mods))) return result;
   for (const step of action.steps) {
     const comp = store.computer();
     if (!store.notes.has(action.noteId)) break; // the button's own sheet was removed by an earlier step
@@ -787,24 +928,30 @@ async function executeAction(
     }
     if (step.type === "roll") {
       try {
-        // A roll that is just a dice value ("damage") rolls that value's own dice, so the breakdown shows them.
-        let expr = step.expr, at = action.noteId;
-        try {
-          const node = parseFormula(step.expr);
-          if (node.t === "ref") {
-            const { noteIds, key } = comp.targetsOf(action.noteId, node.path, node.abs, roots);
-            const f = noteIds.length === 1 ? store.fieldsByNote.get(noteIds[0])?.get(key) : undefined;
-            if (f?.type === "dice" && f.formula?.trim()) { expr = f.formula; at = f.noteId; }
-          }
-        } catch { /* fall through to the plain evaluation, which reports the error */ }
-        const r = comp.evalIn(at, expr, { rollDie, locals, roots });
-        const total = asNumber(r.value as any);
-        locals[step.name] = total;
+        const r = rollExpr(store, action.noteId, step.expr, locals, roots, mods);
+        locals[step.name] = r.total;
         // A label can name things on the sheet: "{name} hits" → "Fireball hits".
         const label = step.label?.includes("{") ? interpolate(step.label, (e) => store.computer().evalIn(action.noteId, e, { locals, roots }).value) : step.label;
-        result.rolls.push({ name: step.name, label: label || action.name, expr: step.expr, total, breakdown: `${r.breakdown} = ${Math.round(total * 100) / 100}` });
+        result.rolls.push({ name: step.name, label: label || action.name, expr: step.expr, total: r.total, breakdown: r.breakdown });
       } catch (e) {
         result.messages.push(`⚠ ${step.label || step.name}: ${(e as Error).message}`);
+      }
+    } else if (step.type === "initiative") {
+      try {
+        const me = store.notes.get(action.noteId)!;
+        const who = personOf(store, me) ?? me;
+        const r = rollExpr(store, action.noteId, step.expr || "1d20", locals, roots, mods);
+        locals.initiative = r.total;
+        const label = step.label || "Initiative";
+        result.rolls.push({ name: "initiative", label, expr: step.expr, total: r.total, breakdown: r.breakdown });
+        if (store.scope.kind === "campaign" && run.host.joinInitiative) {
+          await run.host.joinInitiative(store.scope.id, { noteId: who.id, name: who.name || "Untitled", portrait: who.portrait }, Math.round(r.total));
+          result.initiative = { noteId: who.id, name: who.name, total: Math.round(r.total) };
+        } else {
+          result.messages.push("Initiative only works in a campaign.");
+        }
+      } catch (e) {
+        result.messages.push(`⚠ ${step.label || "Initiative"}: ${(e as Error).message}`);
       }
     } else if (step.type === "modify") {
       try {

@@ -33,6 +33,8 @@ export interface RollNotification {
   duration?: number;
   isHealing?: boolean;
   customColor?: string;
+  /** The chat line shows calculationBreakdown (the working) instead of just the result. */
+  chatBreakdown?: boolean;
 }
 
 function darkenColor(hex: string): string {
@@ -438,6 +440,7 @@ export function triggerRollNotification(notification: Omit<RollNotification, 'id
       calculationBreakdown: notification.calculationBreakdown,
       isHealing: notification.isHealing,
       customColor: notification.customColor,
+      ...(notification.chatBreakdown ? { chatBreakdown: true } : {}),
     });
   }
 }
