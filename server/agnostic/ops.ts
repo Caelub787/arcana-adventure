@@ -679,7 +679,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
 
     // ------------------------------------------------------------------ actions
     case "action.upsert": {
-      requireGM(viewer);
+      // Players: their own roll functions (for the hotbar), on a sheet they own.
+      if (!viewer.isGM) return store.run((cs) => upsertPlayerFunction(store, viewer, body.action, cs));
       const a = body.action;
       const steps = cleanSteps(a.steps);
       return store.run(async (cs) => {
@@ -692,13 +693,20 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           color: a.color ? String(a.color).slice(0, 40) : existing?.color ?? null,
           options: a.options !== undefined ? cleanActionOptions(a.options) : existing?.options,
         };
+        // Still the player's own function after the GM changes it.
+        if (existing?.options?.playerMade && action.options) action.options.playerMade = true;
         if (!action.options) delete action.options;
         await store.putAction(action, cs);
         return { actionId: action.id };
       });
     }
     case "action.delete": {
-      requireGM(viewer);
+      if (!viewer.isGM) {
+        // A player deletes only their own functions.
+        const act = store.actions.get(body.id) ?? fail("That button no longer exists");
+        const host = noteOf(store, act.noteId);
+        if (!act.options?.playerMade || !host.ownerIds.includes(viewer.userId)) fail("Only the GM can delete that");
+      }
       return store.run(async (cs) => { await store.removeAction(body.id, cs); return { ok: true as const }; });
     }
     case "action.prepare": {
@@ -1125,3 +1133,49 @@ async function listsOnSheet(store: ScopeStore, host: AgNote): Promise<Array<{ la
   return (await docs.linkListsOf(names)).map((l) => ({ ...l, label: l.label.split(".").map(labelKey).filter(Boolean).join(".") }));
 }
 const copyFolderOf = (config: any): string => (typeof config?.add?.copyFolder === "string" && config.add.copyFolder.trim() ? config.add.copyFolder.trim().slice(0, 80) : "Copies");
+
+/**
+ * A player's own roll function (for their hotbar): kept on a sheet they own, it
+ * only rolls dice and that sheet's own values and spends its own resources — no
+ * steps, no other sheets — so it can't change or reveal anything they couldn't
+ * already. Numbers, or names of values on that sheet; nothing else is accepted.
+ */
+async function upsertPlayerFunction(store: ScopeStore, viewer: AgViewer, a: any, cs: ChangeSet) {
+  const note = noteOf(store, String(a?.noteId ?? ""));
+  if (note.isTemplate || !note.ownerIds.includes(viewer.userId)) fail("You can only make functions on your own sheets");
+  const existing = a?.id ? store.actions.get(a.id) : undefined;
+  if (existing && (existing.noteId !== note.id || !existing.options?.playerMade)) fail("Only the GM can change that button");
+  const own = store.fieldsByNote.get(note.id) ?? new Map<string, AgField>();
+  const plain = (v: unknown, what: string, d: string) => {
+    const t = String(v ?? "").trim() || d;
+    if (/^-?\d{1,6}$/.test(t)) return t;
+    if (/^[a-z][a-z0-9_]{0,39}$/.test(t) && own.has(t)) return t;
+    return fail(`${what}: use a number or one of this sheet's values`);
+  };
+  const r = a?.options?.roll ?? {};
+  const add = typeof r.add === "string" && r.add ? r.add : "";
+  if (add && !own.has(add)) fail("Adds: one of this sheet's values");
+  const costs = (Array.isArray(r.costs) ? r.costs : []).slice(0, 8).map((c: any) => {
+    const f = own.get(String(c?.key ?? ""));
+    if (!f || f.type !== "number") fail("A cost must be one of this sheet's numbers (Energy, Focus…)");
+    return { key: f!.key, amount: plain(c.amount, "Cost", "0") };
+  });
+  const o = a?.options ?? {};
+  const options: AgActionOptions = {
+    roll: { via: "", count: plain(r.count, "Dice", "1"), die: plain(r.die, "Die", "20"), add, bonus: plain(r.bonus, "Bonus", "0"), costs },
+    icon: typeof o.icon === "string" && o.icon.trim() ? o.icon.trim().slice(0, 120) : existing?.options?.icon ?? "die:d20",
+    showName: typeof o.showName === "boolean" ? o.showName : existing?.options?.showName ?? true,
+    showIcon: typeof o.showIcon === "boolean" ? o.showIcon : existing?.options?.showIcon ?? true,
+    listed: typeof o.listed === "boolean" ? o.listed : existing?.options?.listed ?? false,
+    sortOrder: typeof o.sortOrder === "number" && Number.isFinite(o.sortOrder) ? o.sortOrder : existing?.options?.sortOrder ?? 100,
+    playerMade: true,
+  };
+  const action: AgAction = {
+    id: existing?.id ?? randomUUID(), noteId: note.id, name: cleanLabel(a?.name, 80) || existing?.name || "My roll", steps: [],
+    acl: { view: "owners", edit: "owners" },
+    color: typeof a?.color === "string" && /^#[0-9a-f]{3,8}$/i.test(a.color) ? a.color : existing?.color ?? "#7c3aed",
+    options,
+  };
+  await store.putAction(action, cs);
+  return { actionId: action.id };
+}

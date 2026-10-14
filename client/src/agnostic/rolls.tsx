@@ -169,8 +169,11 @@ function Check1({ on, onChange, label, testId }: { on: boolean; onChange: (v: bo
   return <label className="inline-flex items-center gap-1.5 text-[11px] text-stone-300 cursor-pointer"><input type="checkbox" className="accent-amber-500" checked={on} onChange={(e) => onChange(e.target.checked)} data-testid={testId} />{label}</label>;
 }
 
-/** One roll's boxes: name, icon, dice, what's added, costs, and where its button shows. */
-function RollEditor({ action, attrs, first, last, neighbours, index }: { action: AgActionView; attrs: RollsBlockAttrs; first: boolean; last: boolean; neighbours: AgActionView[]; index: number }) {
+/**
+ * One roll's boxes: name, icon, dice, what's added, costs, and where its button shows.
+ * `limited`: a player's own function — just the roll (no extra steps).
+ */
+export function RollEditor({ action, attrs, first, last, neighbours, index, limited }: { action: AgActionView; attrs: RollsBlockAttrs; first: boolean; last: boolean; neighbours: AgActionView[]; index: number; limited?: boolean }) {
   const { state, request } = useAg();
   const { toast } = useToast();
   const [name, setName] = useState(action.name);
@@ -254,7 +257,7 @@ function RollEditor({ action, attrs, first, last, neighbours, index }: { action:
         <Check1 on={opts.showName !== false} onChange={(showName) => save({ options: { showName } })} label="Show name" testId="ag-roll-showname" />
         <Check1 on={opts.showIcon !== false} onChange={(showIcon) => save({ options: { showIcon } })} label="Show icon" testId="ag-roll-showicon" />
         <span className="ml-auto inline-flex items-center gap-1.5">
-          <button type="button" onClick={() => setStepsOpen(true)} className="h-7 px-2 rounded bg-stone-800 text-[11px] text-stone-300 inline-flex items-center gap-1" title="Extra steps after the roll (change values, messages…)"><Settings2 className="h-3 w-3" /> More steps{action.steps?.length ? ` (${action.steps.length})` : ""}</button>
+          {!limited && <button type="button" onClick={() => setStepsOpen(true)} className="h-7 px-2 rounded bg-stone-800 text-[11px] text-stone-300 inline-flex items-center gap-1" title="Extra steps after the roll (change values, messages…)"><Settings2 className="h-3 w-3" /> More steps{action.steps?.length ? ` (${action.steps.length})` : ""}</button>}
           <ActionButton actionId={action.id} compact look={{ height: 28, fontSize: 12 }} />
         </span>
       </div>

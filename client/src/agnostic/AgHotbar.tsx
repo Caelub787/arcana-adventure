@@ -2,13 +2,13 @@
 // (press: open it) and buttons / rolls (press: use it). The GM can also make a
 // new function — a button with steps — straight from the picker.
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2 } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil } from "lucide-react";
 import { agTypeLabel, type AgNote } from "@shared/agnostic/types";
 import { useAg, useAgMaybe, resolveRef } from "./hooks";
 import { AgPanel } from "./float";
 import { Portrait, ResourceBar, useActionRunner } from "./widgets";
 import { RollIcon } from "./rollIcons";
-import { rollSummary, actionsOfNote } from "./rolls";
+import { rollSummary, actionsOfNote, RollEditor } from "./rolls";
 import { ActionEditorDialog } from "./ActionEditor";
 import { useToast } from "@/hooks/use-toast";
 
@@ -146,6 +146,9 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
   const [type, setType] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [making, setMaking] = useState<string | null>(null);
+  // Players: their own roll function, being made or changed (its action id).
+  const [mine, setMine] = useState<string | null>(null);
+  const [choosingSheet, setChoosingSheet] = useState(false);
   const sheets = useMemo(() => Array.from(state.notes.values()).filter((n) => !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state.notes]);
   const types = useMemo(() => Array.from(new Set(sheets.map((n) => n.type))).sort(), [sheets]);
   const needle = q.trim().toLowerCase();
@@ -164,6 +167,17 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
     } catch (e: any) { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }
   };
 
+  // A player's own sheets (characters first) that a function can roll for.
+  const ownSheets = sheets.filter((n) => n.ownerIds.includes(realViewer.userId)).sort((a, b) => Number(b.type === "character") - Number(a.type === "character"));
+  const newPlayerFunction = async (noteId: string) => {
+    setChoosingSheet(false);
+    try {
+      const { actionId } = await request<{ actionId: string }>({ op: "action.upsert", action: { noteId, name: "My roll", steps: [], color: "#7c3aed", options: { roll: { via: "", count: "1", die: "20", add: "", bonus: "0", costs: [] }, icon: "die:d20", showName: true, showIcon: true, listed: false } } });
+      setMine(actionId);
+    } catch (e: any) { toast({ title: "Couldn't make it", description: e.message, variant: "destructive" }); }
+  };
+  const mineAction = mine ? state.actions.get(mine) : undefined;
+
   return (
     <AgPanel title="Add to the hotbar" onClose={onClose} width={420} height={600} testId="ag-hotbar-picker">
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sheets and their rolls…" className="w-full h-9 px-2 rounded bg-stone-950 border border-stone-700 text-sm" data-testid="ag-hotbar-search" />
@@ -175,6 +189,21 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
         <button type="button" onClick={newFunction} className="w-full h-9 rounded border border-dashed border-amber-700 text-amber-200 text-sm inline-flex items-center justify-center gap-1.5 hover:bg-amber-900/20" data-testid="ag-hotbar-new-function">
           <Wand2 className="h-4 w-4" /> New function…
         </button>
+      )}
+      {!gm && ownSheets.length > 0 && (
+        <button type="button" onClick={() => (ownSheets.length === 1 ? newPlayerFunction(ownSheets[0].id) : setChoosingSheet(true))} className="w-full h-9 rounded border border-dashed border-amber-700 text-amber-200 text-sm inline-flex items-center justify-center gap-1.5 hover:bg-amber-900/20" data-testid="ag-hotbar-new-function">
+          <Wand2 className="h-4 w-4" /> New function…
+        </button>
+      )}
+      {choosingSheet && (
+        <div className="rounded-lg border border-amber-800/60 bg-stone-900 p-2 space-y-1" data-testid="ag-hotbar-function-sheet">
+          <div className="text-[11px] text-stone-400">Which of your sheets does it roll for?</div>
+          {ownSheets.map((n) => (
+            <button key={n.id} type="button" onClick={() => newPlayerFunction(n.id)} className="w-full flex items-center gap-2 p-1.5 rounded bg-stone-800/80 border border-stone-700 hover:border-amber-600 text-left">
+              <Portrait note={n} size={24} radius={5} /><span className="text-sm text-stone-200 truncate">{n.name}</span>
+            </button>
+          ))}
+        </div>
       )}
       <div className="space-y-1">
         {shown.map((n) => {
@@ -195,11 +224,15 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
                   {acts.filter((a) => !needle || a.name.toLowerCase().includes(needle) || n.name.toLowerCase().includes(needle)).map((a) => {
                     const sum = rollSummary(state, a);
                     return (
-                      <button key={a.id} type="button" onClick={() => onAssign(`action:${a.id}`)} className="w-full flex items-center gap-2 p-1.5 rounded bg-stone-900/80 border border-stone-700 hover:border-amber-600 text-left" data-testid={`ag-hotbar-add-action-${a.name}`}>
-                        <span className="h-7 w-7 grid place-items-center rounded text-amber-300" style={{ background: a.color ?? "#44403c" }}>{a.options?.icon ? <RollIcon icon={a.options.icon} size={16} /> : <Dices className="h-4 w-4" />}</span>
-                        <span className="flex-1 min-w-0 text-sm text-stone-200 truncate">{a.name}</span>
-                        {(sum.roll || sum.cost) && <span className="text-[10px] text-stone-400 truncate max-w-[45%]">{[sum.roll, sum.cost].filter(Boolean).join(" · ")}</span>}
-                      </button>
+                      <div key={a.id} className="flex items-center gap-1">
+                        <button type="button" onClick={() => onAssign(`action:${a.id}`)} className="flex-1 min-w-0 flex items-center gap-2 p-1.5 rounded bg-stone-900/80 border border-stone-700 hover:border-amber-600 text-left" data-testid={`ag-hotbar-add-action-${a.name}`}>
+                          <span className="h-7 w-7 grid place-items-center rounded text-amber-300" style={{ background: a.color ?? "#44403c" }}>{a.options?.icon ? <RollIcon icon={a.options.icon} size={16} /> : <Dices className="h-4 w-4" />}</span>
+                          <span className="flex-1 min-w-0 text-sm text-stone-200 truncate">{a.name}</span>
+                          {(sum.roll || sum.cost) && <span className="text-[10px] text-stone-400 truncate max-w-[45%]">{[sum.roll, sum.cost].filter(Boolean).join(" · ")}</span>}
+                        </button>
+                        {/* A player's own function: they can change it. */}
+                        {!gm && a.options?.playerMade && <button type="button" onClick={() => setMine(a.id)} className="h-9 w-8 grid place-items-center rounded border border-stone-700 text-stone-400 hover:text-amber-300" title="Change this function" data-testid={`ag-hotbar-edit-function-${a.name}`}><Pencil className="h-3.5 w-3.5" /></button>}
+                      </div>
                     );
                   })}
                   {!acts.length && <div className="text-[11px] text-stone-500 px-1">No buttons or rolls on this sheet.</div>}
@@ -211,6 +244,17 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
         })}
         {!shown.length && <div className="text-xs text-stone-500 text-center py-4">No sheets match.</div>}
       </div>
+      {mine && (
+        <AgPanel title={mineAction ? `Function — ${mineAction.name}` : "New function"} onClose={() => setMine(null)} width={560} height={520} testId="ag-hotbar-player-function">
+          {mineAction ? (
+            <div className="space-y-2">
+              <div className="text-[11px] text-stone-400">Your own roll: its dice, a value of yours it adds (a skill, an attribute…), a bonus, and what it spends. Hold the button for advantage, disadvantage or a modifier.</div>
+              <RollEditor action={mineAction} attrs={{ via: "", costs: [] }} first last neighbours={[mineAction]} index={0} limited />
+              <button type="button" onClick={() => { onAssign(`action:${mineAction.id}`); setMine(null); }} className="w-full h-9 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" data-testid="ag-hotbar-function-assign">Put it on the hotbar</button>
+            </div>
+          ) : <div className="text-sm text-stone-400">Making it…</div>}
+        </AgPanel>
+      )}
       {making && <ActionEditorDialog noteId={making} actionId={null} onClose={() => setMaking(null)} onSaved={(actionId) => { setMaking(null); onAssign(`action:${actionId}`); }} />}
     </AgPanel>
   );

@@ -362,6 +362,12 @@ export interface AgActionOptions {
   listed?: boolean;
   /** Order among the sheet's buttons. */
   sortOrder?: number;
+  /**
+   * Made by a player for their hotbar (on a sheet they own): a roll of that sheet's
+   * own values only — no steps — so it can't change or read anything else. The
+   * player can change or delete it; the GM can change anything about it.
+   */
+  playerMade?: boolean;
 }
 
 /** Long-press a roll: advantage / disadvantage and a one-off modifier. */
