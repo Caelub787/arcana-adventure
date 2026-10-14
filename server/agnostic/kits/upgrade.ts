@@ -15,11 +15,12 @@ import {
   CA_KIT_FOLDER, rankTooltip, abilityTabContent, abilityTemplateSnapshot, abilityPage, itemRollsNodes, ABILITY_LIST_COLUMNS,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES, ABILITY_HELP, INVENTORY_HELP,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
+  TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 3;
+export const CA_KIT_LEVEL = 4;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -35,6 +36,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 1) await upgrade1(store, characterTemplates);
   if (level < 2) await upgrade2(store, characterTemplates);
   if (level < 3) await upgrade3(store, characterTemplates);
+  if (level < 4) await upgrade4(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -452,6 +454,34 @@ async function upgrade3(store: ScopeStore, characterTemplates: AgNote[]) {
     await editPage(n, (_doc, frag) => {
       if (hasType(frag, "agEffects")) return;
       insertNodes(frag, afterRolls(frag), effectsNodes("holder", "", "Passive changes this ability makes to its holder (leave empty if none)."));
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 4
+// Temp Energy, like Temp HP: spent before Energy, pink on the bar (and token).
+async function upgrade4(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const fieldOf = (noteId: string, key: string) => store.fieldsByNote.get(noteId)?.get(key);
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      const energy = fieldOf(n.id, "energy");
+      if (!energy) continue;
+      if (!fieldOf(n.id, "temp_energy")) {
+        await store.putField({ id: randomUUID(), noteId: n.id, key: "temp_energy", label: "Temp Energy", type: "number", value: 0, formula: null, options: { min: 0, color: TEMP_ENERGY_COLOR }, acl: { view: "inherit", edit: "inherit" }, sortOrder: energy.sortOrder, templateFieldId: null }, cs);
+      }
+      if (energy.type === "number" && !energy.options.shield) await store.putField({ ...energy, options: { ...energy.options, shield: "temp_energy" } }, cs);
+      const th = fieldOf(n.id, "temp_hp");
+      if (th && !th.options.color) await store.putField({ ...th, options: { ...th.options, color: TEMP_HP_COLOR } }, cs);
+    }
+  });
+  for (const n of characters) {
+    const energy = store.regionsOf(n.id).find((r) => r.label === "Energy Pool");
+    if (!energy) continue;
+    await editRegion(n, energy.id, (frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "temp_energy").length) return;
+      appendNodes(frag, [TEMP_ENERGY_LINE]);
     });
   }
 }

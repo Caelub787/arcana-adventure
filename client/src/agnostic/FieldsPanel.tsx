@@ -211,7 +211,8 @@ function ResourceOptions({ field: f, onChange }: { field: AgField; onChange: (o:
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs items-center">
       <label className="inline-flex items-center gap-1" title="When that value goes up (e.g. Max HP on a rank up), this one goes up by the same amount; when it goes down, this one is kept within it">Goes up with {sel(f.options.follows, maxes, (follows) => onChange({ ...f.options, follows }), "ag-field-follows")}</label>
-      <label className="inline-flex items-center gap-1" title="Losses come off this value first (e.g. Temp HP); bars show it in green on top">Temporary points {sel(f.options.shield, temps, (shield) => onChange({ ...f.options, shield }), "ag-field-shield")}</label>
+      <label className="inline-flex items-center gap-1" title="Losses come off this value first (e.g. Temp HP); bars show it on top in its colour">Temporary points {sel(f.options.shield, temps, (shield) => onChange({ ...f.options, shield }), "ag-field-shield")}</label>
+      <label className="inline-flex items-center gap-1" title="This value's colour — e.g. how it shows on a bar when it's another value's temporary points">Colour <input type="color" value={f.options.color ?? "#22c55e"} onChange={(e) => onChange({ ...f.options, color: e.target.value })} className="h-6 w-8 bg-transparent border-0 p-0" data-testid="ag-field-color" /></label>
     </div>
   );
 }

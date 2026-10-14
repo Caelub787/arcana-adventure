@@ -51,8 +51,14 @@ export function useFieldWriter() {
   stateRef.current = state;
   return useMemo(() => {
     const fail = (e: any) => { toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }); throw e; };
+    // A value that goes up with its maximum (HP) stops at it — the server does the same.
+    const capped = (f: AgField, value: any) => {
+      if (typeof value !== "number" || !f.options?.follows) return value;
+      const m = effOf(resolveRef(stateRef.current, f.noteId, f.options.follows)[0]);
+      return typeof m === "number" ? Math.min(value, Math.max(0, m)) : value;
+    };
     // Shown at once; the server confirms (or it's put back if refused).
-    const optimistic = (f: AgField, value: any) => (previewUserId ? () => {} : agClient.optimisticField(key, f.id, (cur) => predictField(cur, value)));
+    const optimistic = (f: AgField, value: any) => (previewUserId ? () => {} : agClient.optimisticField(key, f.id, (cur) => predictField(cur, capped(f, value))));
     return {
       set: (f: AgField, value: any) => {
         const before = f.value;
@@ -168,6 +174,8 @@ export function ResourceBar({ field, maxField, color = "#16a34a", label, showNum
   // Temporary points (e.g. Temp HP): a green layer on top, after the value.
   const shieldF = field.options?.shield ? resolveRef(state, field.noteId, field.options.shield)[0] : undefined;
   const shield = shieldF ? Math.max(0, asNumber(effOf(shieldF) as any)) : 0;
+  // The temporary points' own colour (Temp HP green, Temp Energy pink…).
+  const shieldColor = shieldF?.options.color ?? "#22c55e";
   const fill = L.color ?? color;
   const vertical = L.direction === "up";
   const h = height;
@@ -193,7 +201,7 @@ export function ResourceBar({ field, maxField, color = "#16a34a", label, showNum
       />
       {pShield > 0 && (
         <div className={`absolute ease-out duration-500 ${vertical ? "inset-x-0 transition-[height,bottom]" : "inset-y-0 transition-[width,left]"}`} data-testid={`ag-bar-shield-${field.key}`}
-          style={{ ...(vertical ? { bottom: `${p}%`, height: `${pShield}%` } : L.direction === "left" ? { right: `${p}%`, width: `${pShield}%` } : { left: `${p}%`, width: `${pShield}%` }), background: "#22c55e", boxShadow: "inset 0 0 0 1px rgba(0,0,0,.25)" }} />
+          style={{ ...(vertical ? { bottom: `${p}%`, height: `${pShield}%` } : L.direction === "left" ? { right: `${p}%`, width: `${pShield}%` } : { left: `${p}%`, width: `${pShield}%` }), background: shieldColor, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.25)" }} />
       )}
       {segments > 0 && Array.from({ length: segments - 1 }, (_, i) => (
         <div key={i} className="absolute pointer-events-none" style={vertical

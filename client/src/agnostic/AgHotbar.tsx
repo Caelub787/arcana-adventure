@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2 } from "lucide-react";
 import { agTypeLabel, type AgNote } from "@shared/agnostic/types";
-import { useAg, resolveRef } from "./hooks";
+import { useAg, useAgMaybe, resolveRef } from "./hooks";
 import { AgPanel } from "./float";
 import { Portrait, ResourceBar, useActionRunner } from "./widgets";
 import { RollIcon } from "./rollIcons";
@@ -28,7 +28,15 @@ function MiniBars({ note }: { note: AgNote }) {
  * One hotbar slot holding a sheet or a button. Press: open / use it. Hold or
  * right-click: a small menu (roll options, open its sheet, remove).
  */
-export function AgHotbarSlot({ agRef, className, onRemove, registerPress, testId }: {
+export function AgHotbarSlot(props: {
+  agRef: string; className: string; onRemove: () => void; registerPress: (fn: (() => void) | null) => void; testId?: string;
+}) {
+  // The bar can show before Agnostic has connected: an empty tile until then.
+  if (!useAgMaybe()) return <button type="button" className={props.className} disabled data-testid={props.testId} />;
+  return <AgHotbarSlotInner {...props} />;
+}
+
+function AgHotbarSlotInner({ agRef, className, onRemove, registerPress, testId }: {
   agRef: string; className: string; onRemove: () => void; registerPress: (fn: (() => void) | null) => void; testId?: string;
 }) {
   const { kind, id } = parse(agRef);
@@ -125,7 +133,12 @@ function ActionSlot({ actionId, className, onRemove, registerPress, testId }: { 
 const FUNCTIONS_SHEET = "Hotbar functions";
 
 /** Choose what goes in a slot: any sheet you can see, any of their buttons and rolls, or (GM) a new function. */
-export function AgHotbarPicker({ onAssign, onClose }: { onAssign: (ref: AgHotbarRef) => void; onClose: () => void }) {
+export function AgHotbarPicker(props: { onAssign: (ref: AgHotbarRef) => void; onClose: () => void }) {
+  if (!useAgMaybe()) return <AgPanel title="Add to the hotbar" onClose={props.onClose} width={420} height={200}><div className="text-sm text-stone-400">Connecting…</div></AgPanel>;
+  return <AgHotbarPickerInner {...props} />;
+}
+
+function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRef) => void; onClose: () => void }) {
   const { state, request, realViewer } = useAg();
   const { toast } = useToast();
   const gm = realViewer.isGM;

@@ -62,6 +62,9 @@ export const FOCUS_FORMULA = "6 + rank_index";
 const focusAt = (idx: number) => 6 + idx;
 /** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
 export const USABLE_LADDER = THRESHOLDS.map((x) => Math.floor(x / 2));
+export const TEMP_HP_COLOR = "#22c55e";
+export const TEMP_ENERGY_COLOR = "#ec4899";
+export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
 export const USABLE_FORMULA = `choose(rank_index, ${USABLE_LADDER.join(", ")})`;
 export const USABLE_NOTE = " — set by your star; it goes up when you break through, not with every point of the pool";
 
@@ -182,8 +185,9 @@ function characterTemplate(): AgSnapshot {
   // Each current value goes up with its maximum (a rank up adds its extra, without refilling);
   // Temp HP is taken before HP and shows in green on the bar.
   s.calc("hp_max", "Max HP", `choose(rank_index, ${HP_LADDER.join(", ")})`).num("hp", "HP", 20, { min: 0, follows: "hp_max", shield: "temp_hp" })
-    .num("temp_hp", "Temp HP", 0, { min: 0 })
-    .calc("usable_energy", "Usable Energy", USABLE_FORMULA).num("energy", "Energy", 0, { min: 0, follows: "usable_energy" })
+    .num("temp_hp", "Temp HP", 0, { min: 0, color: TEMP_HP_COLOR })
+    .calc("usable_energy", "Usable Energy", USABLE_FORMULA).num("energy", "Energy", 0, { min: 0, follows: "usable_energy", shield: "temp_energy" })
+    .num("temp_energy", "Temp Energy", 0, { min: 0, color: TEMP_ENERGY_COLOR })
     .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0, follows: "focus_max" })
     .calc("wounds_count", "Wounds", "count(@wounds.name)");
   // Attributes: value → die size (0 d6, 1 d8, 2 d10, 3 d12, 4+ d20)
@@ -250,6 +254,7 @@ function characterTemplate(): AgSnapshot {
     framed(s, "energy", "Zap", "Energy Pool", [val("energy_pool", { look: { bold: true } })], [
       p(muted("Usable Energy "), val("usable_energy", { look: { fontSize: 12, textColor: "#a8a29e" } }), muted(USABLE_NOTE)),
       block("energy", { maxRef: "usable_energy", display: "bar", label: "Energy", showLabel: true, look: { color: "#06b6d4", track: "#3f3a2a", height: 16, radius: 4, labelPos: "above", numbers: "fraction", iconName: "Zap", iconColor: "#22d3ee" } }),
+      TEMP_ENERGY_LINE,
     ]),
     hr(),
     framed(s, "focus", "Sparkles", "Focus", [val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })], [

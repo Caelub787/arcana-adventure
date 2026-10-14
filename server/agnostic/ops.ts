@@ -505,9 +505,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           if (f.type !== "number") fail("Only numbers can be adjusted");
           const d = Number(body.delta);
           if (!Number.isFinite(d)) fail("Bad amount");
-          f.value = coerceValue(f, asNumber((f.value as number) ?? 0) + await absorb(store, f, d, cs));
+          f.value = capToMax(store, f, coerceValue(f, asNumber((f.value as number) ?? 0) + await absorb(store, f, d, cs)));
         } else {
-          f.value = coerceValue(f, body.value);
+          f.value = capToMax(store, f, coerceValue(f, body.value));
         }
         delete f.eff; delete f.err;
         await store.putField(f, cs);
@@ -795,6 +795,17 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
 }
 
 /**
+ * A current value that goes up with its maximum (HP with Max HP) can't be
+ * raised past it — only its temporary points (Temp HP) go over.
+ */
+function capToMax(store: ScopeStore, f: AgField, v: AgValue): AgValue {
+  if (typeof v !== "number" || !f.options.follows) return v;
+  const max = store.fieldsByNote.get(f.noteId)?.get(f.options.follows);
+  const m = max ? (max.eff !== undefined ? max.eff : max.value) : undefined;
+  return typeof m === "number" && Number.isFinite(m) ? Math.min(v, Math.max(0, m)) : v;
+}
+
+/**
  * A loss to a value with temporary points (its "shield", e.g. Temp HP) comes off
  * those first. Returns what's left to change on the value itself.
  */
@@ -878,13 +889,17 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
   const costs = spec.costs.map((c) => ({ c, f: store.fieldsByNote.get(rollerId)?.get(c.key), amount: num(c.amount, 0) })).filter((x) => x.amount !== 0);
   for (const { c, f, amount } of costs) {
     if (!f || f.type === "formula" || f.type === "dice") { result.messages.push(`⚠ ${roller.name} has no “${c.key}” to spend.`); return false; }
-    const have = asNumber((comp.effOf(f).eff as any) ?? 0);
+    // Temporary points (Temp Energy…) count, and are spent first.
+    const temp = f.options.shield ? store.fieldsByNote.get(rollerId)?.get(f.options.shield) : undefined;
+    const have = asNumber((comp.effOf(f).eff as any) ?? 0) + (temp ? Math.max(0, asNumber((temp.value as any) ?? 0)) : 0);
     if (have < amount) { result.messages.push(`Not enough ${f.label} for ${action.name}: it needs ${round2(amount)} and ${roller.name} has ${round2(have)}.`); return false; }
   }
   for (const { f, amount } of costs) {
     const cur = store.fieldsByNote.get(rollerId)?.get(f!.key) ?? f!;
+    const rest = await absorb(store, cur, -amount, cs, result);
+    if (rest === 0) continue;
     const from = cur.value;
-    const to = coerceValue(cur, asNumber((from as any) ?? 0) - amount);
+    const to = coerceValue(cur, asNumber((from as any) ?? 0) + rest);
     await store.putField({ ...cur, value: to }, cs);
     result.changes.push({ noteId: rollerId, key: cur.key, from, to });
   }
@@ -986,7 +1001,7 @@ async function executeAction(
           const base = asNumber((from as any) ?? 0);
           // A loss comes off temporary points first (e.g. Temp HP before HP).
           const change = step.op === "set" ? 0 : await absorb(store, f, step.op === "add" ? amount : -amount, cs, result);
-          const to = coerceValue(f, step.op === "set" ? amount : base + change);
+          const to = capToMax(store, f, coerceValue(f, step.op === "set" ? amount : base + change));
           await store.putField({ ...f, value: to }, cs);
           result.changes.push({ noteId: nid, key, from, to });
         }
