@@ -748,6 +748,9 @@ async function connect(store: ScopeStore, from: AgNote, to: AgNote, label: strin
   await store.putLink({ id: randomUUID(), fromNoteId: from.id, toNoteId: to.id, label, reverseLabel, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
 }
 
+/** The tracker card's DC (bottom right). */
+export const CA_CARD_DC = { kind: "field", ref: "dc", display: "value", label: "DC", showLabel: true, align: "right", look: { fontSize: 11, color: "#d4a24c", bold: true } } as const;
+
 export const CA_TRACKER_CARD: AgTrackerCard = {
   id: "ca-card", name: "CA card",
   layout: {
@@ -757,7 +760,8 @@ export const CA_TRACKER_CARD: AgTrackerCard = {
       { id: "hp", x: 68, y: 28, w: 126, h: 14, widget: { kind: "field", ref: "hp", maxRef: "hp_max", display: "bar", label: "HP", showLabel: true, look: { color: "#f43f5e", labelPos: "inside", numbers: "fraction", radius: 3 } } },
       { id: "en", x: 68, y: 46, w: 126, h: 12, widget: { kind: "field", ref: "energy", maxRef: "usable_energy", display: "bar", label: "Energy", showLabel: true, look: { color: "#06b6d4", labelPos: "inside", numbers: "fraction", radius: 3 } } },
       { id: "rk", x: 6, y: 66, w: 90, h: 20, widget: { kind: "field", ref: "rank", display: "value", look: { fontSize: 11, color: "#d4a24c", bold: true } } },
-      { id: "r", x: 100, y: 68, w: 94, h: 14, widget: { kind: "lastRoll" } },
+      // The character's DC (with armor and other effects); rolls are in the dice tray and roll history.
+      { id: "r", x: 100, y: 66, w: 94, h: 18, widget: CA_CARD_DC },
     ],
   },
 };

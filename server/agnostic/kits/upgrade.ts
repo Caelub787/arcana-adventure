@@ -19,7 +19,7 @@ import {
   LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
   abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
   ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
-  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges, ITEM_RANK_CHOICES,
+  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges, ITEM_RANK_CHOICES, CA_CARD_DC,
   ASPECT_VIA, ALL_ABILITIES, ABILITY_LIST_COLUMNS as ABILITY_SET_COLUMNS, ASPECT_HELP, subAbilityNodes,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
@@ -30,7 +30,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 14;
+export const CA_KIT_LEVEL = 15;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -57,6 +57,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 12) await upgrade12(store, characterTemplates);
   if (level < 13) await upgrade13(store);
   if (level < 14) await upgrade14(store);
+  if (level < 15) await upgrade15(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -920,4 +921,23 @@ async function upgrade14(store: ScopeStore) {
       if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices } }, cs);
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 15
+// The tracker card shows the character's DC where it showed the last roll (rolls
+// are in the dice tray and the roll history).
+async function upgrade15(store: ScopeStore) {
+  const st = store.settings;
+  if (store.scope.kind !== "campaign" || !st) return;
+  let changed = false;
+  const cards = st.tracker.cards.map((c) => {
+    if (c.id !== "ca-card") return c;
+    const items = c.layout.items.map((it) => {
+      if (it.widget.kind !== "lastRoll") return it;
+      changed = true;
+      return { ...it, y: Math.max(0, it.y - 2), h: Math.max(it.h, 18), widget: { ...CA_CARD_DC } as any };
+    });
+    return { ...c, layout: { ...c.layout, items } };
+  });
+  if (changed) await store.run((cs) => store.putSettings({ ...st, tracker: { ...st.tracker, cards } }, cs));
 }
