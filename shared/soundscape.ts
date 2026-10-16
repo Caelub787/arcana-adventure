@@ -74,6 +74,24 @@ export const BUILT_IN_SCENES: SoundscapeScene[] = [
     { soundId: "haunted_halls", volume: 0.6, loop: true }, { soundId: "wind", volume: 0.3, loop: true }, { soundId: "rain", volume: 0.25, loop: true }] },
   { id: "builtin-royal", name: "Audience with the Crown", builtIn: true, layers: [
     { soundId: "royal_court", volume: 0.6, loop: true }] },
+  { id: "builtin-village-morning", name: "Village Morning", builtIn: true, layers: [
+    { soundId: "village_morning", volume: 0.5, loop: true }, { soundId: "town_square", volume: 0.35, loop: true }] },
+  { id: "builtin-market-day", name: "Market Day", builtIn: true, layers: [
+    { soundId: "market_day", volume: 0.45, loop: true }, { soundId: "town_square", volume: 0.55, loop: true }] },
+  { id: "builtin-cultivation", name: "Mountain Retreat", builtIn: true, layers: [
+    { soundId: "jade_meditation", volume: 0.55, loop: true }, { soundId: "waterfall", volume: 0.25, loop: true }, { soundId: "forest_day", volume: 0.2, loop: true }] },
+  { id: "builtin-sect-war", name: "War of the Sects", builtIn: true, layers: [
+    { soundId: "war_of_sects", volume: 0.65, loop: true }, { soundId: "wind", volume: 0.2, loop: true }] },
+  { id: "builtin-setting-sail", name: "Setting Sail", builtIn: true, layers: [
+    { soundId: "ocean_voyage", volume: 0.45, loop: true }, { soundId: "ship_deck", volume: 0.55, loop: true }] },
+  { id: "builtin-frozen-pass", name: "Frozen Pass", builtIn: true, layers: [
+    { soundId: "heroic_journey", volume: 0.4, loop: true }, { soundId: "blizzard", volume: 0.55, loop: true }] },
+  { id: "builtin-crypt", name: "Crypt of the Dead", builtIn: true, layers: [
+    { soundId: "haunted_halls", volume: 0.4, loop: true }, { soundId: "haunted_crypt", volume: 0.6, loop: true }] },
+  { id: "builtin-volcano", name: "Heart of the Volcano", builtIn: true, layers: [
+    { soundId: "rising_tension", volume: 0.45, loop: true }, { soundId: "lava_cavern", volume: 0.6, loop: true }] },
+  { id: "builtin-swamp", name: "Swamp Trail", builtIn: true, layers: [
+    { soundId: "shadows_secrets", volume: 0.35, loop: true }, { soundId: "swamp", volume: 0.6, loop: true }] },
 ];
 
 const clamp01 = (v: unknown, d: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : d; };
