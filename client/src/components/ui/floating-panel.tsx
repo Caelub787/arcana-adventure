@@ -31,6 +31,19 @@ export function isFloatingPanelOnTop(panelKey?: string): boolean {
 let fullscreenPanelCount = 0;
 const fullscreenListeners = new Set<() => void>();
 
+/**
+ * The uniform scale that lets a panel of `size` (opened `top` px below the
+ * top edge) fit inside the current viewport - never above 1. Used by panels
+ * that must keep an exact logical size on every device (e.g. a sheet opening
+ * at its template's saved size): on a smaller screen the whole panel shrinks
+ * evenly instead of being cropped or re-flowed into a different shape.
+ */
+export function viewportFitScale(size: { width: number; height: number }, top = 16): number {
+  if (typeof window === "undefined" || !size.width || !size.height) return 1;
+  const s = Math.min(1, (window.innerWidth - 16) / size.width, (window.innerHeight - top - 8) / size.height);
+  return Math.max(0.35, s);
+}
+
 export function isAnyPanelFullscreen(): boolean {
   return fullscreenPanelCount > 0;
 }
@@ -240,6 +253,13 @@ interface FloatingPanelProps {
    * grows to the full screen but its content doesn't, leaving a bare gap.
    */
   onFullscreenChange?: (isFullscreen: boolean) => void;
+  /**
+   * Keep `defaultSize` as the panel's exact logical size on every device and,
+   * when it doesn't fit the screen (tablets, unfolded phones), scale the whole
+   * panel down evenly to fit (see viewportFitScale) - so it looks exactly as it
+   * does on a large monitor, just smaller. Re-fits when the viewport changes.
+   */
+  fitToViewport?: boolean;
 }
 
 export const FloatingPanel = React.memo(function FloatingPanel({
@@ -265,6 +285,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   onPositionChange,
   onSizeChange,
   onFullscreenChange,
+  fitToViewport,
 }: FloatingPanelProps) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -308,6 +329,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
     onPositionChange={onPositionChange}
     onSizeChange={onSizeChange}
     onFullscreenChange={onFullscreenChange}
+    fitToViewport={fitToViewport}
   >
     {children}
   </DesktopFloatingPanel>;
@@ -421,6 +443,7 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   onPositionChange,
   onSizeChange,
   onFullscreenChange,
+  fitToViewport,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   const contentElRef = React.useRef<HTMLDivElement>(null);
@@ -445,13 +468,25 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
   // its own explicit "fill the whole screen" request.
   const compactPanels = useCompactPanelsEnabled();
   const compactScale = useCompactPanelScale();
-  const scale = compactPanels && !isFullscreen ? compactScale : 1;
 
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
     const height = typeof window !== "undefined" ? window.innerHeight * 0.8 : 600;
     return { width: 680, height };
   }, [defaultSize]);
+
+  // fitToViewport: shrink evenly so the exact logical size fits this screen.
+  // Fitted at open, and again whenever the viewport changes (rotation, fold).
+  const [fitScale, setFitScale] = React.useState(() =>
+    fitToViewport ? viewportFitScale(computedDefaultSize, defaultPosition?.y ?? 16) : 1);
+  React.useEffect(() => {
+    if (!fitToViewport) return;
+    const onResize = () => setFitScale(viewportFitScale(sizeRef.current, defaultPosition?.y ?? 16));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitToViewport]);
+  const scale = isFullscreen ? 1 : Math.min(compactPanels ? compactScale : 1, fitScale);
 
   const initialPos = React.useMemo(() => {
     if (defaultPosition) return { ...defaultPosition };

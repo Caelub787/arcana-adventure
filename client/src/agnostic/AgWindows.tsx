@@ -2,7 +2,7 @@
 // phones via FloatingPanel). Any number can be open; links between sheets
 // open the target in its own window.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { FloatingPanel } from "@/components/ui/floating-panel";
+import { FloatingPanel, viewportFitScale } from "@/components/ui/floating-panel";
 import { useAgMaybe } from "./hooks";
 import { AgSheet } from "./AgSheet";
 
@@ -36,10 +36,14 @@ export function AgWindowStack() {
       {win.openIds.map((id, i) => {
         const note = ag.state.notes.get(id);
         // A sheet opens at its template's size (the GM sets it by resizing the template's window).
+        // That exact size is kept on every device: on a smaller screen (tablet, unfolded phone)
+        // the whole window shrinks evenly to fit rather than being cropped into another shape.
         const vh = typeof window !== "undefined" ? window.innerHeight : 800;
         const size = note?.windowSize ?? null;
-        const w = Math.min(size?.width ?? 720, vw - 32);
-        const h = Math.min(size?.height ?? 760, vh - 120);
+        const top = 70 + i * 24;
+        const w = size ? size.width : Math.min(720, vw - 32);
+        const h = size ? size.height : Math.min(760, vh - 120);
+        const visualW = size ? w * viewportFitScale({ width: w, height: h }, top) : w;
         return (
           <FloatingPanel
             key={id}
@@ -49,7 +53,8 @@ export function AgWindowStack() {
             panelKey={`ag-sheet-${id}`}
             defaultSize={{ width: w, height: h }}
             onSizeChange={note?.isTemplate && ag.realViewer.isGM ? (sz) => { void ag.request({ op: "note.update", id, patch: { windowSize: sz } }).catch(() => {}); } : undefined}
-            defaultPosition={{ x: Math.max(16, Math.round((vw - w) / 2) + i * 24 - 60), y: 70 + i * 24 }}
+            fitToViewport={!!size}
+            defaultPosition={{ x: Math.max(8, Math.min(Math.round((vw - visualW) / 2) + i * 24 - 60, vw - visualW - 8)), y: top }}
             minWidth={320}
             minHeight={260}
           >
