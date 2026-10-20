@@ -27,6 +27,8 @@ export interface HostHooks {
   deleteTokensForNote(campaignId: string, noteId: string): Promise<void>;
   /** Save a pasted / library image (a data: URL) as a file and return its link. */
   saveImage?(dataUrl: string): Promise<string>;
+  /** A sheet's picture changed: its battlemap tokens show the new one for everyone. */
+  refreshNoteTokens?(campaignId: string, noteId: string, portrait: string | null): Promise<void>;
   /** Put a sheet into the campaign's initiative order (or update its place). */
   joinInitiative?(campaignId: string, sheet: { noteId: string; name: string; portrait: string | null }, value: number): Promise<void>;
 }
@@ -335,7 +337,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         if (p.portrait !== undefined) {
           const s = p.portrait ? await storedImage(ctx.host, String(p.portrait)) : null;
           if (s && (s.length > 4096 || !/^(https?:\/\/|\/|data:image\/)/.test(s))) fail("Upload the image instead of pasting it");
+          const changed = note.portrait !== s;
           note.portrait = s;
+          if (changed && store.scope.kind === "campaign") void ctx.host.refreshNoteTokens?.(store.scope.id, note.id, s).catch(() => {});
         }
         if (p.folder !== undefined) note.folder = p.folder ? cleanLabel(p.folder, 80) : null;
         if (p.sortOrder !== undefined && Number.isFinite(p.sortOrder)) note.sortOrder = p.sortOrder;

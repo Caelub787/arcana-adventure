@@ -3693,7 +3693,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           const canControlTok = canControl(token);
           // Use enriched token data for image and size (works regardless of character permissions)
           const tokenSpeciesData = character?.race ? speciesMap.get(character.race) : null;
-          const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
+          // The live portrait first (it changes the moment the sheet's picture does); the server's copy for anyone who can't see the sheet.
+          const tokenImage = character?.portrait || (token as any).tokenImage || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const tempHpPercent = character && character.maxHp > 0 ? ((character.tempHp ?? 0) / character.maxHp) * 100 : 0;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;

@@ -20,7 +20,10 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
   return (
     <>
       {/* The kind's icon until the picture loads (and if it can't). */}
-      <Portrait note={note} size="100%" radius={12} className="absolute inset-0 pointer-events-none !border-0 !bg-stone-800/90" />
+      {/* Pinned over the token's own square (the Portrait box is position:relative itself). */}
+      <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden" data-testid="ag-token-portrait">
+        <Portrait note={note} size="100%" radius={12} className="!border-0 !bg-stone-800/90" />
+      </div>
       {(showName || resolved.length > 0) && (
         <div className="absolute z-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-px" style={{ bottom: 2, width: tokenSize * 0.92 }}
           onPointerDown={(e) => { if ((e.target as HTMLElement).closest("[data-ag-token-bar]")) e.stopPropagation(); }}

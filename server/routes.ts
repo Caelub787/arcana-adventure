@@ -500,6 +500,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const removed = await db.delete(tokensTable).where(eq(tokensTable.agnosticNoteId, noteId)).returning({ id: tokensTable.id });
       for (const t of removed) broadcastToCampaign(campaignId, { type: "token_deleted", tokenId: t.id });
     },
+    refreshNoteTokens: async (campaignId, noteId, portrait) => {
+      if (!portrait) return; // no picture: tokens keep theirs (the sheet's icon shows over it)
+      const updated = await db.update(tokensTable).set({ image: portrait }).where(eq(tokensTable.agnosticNoteId, noteId)).returning();
+      for (const t of updated) broadcastToCampaign(campaignId, { type: "token_updated", token: { ...t, tokenImage: portrait } });
+    },
     // A whole image from the image library (or pasted) becomes a saved file.
     // Kept in the database: the server's disk doesn't survive a redeploy.
     saveImage: (dataUrl) => saveAgImageDataUrl(dataUrl),
@@ -4964,6 +4969,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           characterId: updatedCharacter.id,
           character: updatedCharacter
         });
+      }
+
+      // A new portrait shows on the character's battlemap tokens straight away,
+      // for everyone (including players who can't see the sheet itself).
+      if ('portrait' in (req.body || {}) && updatedCharacter?.campaignId && (req.body.portrait || null) !== (charData?.portrait || null)) {
+        try {
+          const charTokens = await db.select().from(tokensTable).where(eq(tokensTable.characterId, updatedCharacter.id));
+          for (const t of charTokens) {
+            const token = updatedCharacter.portrait
+              ? (await db.update(tokensTable).set({ image: updatedCharacter.portrait }).where(eq(tokensTable.id, t.id)).returning())[0] ?? t
+              : t;
+            broadcastToCampaign(updatedCharacter.campaignId, {
+              type: "token_updated",
+              token: { ...token, tokenImage: updatedCharacter.portrait || token.image },
+            });
+          }
+        } catch (e) {
+          console.error('Failed to refresh token portraits:', e);
+        }
       }
 
       // C.A.: the ability note is named after the ability, so renaming the
