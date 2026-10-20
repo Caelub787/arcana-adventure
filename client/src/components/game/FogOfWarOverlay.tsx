@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getBlockingSegments, calculateVisionPolygon, calculateVisionInLight, type VisionPolygon } from '@/lib/visionEngine';
 import type { MotionValue } from 'framer-motion';
+import { useLevelSelect, levelIdForNew, useViewLevel } from '@/battlemap/levelStore';
 
 const MAP_OFFSET = 9000;
 
@@ -156,9 +157,11 @@ interface FogOfWarOverlayProps {
 export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false, selectedTokenId, gmSeeAllVision = false, onFogRenderData }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
+  const levelSelect = useLevelSelect<any>(sceneId);
 
   const { data: walls = [] } = useQuery<SceneWall[]>({
     queryKey: ['scene-walls', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/walls`);
@@ -170,6 +173,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const { data: doors = [] } = useQuery<SceneDoor[]>({
     queryKey: ['scene-doors', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/doors`);
@@ -181,6 +185,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const { data: windows = [] } = useQuery<SceneWindow[]>({
     queryKey: ['scene-windows', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/windows`);
@@ -192,6 +197,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const { data: lights = [] } = useQuery<SceneLight[]>({
     queryKey: ['scene-lights', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/lights`);
@@ -203,6 +209,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const { data: visionZones = [] } = useQuery<Array<{ id: string; mode: string; points: string }>>({
     queryKey: ['scene-vision-zones', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`);
@@ -678,7 +685,9 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
   }, [visionPolygons, lightVisionPolygons]);
 
-  const exploredStorageKey = sceneId && currentUserId ? `explored-${sceneId}-${currentUserId}` : null;
+  // Explored memory is kept per level: walking upstairs doesn't reveal the ground floor's map.
+  const viewLevelId = useViewLevel(sceneId);
+  const exploredStorageKey = sceneId && currentUserId ? `explored-${sceneId}-${currentUserId}${viewLevelId && viewLevelId !== 'base' ? `-${viewLevelId}` : ''}` : null;
 
   const [exploredCells, setExploredCells] = useState<Set<string>>(() => {
     if (!exploredStorageKey) return new Set();
@@ -690,10 +699,14 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   });
 
   const fogExploredMemoryEnabled = scene?.fogExploredMemory ?? false;
-  const prevSceneIdRef = useRef(sceneId);
+  // Which storage key the cells in state belong to - switching scene or level
+  // swaps them out, and nothing is saved under the new key until that's done.
+  const loadedExploredKeyRef = useRef(exploredStorageKey);
+  const skipExploredSaveRef = useRef(false);
   useEffect(() => {
-    if (sceneId !== prevSceneIdRef.current) {
-      prevSceneIdRef.current = sceneId;
+    if (exploredStorageKey !== loadedExploredKeyRef.current) {
+      loadedExploredKeyRef.current = exploredStorageKey;
+      skipExploredSaveRef.current = true; // the cells still in state belong to the old key
       if (!exploredStorageKey) {
         setExploredCells(new Set());
         return;
@@ -719,6 +732,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   }, [fogExploredMemoryEnabled, exploredStorageKey]);
 
   useEffect(() => {
+    if (skipExploredSaveRef.current) { skipExploredSaveRef.current = false; return; }
     if (!exploredStorageKey || !fogExploredMemoryEnabled) return;
     if (exploredCells.size === 0) return;
     try {
@@ -1149,6 +1163,7 @@ export function WallDrawingOverlay({
 }: WallDrawingOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
+  const levelSelect = useLevelSelect<any>(sceneId);
   const [wallPoints, setWallPoints] = useState<{ x: number; y: number }[]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [doorStart, setDoorStart] = useState<{ x: number; y: number } | null>(null);
@@ -1161,7 +1176,7 @@ export function WallDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/walls`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...wall, sceneId, snapToGrid: true, playerVisible: true }),
+        body: JSON.stringify({ ...wall, sceneId, levelId: levelIdForNew(sceneId), snapToGrid: true, playerVisible: true }),
       });
       if (!res.ok) throw new Error('Failed to create wall');
       return res.json();
@@ -1176,7 +1191,7 @@ export function WallDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/doors`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...door, sceneId, isOpen: false, isLocked: false, blocksVisionWhenClosed: true, blocksMovementWhenClosed: true, snapToGrid: true }),
+        body: JSON.stringify({ ...door, sceneId, levelId: levelIdForNew(sceneId), isOpen: false, isLocked: false, blocksVisionWhenClosed: true, blocksMovementWhenClosed: true, snapToGrid: true }),
       });
       if (!res.ok) throw new Error('Failed to create door');
       return res.json();
@@ -1191,7 +1206,7 @@ export function WallDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/windows`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...win, sceneId, shutterClosed: false, snapToGrid: true }),
+        body: JSON.stringify({ ...win, sceneId, levelId: levelIdForNew(sceneId), shutterClosed: false, snapToGrid: true }),
       });
       if (!res.ok) throw new Error('Failed to create window');
       return res.json();
@@ -1206,7 +1221,7 @@ export function WallDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/lights`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...light, sceneId, intensity: lightIntensity, softEdge: true, flicker: false, flickerSpeed: 1.0, attachmentType: 'static', enabled: true }),
+        body: JSON.stringify({ ...light, sceneId, levelId: levelIdForNew(sceneId), intensity: lightIntensity, softEdge: true, flicker: false, flickerSpeed: 1.0, attachmentType: 'static', enabled: true }),
       });
       if (!res.ok) throw new Error('Failed to create light');
       return res.json();
@@ -1258,6 +1273,7 @@ export function WallDrawingOverlay({
 
   const { data: walls = [] } = useQuery<any[]>({
     queryKey: ['scene-walls', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/walls`);
@@ -1269,6 +1285,7 @@ export function WallDrawingOverlay({
 
   const { data: doors = [] } = useQuery<any[]>({
     queryKey: ['scene-doors', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/doors`);
@@ -1280,6 +1297,7 @@ export function WallDrawingOverlay({
 
   const { data: windowsList = [] } = useQuery<any[]>({
     queryKey: ['scene-windows', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/windows`);
@@ -1291,6 +1309,7 @@ export function WallDrawingOverlay({
 
   const { data: lightsList = [] } = useQuery<any[]>({
     queryKey: ['scene-lights', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/lights`);
@@ -1302,6 +1321,7 @@ export function WallDrawingOverlay({
 
   const { data: visionZones = [] } = useQuery<any[]>({
     queryKey: ['scene-vision-zones', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
@@ -1587,7 +1607,7 @@ export function WallDrawingOverlay({
         fetch(`/api/scenes/${sceneId}/walls/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ walls: wallSegments }),
+          body: JSON.stringify({ walls: wallSegments.map((w: any) => ({ ...w, levelId: levelIdForNew(sceneId) })) }),
         }).then((res) => {
           if (!res.ok) console.error('Failed to create walls batch');
           queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
@@ -1788,11 +1808,13 @@ export function ZoneDrawingOverlay({
 }: ZoneDrawingOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
+  const levelSelect = useLevelSelect<any>(sceneId);
   const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
   const { data: existingZones = [] } = useQuery<any[]>({
     queryKey: ['scene-vision-zones', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
@@ -1815,7 +1837,7 @@ export function ZoneDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...zone, sceneId }),
+        body: JSON.stringify({ ...zone, sceneId, levelId: levelIdForNew(sceneId) }),
       });
       if (!res.ok) throw new Error('Failed to create vision zone');
       return res.json();
@@ -2037,9 +2059,11 @@ interface FogMoveOverlayProps {
 export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnabled = true }: FogMoveOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
+  const levelSelect = useLevelSelect<any>(sceneId);
 
   const { data: walls = [] } = useQuery<any[]>({
     queryKey: ['scene-walls', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/walls`);
@@ -2051,6 +2075,7 @@ export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnab
 
   const { data: doors = [] } = useQuery<any[]>({
     queryKey: ['scene-doors', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/doors`);
@@ -2062,6 +2087,7 @@ export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnab
 
   const { data: windows = [] } = useQuery<any[]>({
     queryKey: ['scene-windows', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/windows`);
@@ -2073,6 +2099,7 @@ export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnab
 
   const { data: lights = [] } = useQuery<any[]>({
     queryKey: ['scene-lights', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/lights`);
@@ -2084,6 +2111,7 @@ export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnab
 
   const { data: visionZones = [] } = useQuery<any[]>({
     queryKey: ['scene-vision-zones', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       if (!sceneId) return [];
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
@@ -2439,8 +2467,10 @@ export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnab
 
 function VisionZonesList({ sceneId }: { sceneId: string }) {
   const queryClient = useQueryClient();
+  const levelSelect = useLevelSelect<any>(sceneId);
   const { data: zones = [] } = useQuery<Array<{ id: string; name: string; mode: string; points: string }>>({
     queryKey: ['scene-vision-zones', sceneId],
+    select: levelSelect,
     queryFn: async () => {
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
       if (!res.ok) return [];

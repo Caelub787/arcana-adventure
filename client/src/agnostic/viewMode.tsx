@@ -6,7 +6,8 @@
 //                tools are out of the way.
 // Only a view: permissions never change. GMs start in GM view, players in
 // Player view. Libraries are for building, so they're always in GM view.
-import React, { useEffect, useSyncExternalStore } from "react";
+import { useKeybind, useBindingLabel } from "@/lib/keybinds";
+import React, { useSyncExternalStore } from "react";
 import { Hammer, Gamepad2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -60,16 +61,11 @@ export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; is
   const mode = useAgViewMode(key, isGM);
   const play = mode === "player";
   const label = play ? "Player view" : "GM view";
-  // Ctrl+K (⌘K on a Mac) switches between the two, wherever you are on the page.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "k") return;
-      e.preventDefault(); e.stopPropagation();
-      setAgViewMode(key, getAgViewMode(key, isGM) === "player" ? "gm" : "player");
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [key, isGM]);
+  // Ctrl+K (⌘K on a Mac) by default - rebindable in Settings > Keyboard shortcuts.
+  useKeybind("view.gmPlayer", () => {
+    setAgViewMode(key, getAgViewMode(key, isGM) === "player" ? "gm" : "player");
+  }, isGM);
+  const shortcut = useBindingLabel("view.gmPlayer");
   return (
     <TooltipProvider>
       <Tooltip>
@@ -79,7 +75,7 @@ export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; is
             size="icon"
             onClick={() => setAgViewMode(key, play ? "gm" : "player")}
             className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${play ? "border-sky-500/80 text-sky-300" : "border-amber-500 text-amber-400"}`}
-            aria-label={`${label} — switch to ${play ? "GM view" : "Player view"} (Ctrl+K)`}
+            aria-label={`${label} — switch to ${play ? "GM view" : "Player view"}${shortcut ? ` (${shortcut})` : ""}`}
             data-testid="button-ag-view-mode"
             data-mode={mode}
           >
@@ -93,7 +89,7 @@ export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; is
               ? `Playing: change values, bars, items and wounds; the sheets' layout is locked. Click for ${isGM ? "GM view" : "editing view"}.`
               : `Building: edit everything you're allowed to, including the sheets' layout. Click for Player view.`}
           </p>
-          <p className="text-[10px] text-stone-500 mt-0.5">Ctrl+K switches</p>
+          {shortcut && <p className="text-[10px] text-stone-500 mt-0.5">{shortcut} switches</p>}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

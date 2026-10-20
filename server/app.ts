@@ -539,6 +539,17 @@ async function ensureKnowledgeSystemSchema() {
       created_at timestamp NOT NULL DEFAULT now()
     )`,
     `CREATE INDEX IF NOT EXISTS soundscape_scenes_campaign_idx ON soundscape_scenes (campaign_id)`,
+    // Battlemap levels + token elevation (shared/battlemapLevels.ts), per-user keybinds.
+    `ALTER TABLE IF EXISTS scenes ADD COLUMN IF NOT EXISTS levels jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE IF EXISTS tokens ADD COLUMN IF NOT EXISTS elevation real NOT NULL DEFAULT 0`,
+    `ALTER TABLE IF EXISTS scene_walls ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS scene_doors ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS scene_windows ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS scene_lights ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS scene_vision_zones ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS scene_map_pins ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS campaign_map_pins ADD COLUMN IF NOT EXISTS level_id varchar`,
+    `ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS keybinds jsonb`,
     // Agnostic system tables (+ tokens.agnostic_note_id) — see shared/agnostic-schema.ts.
     ...AGNOSTIC_SCHEMA_STATEMENTS,
   ];

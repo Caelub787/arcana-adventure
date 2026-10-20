@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { setKeybindOverrides } from "@/lib/keybinds";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,23 @@ import Spectate from "@/pages/Spectate";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { BannedScreen } from "@/components/BannedScreen";
 
+/** Loads the signed-in user's keyboard shortcuts (same in every campaign). */
+function KeybindsLoader() {
+  const { user } = useAuth();
+  const { data } = useQuery<{ keybinds: Record<string, string[]> }>({
+    queryKey: ['/api/me/keybinds'],
+    queryFn: async () => {
+      const res = await fetch('/api/me/keybinds', { credentials: 'include' });
+      if (!res.ok) return { keybinds: {} };
+      return res.json();
+    },
+    enabled: !!user,
+    staleTime: Infinity,
+  });
+  useEffect(() => { setKeybindOverrides(user ? data?.keybinds ?? {} : {}); }, [user, data]);
+  return null;
+}
+
 function SiteUpdateBanner() {
   const { user } = useAuth();
   const [showBanner, setShowBanner] = useState(false);
@@ -61,6 +79,11 @@ function SiteUpdateBanner() {
       wsRef.current.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (data.type === 'keybinds_updated') {
+            // Shortcuts changed on another tab/device - use them here too.
+            setKeybindOverrides(data.keybinds);
+            queryClient.setQueryData(['/api/me/keybinds'], { keybinds: data.keybinds });
+          }
           if (data.type === 'site_update') {
             setMessage(data.message || "App updated, please refresh to continue using. Failure to do so may cause issues with syncing or other.");
             setShowBanner(true);
@@ -289,6 +312,7 @@ function AppContent() {
   return (
     <>
       <SiteUpdateBanner />
+      <KeybindsLoader />
       <Toaster />
       <ErrorBoundary>
         <Router />

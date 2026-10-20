@@ -40,6 +40,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { sceneLevels, levelForElevation, findLevel, visibleLevelStack, BASE_LEVEL_ID, type SceneLevel } from "@shared/battlemapLevels";
+import { setViewLevel } from "@/battlemap/levelStore";
+import { useAgMaybe } from "@/agnostic/hooks";
+import { LevelsPanel, ElevationStepper } from "@/battlemap/LevelsPanel";
+import { Building2 } from "lucide-react";
 import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap, Crosshair, Gem, Wand2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -736,6 +741,16 @@ function HoldMenuButton({ options, testId, holdMs = 250, forceOpen = false }: {
 
 // 2. BattleMap
 interface BattleMapProps {
+  /** Battlemap levels: set a token's elevation in feet (decides which level it stands on). */
+  onSetTokenElevation?: (tokenId: string, elevation: number) => void;
+  /** Battlemap levels: save the scene's level list (GM). */
+  onUpdateSceneLevels?: (levels: SceneLevel[]) => void;
+  /** Extra "this viewer controls that token" rule (agnostic: owners of the token's note). */
+  canControlToken?: (token: any) => boolean;
+  /** Keybinds: open/close the levels panel from outside. */
+  levelsPanelToggleRef?: React.MutableRefObject<(() => void) | null>;
+  /** Keybinds: raise/lower the selected token's elevation by one step from outside. */
+  elevationStepRef?: React.MutableRefObject<((dir: 1 | -1) => void) | null>;
   /** Agnostic system: draws a note-backed token's portrait, name and bars. */
   renderTokenOverlay?: (token: any, tokenSize: number) => React.ReactNode;
   tokens: Token[];
@@ -1280,7 +1295,7 @@ function AoeAffectedCellsOverlay({ marker, gridSize, isPreview }: { marker: Rule
   );
 }
 
-export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange, tutorialForceOpenHoldMenu = null, renderTokenOverlay }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, rulerActive = false, rulerMarkers = [], rulerPreviewMarker = null, onRulerPreview, onRulerCommit, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, lockView, smoothCamera, mapPins = [], pinPlaceMode = false, pinMoveMode = false, pinSnapToGrid = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem, selectionToolsTop = 176, onLeftToolbarBottomChange, tutorialForceOpenHoldMenu = null, renderTokenOverlay, onSetTokenElevation, onUpdateSceneLevels, canControlToken, levelsPanelToggleRef, elevationStepRef }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
 
@@ -1434,6 +1449,80 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
       setSelectedVisionTokenId(null);
     }
   }, [assignedCharacterId, tokens]);
+
+  // ---- Battlemap levels (shared/battlemapLevels.ts) ----
+  // Which level this viewer sees: a player follows the level their own token
+  // stands on (its elevation), so climbing stairs swaps their map, walls,
+  // lights and the tokens they can see. A GM picks a level or follows
+  // whichever token they select.
+  const levels = useMemo(() => sceneLevels((scene as any)?.levels), [(scene as any)?.levels]);
+  const multiLevel = levels.length > 1;
+  const tokenLevelId = useCallback((t: any) => levelForElevation(levels, t?.elevation).id, [levels]);
+  // Agnostic: a note-backed token is controlled by the note's owners.
+  const agCtx = useAgMaybe();
+  const canControl = useCallback((t: any) => {
+    if (role === 'gm') return true;
+    if (canControlToken?.(t)) return true;
+    if (t?.agnosticNoteId && agCtx) {
+      const note = agCtx.state.notes.get(t.agnosticNoteId);
+      const uid = agCtx.viewer?.userId;
+      if (note && uid && (note.ownerIds?.includes(uid) || (note as any).userIds?.includes(uid))) return true;
+    }
+    const lvl = t?.characterId ? myPermissions?.permissions?.[t.characterId] : undefined;
+    return lvl === 'edit' || lvl === 'owner';
+  }, [role, canControlToken, myPermissions, agCtx]);
+  const [levelsPanelOpen, setLevelsPanelOpen] = useState(false);
+  const [gmFollowSelection, setGmFollowSelection] = useState(() => {
+    try { return localStorage.getItem('battlemap-level-follow') !== 'false'; } catch { return true; }
+  });
+  const [gmViewLevel, setGmViewLevel] = useState<string>(BASE_LEVEL_ID);
+  useEffect(() => { setGmViewLevel(BASE_LEVEL_ID); }, [scene?.id]);
+  const selectedTokenLevel = useMemo(() => {
+    const t = selectedTokenId ? tokens.find(x => x.id === selectedTokenId) : null;
+    return t ? tokenLevelId(t) : null;
+  }, [selectedTokenId, tokens, tokenLevelId]);
+  useEffect(() => {
+    if (role !== 'gm' || !gmFollowSelection || !selectedTokenLevel) return;
+    setGmViewLevel(selectedTokenLevel);
+  }, [role, gmFollowSelection, selectedTokenLevel]);
+  const focusToken = useMemo(() => {
+    const sel = selectedTokenId ? tokens.find(t => t.id === selectedTokenId) : null;
+    if (sel && canControl(sel)) return sel;
+    const vis = selectedVisionTokenId ? tokens.find(t => t.id === selectedVisionTokenId) : null;
+    if (vis) return vis;
+    return role === 'gm' ? null : (tokens.find(t => canControl(t)) ?? null);
+  }, [selectedTokenId, selectedVisionTokenId, tokens, canControl, role]);
+  const viewLevelId = !multiLevel
+    ? BASE_LEVEL_ID
+    : (role === 'gm' && !gmSeeAsPlayer)
+      ? findLevel(levels, gmViewLevel).id
+      : (focusToken ? tokenLevelId(focusToken) : findLevel(levels, gmViewLevel).id);
+  useLayoutEffect(() => { setViewLevel(scene?.id, viewLevelId); }, [scene?.id, viewLevelId]);
+  const viewLevel = findLevel(levels, viewLevelId);
+  const levelStack = useMemo(() => visibleLevelStack(levels, viewLevelId), [levels, viewLevelId]);
+  // Pins belong to a level too (untagged = ground).
+  const levelPins = useMemo(() => (multiLevel ? mapPins.filter((p: any) => (p?.levelId || BASE_LEVEL_ID) === viewLevelId) : mapPins), [multiLevel, mapPins, viewLevelId]);
+  const tokensOnLevel = useMemo(() => (multiLevel ? tokens.filter(t => tokenLevelId(t) === viewLevelId) : tokens), [multiLevel, tokens, tokenLevelId, viewLevelId]);
+  const levelTokenCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const t of tokens) { const id = tokenLevelId(t); c[id] = (c[id] ?? 0) + 1; }
+    return c;
+  }, [tokens, tokenLevelId]);
+  const elevationStep = Math.max(1, Number((scene as any)?.feetPerCell) || 5);
+  const setTokenElevation = useCallback((tokenId: string, elevation: number) => {
+    onSetTokenElevation?.(tokenId, Math.round(elevation * 10) / 10);
+  }, [onSetTokenElevation]);
+  useEffect(() => {
+    if (levelsPanelToggleRef) levelsPanelToggleRef.current = role === 'gm' ? () => setLevelsPanelOpen(o => !o) : null;
+  }, [levelsPanelToggleRef, role]);
+  useEffect(() => {
+    if (!elevationStepRef) return;
+    elevationStepRef.current = (dir: 1 | -1) => {
+      const t = focusToken ?? (selectedTokenId ? tokens.find(x => x.id === selectedTokenId) : null);
+      if (!t || !canControl(t)) return;
+      setTokenElevation(t.id, (Number((t as any).elevation) || 0) + dir * elevationStep);
+    };
+  }, [elevationStepRef, focusToken, selectedTokenId, tokens, canControl, setTokenElevation, elevationStep]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -2794,9 +2883,16 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   }, []);
 
   const visibleTokens = useMemo(() => {
+    // Levels: players only see tokens on their level (plus ghosts of their own
+    // tokens elsewhere, so they can hop to them); the GM sees every level.
+    const offLevel = (t: any) => multiLevel && tokenLevelId(t) !== viewLevelId;
+    const levelTokens = !multiLevel || (isGM && !gmSeeAsPlayer)
+      ? tokens
+      : tokens.filter(t => !offLevel(t) || canControl(t));
     if ((!isGM || gmSeeAsPlayer) && scene?.fogEnabled) {
       if (visionPolygons && visionPolygons.length > 0) {
-        return tokens.filter(token => {
+        return levelTokens.filter(token => {
+          if (offLevel(token)) return true;
           const tokenCenterX = token.x + gridSize / 2;
           const tokenCenterY = token.y + gridSize / 2;
           return visionPolygons.some(poly => 
@@ -2804,10 +2900,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           );
         });
       }
-      return [];
+      return levelTokens.filter(t => offLevel(t));
     }
-    return tokens;
-  }, [tokens, isGM, gmSeeAsPlayer, scene?.fogEnabled, visionPolygons, gridSize]);
+    return levelTokens;
+  }, [tokens, isGM, gmSeeAsPlayer, scene?.fogEnabled, visionPolygons, gridSize, multiLevel, tokenLevelId, viewLevelId, canControl]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef} style={{ contain: 'layout paint' }}
@@ -3052,6 +3148,22 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               options={tokenOptions}
               forceOpen={tutorialForceOpenHoldMenu === 'tokenOptions'}
             />
+            {(isGM || multiLevel) && (
+              <div className="relative">
+                <ToolbarIconButton
+                  icon={<Building2 className="h-4 w-4 md:h-5 md:w-5" />}
+                  label={isGM ? `Levels — viewing ${viewLevel.name}` : `You're on: ${viewLevel.name}`}
+                  active={levelsPanelOpen}
+                  onClick={() => { if (isGM) setLevelsPanelOpen(o => !o); }}
+                  testId="button-battlemap-levels"
+                />
+                {multiLevel && (
+                  <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-sky-500/60 bg-stone-900/90 px-2 py-0.5 text-[11px] font-semibold text-sky-200 shadow pointer-events-none" data-testid="battlemap-level-label">
+                    {viewLevel.name}
+                  </span>
+                )}
+              </div>
+            )}
             {isGM && (
               <ToolbarIconButton
                 icon={<Monitor className="h-4 w-4 md:h-5 md:w-5" />}
@@ -3424,6 +3536,10 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             left: '9000px',
             top: '9000px',
             transformOrigin: 'top left',
+            // Levels: the ground stays mounted (pins measure it) but hides under a solid floor,
+            // and dims when you're looking down at it from a floor above.
+            visibility: multiLevel && !levelStack.some(l => l.id === BASE_LEVEL_ID) ? 'hidden' : undefined,
+            filter: multiLevel && viewLevelId !== BASE_LEVEL_ID && levelStack.some(l => l.id === BASE_LEVEL_ID) ? 'brightness(0.55) saturate(0.8)' : undefined,
           }}
           draggable={false}
           ref={(img) => {
@@ -3452,8 +3568,29 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           }}
         />
 
+        {/* Levels: each floor's own map, stacked over the ground at the same size and origin. */}
+        {multiLevel && levelStack.filter(l => l.id !== BASE_LEVEL_ID && l.image).map((l) => (
+          <img
+            key={`level-img-${l.id}`}
+            src={l.image!}
+            alt={l.name}
+            className="absolute max-w-none pointer-events-none"
+            decoding="async"
+            draggable={false}
+            data-testid={`level-image-${l.id}`}
+            style={{
+              left: '9000px',
+              top: '9000px',
+              width: bgImageDimensions.width || undefined,
+              height: bgImageDimensions.height || undefined,
+              opacity: l.id === viewLevelId ? 0.95 : 0.8,
+              filter: l.id === viewLevelId ? undefined : 'brightness(0.55) saturate(0.8)',
+            }}
+          />
+        ))}
+
         {/* Campaign Map Pins Overlay */}
-        {mapPins.length > 0 && bgImageDimensions.width > 0 && (
+        {levelPins.length > 0 && bgImageDimensions.width > 0 && (
           <div
             className="absolute pointer-events-none"
             style={{
@@ -3468,7 +3605,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               const snapBase = 9000 % snapGs;
               const snapOffX = ((snapBase + ((scene as any)?.gridOffsetX || 0)) % snapGs + snapGs) % snapGs;
               const snapOffY = ((snapBase + ((scene as any)?.gridOffsetY || 0)) % snapGs + snapGs) % snapGs;
-              return mapPins.map((pin: any) => {
+              return levelPins.map((pin: any) => {
                 const xPx = (pin.x / 100) * bgImageDimensions.width;
                 const yPx = (pin.y / 100) * bgImageDimensions.height;
                 const isRevealed = revealedPinId === pin.id;
@@ -3551,6 +3688,9 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           }
           
           const character = getCharacterForToken(token);
+          const tokenElevation = Number((token as any).elevation) || 0;
+          const offLevel = multiLevel && tokenLevelId(token) !== viewLevelId;
+          const canControlTok = canControl(token);
           // Use enriched token data for image and size (works regardless of character permissions)
           const tokenSpeciesData = character?.race ? speciesMap.get(character.race) : null;
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
@@ -3568,7 +3708,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           // - Outside combat: Users with 'edit' or 'owner' permission can drag
           // Note: token.type === 'player' alone is NOT sufficient - must have actual edit permission
           const permissionLevel = character ? myPermissions?.permissions?.[character.id] : undefined;
-          const hasEditAccess = permissionLevel === 'edit' || permissionLevel === 'owner';
+          const hasEditAccess = permissionLevel === 'edit' || permissionLevel === 'owner' || (!!(token as any).agnosticNoteId && canControlTok);
           
           // During combat, players can only move tokens if it's that token's character's turn
           // Only enforce turn restriction when combat is active AND a turn has been established
@@ -3637,7 +3777,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               target.setPointerCapture(e.pointerId);
             }
             
-            if (role === 'gm') {
+            if (role === 'gm' || (canControlTok && onSetTokenElevation)) {
               holdTimerRef.current = setTimeout(() => {
                 setShowDeleteButton(token.id);
               }, 500);
@@ -3789,7 +3929,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
                 height: tokenSize,
                 left: displayX + 9000 + tokenOffset,
                 top: displayY + 9000 + tokenOffset,
-                opacity: isInvisible ? 0.4 : 1,
+                opacity: (isInvisible ? 0.4 : 1) * (offLevel ? 0.35 : 1),
+                filter: offLevel ? 'grayscale(0.6)' : undefined,
                 willChange: isDragging ? 'transform' : 'auto',
                 transform: isDragging ? 'scale(1.1)' : undefined
               }}
@@ -3800,6 +3941,24 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-xl" decoding="sync" loading="eager" style={{ imageRendering: 'auto' }} />
               {/* Agnostic: the token stands for a note — its live portrait, name and the GM-chosen bars. */}
               {(token as any).agnosticNoteId && renderTokenOverlay ? renderTokenOverlay(token, tokenSize) : null}
+
+              {/* Levels: elevation badge (and which level, when it's not the one you're viewing). */}
+              {(tokenElevation !== 0 || offLevel) && (
+                <div
+                  className={`absolute left-1/2 -translate-x-1/2 -top-2.5 z-20 rounded-full px-1.5 leading-[14px] text-[10px] font-semibold whitespace-nowrap pointer-events-none border shadow ${offLevel ? 'bg-stone-800/95 border-stone-500 text-stone-200' : 'bg-sky-900/95 border-sky-400/80 text-sky-100'}`}
+                  data-testid={`token-elevation-${token.id}`}
+                >
+                  {offLevel ? `${levels.find(l => l.id === tokenLevelId(token))?.name ?? ''} · ` : ''}{tokenElevation > 0 ? '▲' : tokenElevation < 0 ? '▼' : ''}{Math.abs(tokenElevation)} ft
+                </div>
+              )}
+              {showDeleteButton === token.id && canControlTok && onSetTokenElevation && (
+                <ElevationStepper
+                  elevation={tokenElevation}
+                  step={elevationStep}
+                  onChange={(e) => setTokenElevation(token.id, e)}
+                  testId={`token-elevation-stepper-${token.id}`}
+                />
+              )}
               
               {/* Initiative Turn Border - yellow border for current turn character (z-index 1 to sit under HP/energy bars) */}
               {character && currentTurnCharacterId === character.id && (
@@ -5159,6 +5318,23 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
           );
         })()}
         
+        {levelsPanelOpen && isGM && onUpdateSceneLevels && (
+          // Portalled, but React still bubbles its events up here - keep them off the map's pan/zoom handlers.
+          <div className="contents" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <LevelsPanel
+            levels={levels}
+            viewLevelId={viewLevelId}
+            followSelection={gmFollowSelection}
+            tokenCounts={levelTokenCounts}
+            feetPerCell={elevationStep}
+            onViewLevel={(id) => { setGmViewLevel(id); }}
+            onFollowSelection={(on) => { setGmFollowSelection(on); try { localStorage.setItem('battlemap-level-follow', String(on)); } catch {} }}
+            onSave={(next) => onUpdateSceneLevels(next)}
+            onClose={() => setLevelsPanelOpen(false)}
+          />
+          </div>
+        )}
+
         {/* Fog of War Overlay - walls, doors, windows, lights, fog */}
         {scene?.id && (
           <FogOfWarOverlay
@@ -5167,7 +5343,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             gridSize={gridSize}
             fogToolActive={fogToolActive}
             onFogToolToggle={setFogToolActive}
-            tokens={tokens as any}
+            tokens={tokensOnLevel as any}
             characters={characters as any}
             currentUserId={currentUserId}
             onVisionPolygonsChange={setVisionPolygons}

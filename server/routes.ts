@@ -6,7 +6,7 @@ import {
   DEFAULT_MAP_GRID, defaultElementData, mapStyle, normalizeGrid,
   type MapElementKind,
 } from "@shared/mapDoc";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema, soundscapeScenes, tokens as tokensTable } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, knowledgeRevisions, items, spells, systemSpells, sceneVisionZones, mapObjects, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, insertWorldCanvasNodeSchema, campaigns, characters, entities, itemTemplateLinks, spellTemplateLinks, featConnections, OLD_ENTITY_TYPE_TO_TAG, type InsertRollEntry, type RollEntry, type Item, type MapLayer, insertCraftRecipeSchema, insertCraftRecipeIngredientSchema, insertCraftRecipeOutcomeSchema, insertCrafterRecipeTemplateSchema, soundscapeScenes, tokens as tokensTable, users as usersTable } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -3627,6 +3627,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         libraryTutorialSeenSystems: user.libraryTutorialSeenSystems || []
       }
     });
+  });
+
+  // Keyboard shortcuts: one set per user, the same in every campaign. Saving
+  // pushes the new set to the user's other open tabs/devices right away.
+  app.get("/api/me/keybinds", requireAuth, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ keybinds: (user as any).keybinds ?? {} });
+  });
+
+  app.put("/api/me/keybinds", requireAuth, async (req, res) => {
+    try {
+      const raw = req.body?.keybinds;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return res.status(400).json({ error: "keybinds must be an object" });
+      const clean: Record<string, string[]> = {};
+      for (const [action, combos] of Object.entries(raw).slice(0, 300)) {
+        if (!/^[a-z0-9_.:-]{1,80}$/i.test(action) || !Array.isArray(combos)) continue;
+        clean[action] = combos.filter((c) => typeof c === "string" && c.length <= 40).slice(0, 4);
+      }
+      await db.update(usersTable).set({ keybinds: clean } as any).where(eq(usersTable.id, req.session.userId!));
+      const msg = JSON.stringify({ type: "keybinds_updated", keybinds: clean });
+      allConnectedClients.forEach((client: any) => {
+        if (client.userId === req.session.userId && client.readyState === 1) client.send(msg);
+      });
+      res.json({ keybinds: clean });
+    } catch (err) {
+      console.error("Failed to save keybinds:", err);
+      res.status(500).json({ error: "Failed to save keybinds" });
+    }
   });
 
   // Password reset routes

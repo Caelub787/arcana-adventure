@@ -4,6 +4,9 @@
 // GM-assigned admin/My Library item). Replaces the V2-style battle hotbars,
 // character-sheet hotbars, and GM character hotbar in V3 campaigns only.
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useKeybindMany } from "@/lib/keybinds";
+
+const HOTBAR_SLOT_ACTIONS = Array.from({ length: 10 }, (_, i) => `hotbar.slot${i + 1}`);
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, gameWs } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -276,10 +279,18 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     return () => document.removeEventListener('pointerdown', close);
   }, [resetPopoverOpen]);
 
-  // Keyboard shortcuts: H + digit switches loadouts; a plain digit (1-9, 0)
-  // opens the assigned slot (1 = first slot, 0 = tenth). Both are ignored
-  // while typing in any text/value field.
+  // Keyboard shortcuts: each slot has a bindable key (Settings > Keyboard
+  // shortcuts; 1-9 and 0 by default). Holding H while pressing a digit
+  // switches loadouts instead. Plain keys are ignored while typing.
   const openSlotByKeyRef = useRef<(slotIndex: number) => void>(() => {});
+  useKeybindMany(HOTBAR_SLOT_ACTIONS, (actionId, e) => {
+    const digit = /^Digit[0-9]$/.test(e.code) ? Number(e.code.slice(5)) : null;
+    if (hHeld.current && digit !== null) {
+      if (digit <= 8) setLoadout(digit);
+      return;
+    }
+    openSlotByKeyRef.current(Number(actionId.slice('hotbar.slot'.length)) - 1);
+  });
   useEffect(() => {
     const isTyping = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -289,12 +300,9 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
       if (isTyping(e)) return;
       if (e.key === 'h' || e.key === 'H') hHeld.current = true;
       else if (hHeld.current && /^[0-9]$/.test(e.key)) {
+        // H + a digit that isn't bound to a hotbar slot still switches loadouts.
         e.preventDefault();
         if (/^[0-8]$/.test(e.key)) setLoadout(Number(e.key));
-      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9]$/.test(e.key)) {
-        // 1..9 -> slots 0..8, 0 -> slot 9
-        const slotIndex = e.key === '0' ? 9 : Number(e.key) - 1;
-        openSlotByKeyRef.current(slotIndex);
       }
     };
     const up = (e: KeyboardEvent) => {

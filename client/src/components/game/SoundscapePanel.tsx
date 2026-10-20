@@ -6,6 +6,7 @@
 // The panel's content lays itself out by its own width, not the viewport's:
 // wide → library beside the mixer; narrow (a phone, or a desktop panel the GM
 // shrank) → Library / Mixer / Scenes tabs.
+import { useKeybind } from "@/lib/keybinds";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -93,6 +94,8 @@ export function SoundscapePanel({ campaignId, isGM, hideControls }: Props) {
   useSoundscapeVersion();
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  // Bindable in Settings > Keyboard shortcuts.
+  useKeybind("panel.soundscape", () => setOpen((o) => !o), !hideControls);
 
   // Live mix: initial state over REST, then websocket updates.
   useEffect(() => {

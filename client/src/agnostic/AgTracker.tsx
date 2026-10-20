@@ -2,6 +2,7 @@
 // every card is a layout the GM designs (portrait, bars, values, buttons,
 // last roll…), placed where the GM wants it. Values are the live ones —
 // change HP anywhere and every card updates instantly.
+import { useKeybind } from "@/lib/keybinds";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices } from "lucide-react";
@@ -38,6 +39,8 @@ export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean
 function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
   const { state, openNote, viewer, system } = useAg();
   const [designing, setDesigning] = useState(false);
+  // Bindable in Settings > Keyboard shortcuts (GM).
+  useKeybind("panel.playerTracker", () => setDesigning((d: boolean) => !d), !!viewer.isGM);
   const [history, setHistory] = useState<string | null>(null);
   // CA Agnostic: the tracker card keeps a roll history button.
   const ca = system === "ca-agnostic";

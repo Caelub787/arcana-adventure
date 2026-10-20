@@ -39,6 +39,8 @@ export const users = pgTable("users", {
   // one campaign, so unlike the campaign tour this can't live on
   // campaignMembers.
   libraryTutorialSeenSystems: text("library_tutorial_seen_systems").array(),
+  // The user's own keyboard shortcuts (action id -> key combos), the same in every campaign.
+  keybinds: jsonb("keybinds").$type<Record<string, string[]>>(),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -192,6 +194,8 @@ export const scenes = pgTable("scenes", {
   // Day/Night system
   isDayTime: boolean("is_day_time").default(true).notNull(),
   globalLightLevel: real("global_light_level").default(1.0).notNull(), // 0.0 (pitch dark) to 1.0 (full daylight)
+  // Stacked floors (see shared/battlemapLevels.ts). Empty = just the ground.
+  levels: jsonb("levels").$type<import("./battlemapLevels").SceneLevel[]>().notNull().default(sql`'[]'::jsonb`),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -490,6 +494,8 @@ export const tokens = pgTable("tokens", {
   lightRadius: integer("light_radius"), // Light emitted by this token (e.g. torch)
   lightColor: text("light_color").default("#ffcc44"), // Color of token-emitted light
   lightIntensity: real("light_intensity").default(1.0), // 0.0-1.0 intensity of token light
+  // Height above the ground in feet; decides which battlemap level the token stands on.
+  elevation: real("elevation").default(0).notNull(),
   // Agnostic system: the note this token stands for (portrait + live resource bars).
   agnosticNoteId: varchar("agnostic_note_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -2195,6 +2201,7 @@ export type RollEntry = typeof rollEntries.$inferSelect;
 export const sceneWalls = pgTable("scene_walls", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   x1: real("x1").notNull(),
   y1: real("y1").notNull(),
   x2: real("x2").notNull(),
@@ -2217,6 +2224,7 @@ export type SceneWall = typeof sceneWalls.$inferSelect;
 export const sceneDoors = pgTable("scene_doors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   x1: real("x1").notNull(),
   y1: real("y1").notNull(),
   x2: real("x2").notNull(),
@@ -2240,6 +2248,7 @@ export type SceneDoor = typeof sceneDoors.$inferSelect;
 export const sceneWindows = pgTable("scene_windows", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   x1: real("x1").notNull(),
   y1: real("y1").notNull(),
   x2: real("x2").notNull(),
@@ -2260,6 +2269,7 @@ export type SceneWindow = typeof sceneWindows.$inferSelect;
 export const sceneLights = pgTable("scene_lights", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   x: real("x").notNull(),
   y: real("y").notNull(),
   radius: integer("radius").default(30).notNull(), // Light radius in feet
@@ -2285,6 +2295,7 @@ export type SceneLight = typeof sceneLights.$inferSelect;
 export const sceneVisionZones = pgTable("scene_vision_zones", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   name: text("name").default("Zone"),
   mode: text("mode").notNull().default("indoor"), // "indoor" or "outdoor"
   points: text("points").notNull(), // JSON array of {x, y} points defining the polygon
@@ -2302,6 +2313,7 @@ export type SceneVisionZone = typeof sceneVisionZones.$inferSelect;
 export const sceneMapPins = pgTable("scene_map_pins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   x: integer("x").notNull().default(0),
   y: integer("y").notNull().default(0),
@@ -2628,6 +2640,7 @@ export type WorldCalendarSync = typeof worldCalendarSyncs.$inferSelect;
 export const campaignMapPins = pgTable("campaign_map_pins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  levelId: varchar("level_id"), // battlemap level (null = ground)
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   x: real("x").notNull().default(0),
   y: real("y").notNull().default(0),

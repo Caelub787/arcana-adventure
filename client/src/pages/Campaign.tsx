@@ -16,7 +16,7 @@ import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/li
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
-import { Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw, Triangle, Circle, Square, Maximize2 } from "lucide-react";
+import { Keyboard, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MoreVertical, RotateCcw, Triangle, Circle, Square, Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,6 +34,9 @@ import { AgRoot } from "@/agnostic/AgRoot";
 import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
 import { AgTracker } from "@/agnostic/AgTracker";
 import { AgViewModeButton } from "@/agnostic/viewMode";
+import { levelIdForNew } from '@/battlemap/levelStore';
+import { useKeybind, useBindingLabel } from '@/lib/keybinds';
+import { KeybindsPanel } from '@/components/KeybindsPanel';
 import { openAgNoteWindow } from "@/agnostic/AgWindows";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
 import { setAgTargets } from "@/agnostic/widgets";
@@ -7628,17 +7631,8 @@ export default function Campaign() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [aoeTargetState.active]);
 
-  // Alt+L hotkey to toggle global search
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.altKey && (e.key === 'l' || e.key === 'L')) {
-        e.preventDefault();
-        setGlobalSearchOpen((v) => !v);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+  // Global search: Alt+L by default (Settings > Keyboard shortcuts).
+  useKeybind('panel.search', () => setGlobalSearchOpen((v) => !v));
   
   // Throttled viewport broadcasting - send viewport updates to other players
   // at most every 500ms. This has a trailing edge: a currentView change that
@@ -8630,7 +8624,8 @@ export default function Campaign() {
   });
 
   const createPinMutation = useMutation({
-    mutationFn: (data: any) => api.createCampaignMapPin(effectiveCampaignId!, activeScene!.id, data),
+    // A new pin goes on the battlemap level being viewed.
+    mutationFn: (data: any) => api.createCampaignMapPin(effectiveCampaignId!, activeScene!.id, { ...data, levelId: data?.levelId ?? levelIdForNew(activeScene!.id) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
       setShowPinForm(false);
@@ -10562,6 +10557,23 @@ export default function Campaign() {
     toggleInvisibilityMutation.mutate({ tokenId, isInvisible });
   };
 
+  // Battlemap levels: a token's elevation (instant locally, then saved + broadcast).
+  const handleSetTokenElevation = useCallback((tokenId: string, elevation: number) => {
+    setTokens(prev => prev.map(t => t.id === tokenId ? { ...t, elevation } as any : t));
+    api.updateToken(tokenId, { elevation } as any).catch(() => {
+      toast({ title: 'Could not change elevation', variant: 'destructive' });
+    });
+  }, []);
+  const handleUpdateSceneLevels = useCallback((levels: any[]) => {
+    const sceneId = activeSceneIdRef.current || activeScene?.id;
+    if (!sceneId) return;
+    queryClient.setQueryData([`/api/scenes/${sceneId}`], (old: any) => old ? { ...old, levels } : old);
+    updateSceneMutation.mutate({ levels, _sceneId: sceneId } as any);
+  }, [activeScene?.id]);
+  // Keybind hooks into the battlemap (levels panel, elevation up/down).
+  const levelsPanelToggleRef = useRef<(() => void) | null>(null);
+  const elevationStepRef = useRef<((dir: 1 | -1) => void) | null>(null);
+
   const handleTokenClick = useCallback((token: any) => {
     console.log('[TokenClick] Mode:', selectionMode, 'Token:', token.id, token.characterId);
     // Handle based on current selection mode
@@ -10680,6 +10692,33 @@ export default function Campaign() {
       gameWs.clearTokenTargeting();
     }
   }, []);
+
+  // ---- Keyboard shortcuts (client/src/lib/keybinds.ts) ----
+  // Every main panel can be opened from a key the user picks in
+  // Settings > Keyboard shortcuts; the choices follow them to every campaign.
+  const [keybindsOpen, setKeybindsOpen] = useState(false);
+  const toggleSidePanel = useCallback((panel: SidePanelTab) => {
+    if (panel === 'notes' && isMobile) { setMobileNotesNav(prev => prev ? null : { noteId: null }); return; }
+    if (activeSidePanel === panel && !sidePanelMinimized) setSidePanelMinimized(true);
+    else { setActiveSidePanel(panel); setSidePanelMinimized(false); }
+  }, [activeSidePanel, sidePanelMinimized, isMobile]);
+  useKeybind('panel.chat', () => toggleSidePanel('chat' as SidePanelTab), !spectatorMode);
+  useKeybind('panel.characters', () => toggleSidePanel('characters' as SidePanelTab), !spectatorMode);
+  useKeybind('panel.initiative', () => toggleSidePanel('initiative' as SidePanelTab));
+  useKeybind('panel.notes', () => toggleSidePanel('notes' as SidePanelTab));
+  useKeybind('panel.scene', () => toggleSidePanel('scene' as SidePanelTab), role === 'gm' && !spectatorMode);
+  useKeybind('panel.settings', () => toggleSidePanel('settings' as SidePanelTab), !spectatorMode);
+  useKeybind('panel.ledger', () => toggleSidePanel('ledger' as SidePanelTab), isSwampy);
+  useKeybind('panel.deck', () => toggleSidePanel('deck' as SidePanelTab), isSwampy);
+  useKeybind('panel.fogTools', () => setFogToolActive(v => !v), role === 'gm' && !spectatorMode);
+  useKeybind('panel.levels', () => levelsPanelToggleRef.current?.(), role === 'gm' && !spectatorMode);
+  useKeybind('panel.keybinds', () => setKeybindsOpen(o => !o), !spectatorMode);
+  useKeybind('map.toolSelect', () => handleModeChange('select' as SelectionMode), !spectatorMode);
+  useKeybind('map.toolTarget', () => handleModeChange('target' as SelectionMode), !spectatorMode);
+  useKeybind('map.toolRuler', () => handleModeChange('ruler' as SelectionMode), !spectatorMode);
+  useKeybind('map.elevationUp', () => elevationStepRef.current?.(1), !spectatorMode);
+  useKeybind('map.elevationDown', () => elevationStepRef.current?.(-1), !spectatorMode);
+  const keybindsShortcut = useBindingLabel('panel.keybinds');
   
   const handleGridTargetClick = useCallback((gridX: number, gridY: number) => {
     setTargetedTokenId(null);
@@ -13568,6 +13607,10 @@ export default function Campaign() {
              onApplyEffect={spectatorMode ? undefined : handleApplyEffect}
              onRemoveEffect={spectatorMode ? undefined : handleRemoveEffect}
              onToggleInvisibility={spectatorMode ? undefined : handleToggleInvisibility}
+             onSetTokenElevation={spectatorMode ? undefined : handleSetTokenElevation}
+             onUpdateSceneLevels={spectatorMode ? undefined : handleUpdateSceneLevels}
+             levelsPanelToggleRef={levelsPanelToggleRef}
+             elevationStepRef={elevationStepRef}
              currentTurnCharacterId={currentTurnCharacterId}
              otherPlayersTargeting={otherPlayersTargeting}
              activeBeacons={activeBeacons}
@@ -14399,6 +14442,16 @@ export default function Campaign() {
               )}
               {activeSidePanel === 'settings' && effectiveCampaignId && (
                 <div className="h-full overflow-y-auto p-3">
+                  <button
+                    type="button"
+                    onClick={() => setKeybindsOpen(true)}
+                    className="w-full mb-3 flex items-center gap-2 rounded-lg border border-stone-700 bg-stone-900/70 px-3 py-2 text-left text-sm text-stone-200 hover:border-amber-500/60 hover:bg-stone-800"
+                    data-testid="button-open-keybinds"
+                  >
+                    <Keyboard className="h-4 w-4 text-amber-400" />
+                    <span className="flex-1">Keyboard shortcuts</span>
+                    <span className="text-[11px] text-stone-500">{keybindsShortcut || 'Edit'}</span>
+                  </button>
                   <CampaignMenu 
                     campaignId={effectiveCampaignId}
                     role={role} 
@@ -14757,6 +14810,8 @@ export default function Campaign() {
       {campaignId && (
         <SoundscapePanel campaignId={campaignId} isGM={role === 'gm'} hideControls={spectatorMode} />
       )}
+      {/* Settings > Keyboard shortcuts (per user, same in every campaign). */}
+      {keybindsOpen && <KeybindsPanel onClose={() => setKeybindsOpen(false)} isGM={role === 'gm'} />}
 
       {/* Free hotbar — replaces the V2-style battle/GM hotbars in V3, C.A. and
           Swampy campaigns. Swampy uses it for the same reason C.A. does: it has
