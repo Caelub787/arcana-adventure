@@ -5,6 +5,7 @@
 import { useKeybind } from "@/lib/keybinds";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { bringFloatingPanelToFront } from "@/components/ui/floating-panel";
 import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
@@ -214,6 +215,11 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, onHistory }: {
   }, [key(latest)]); // eslint-disable-line react-hooks/exhaustive-deps
   const color = accent && /^#|^rgb/.test(accent) ? accent : "#d4a24c";
   const open = tray && !!latest && (shown || history);
+  // Stacks like a floating panel: a tray that opens (or is pressed) comes above
+  // the open sheets; pressing a sheet brings that sheet back above it.
+  const trayKey = `ag-dice-tray:${note.id}`;
+  const [trayZ, setTrayZ] = useState(40);
+  useLayoutEffect(() => { if (open) setTrayZ(bringFloatingPanelToFront(trayKey, undefined, true)); }, [open, key(latest)]); // eslint-disable-line react-hooks/exhaustive-deps
   // The tray is drawn over everything, placed beside the card, so the
   // tracker's scrolling strip can never cut it off.
   const slotRef = useRef<HTMLDivElement>(null);
@@ -247,7 +253,8 @@ function TrackerSlot({ note, rolls, tray, side, accent, children, onHistory }: {
         </button>
       )}
       {tray && latest && createPortal(
-        <div className="fixed z-40" style={{ ...trayPos, pointerEvents: open ? "auto" : "none" }}
+        <div className="fixed" style={{ ...trayPos, zIndex: trayZ, pointerEvents: open ? "auto" : "none" }} data-panel-key={trayKey}
+          onPointerDown={() => setTrayZ(bringFloatingPanelToFront(trayKey))}
           onMouseEnter={() => { hover.current = true; }} onMouseLeave={() => { hover.current = false; if (rolling === null) timers.current.push(setTimeout(() => setShown(false), 400)); }}>
           <button type="button" onClick={(e) => { e.stopPropagation(); setHistory(true); }}
             className="rounded-lg border shadow-lg flex flex-col items-center justify-center px-1.5 py-1 transition-all duration-300 ease-out"

@@ -32,7 +32,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 17;
+export const CA_KIT_LEVEL = 18;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -62,6 +62,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 15) await upgrade15(store);
   if (level < 16) await upgrade16(store, characterTemplates);
   if (level < 17) await upgrade17(store, characterTemplates);
+  if (level < 18) await upgrade17(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1172,9 +1173,12 @@ async function upgrade16(store: ScopeStore, characterTemplates: AgNote[]) {
 // Health · Energy · Focus), each stat framed on its own. Its Initiative button
 // is the character's: a lone one left above the tabs goes.
 /** The Overview's vitals (either the one-panel version or a row of the boxed one). */
+// Level 18 runs it again: four boxes on top (Initiative has its own), the
+// resources as taller bars with their numbers on them (Temp is set from the bar).
 const VITAL_REFS = ["energy_pool", "hp_max", "focus_max"];
 function isVitals(el: Y.XmlElement): boolean {
-  return el.nodeName === "agColumns" && findAll(el, (e) => e.nodeName === "agField" && VITAL_REFS.includes(String(e.getAttribute("ref")))).length > 0;
+  return el.nodeName === "agColumns" && findAll(el, (e) => (e.nodeName === "agField" || e.nodeName === "agFieldBlock")
+    && (VITAL_REFS.includes(String(e.getAttribute("ref"))) || VITAL_REFS.includes(String(e.getAttribute("maxRef") ?? "")))).length > 0;
 }
 async function upgrade17(store: ScopeStore, characterTemplates: AgNote[]) {
   const charIds = new Set(characterTemplates.map((t) => t.id));

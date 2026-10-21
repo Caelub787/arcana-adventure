@@ -121,12 +121,15 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
   const w = useFieldWriter();
   const v = asNumber(effOf(field) as any);
   const [open, setOpen] = useState(false);
-  const note = useAg().state.notes.get(field.noteId);
+  const { state } = useAg();
+  const note = state.notes.get(field.noteId);
+  // Temp points that soak up losses first (Temp HP): set them here too, under the value.
+  const shield = field.options.shield ? Array.from(state.fields.values()).find((f) => f.noteId === field.noteId && f.key === field.options.shield) : undefined;
   return (
     <>
       <div className="contents" onClick={() => setOpen(true)}>{children}</div>
       {open && (
-      <AgPanel title={`${field.label}${note?.name ? ` — ${note.name}` : ""}`} onClose={() => setOpen(false)} width={300} height={220} testId="ag-number-panel">
+      <AgPanel title={`${field.label}${note?.name ? ` — ${note.name}` : ""}`} onClose={() => setOpen(false)} width={300} height={shield ? 300 : 220} testId="ag-number-panel">
         <div className="text-xs text-stone-400 mb-1.5">{field.label}{max != null ? ` (max ${formatValue(max)})` : ""}</div>
         <div className="flex items-center gap-1">
           {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}
@@ -140,6 +143,19 @@ function NumberEditor({ field, max, children }: { field: AgField; max?: number |
           </div>
         )}
         <div className="text-[10px] text-stone-500 mt-1.5">Now {formatValue(v)}</div>
+        {shield && (
+          <div className="border-t border-stone-800 pt-2 mt-2" data-testid="ag-number-panel-shield">
+            <div className="text-xs text-stone-400 mb-1.5 inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: shield.options.color ?? "#22c55e" }} />{shield.label}
+            </div>
+            <div className="flex items-center gap-1">
+              {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(shield, d)} className="h-8 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}
+              <CommitInput value={shield.value as number} type="number" className="h-8 flex-1 min-w-[4rem] text-center text-base" onCommit={(t) => w.set(shield, t === "" ? 0 : Number(t))} aria-label={shield.label} />
+              {[1, 5].map((d) => <button key={d} type="button" onClick={() => w.adjust(shield, d)} className="h-8 px-2 rounded bg-stone-800 hover:bg-emerald-900/60 text-sm text-stone-200">+{d}</button>)}
+              <button type="button" onClick={() => w.set(shield, 0)} className="h-8 px-2 rounded bg-stone-800 text-xs text-stone-300" title={`Clear ${shield.label}`}>0</button>
+            </div>
+          </div>
+        )}
       </AgPanel>
       )}
     </>

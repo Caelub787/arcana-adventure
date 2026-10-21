@@ -338,32 +338,35 @@ function characterTemplate(): AgSnapshot {
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
 export const RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
-export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds). Initiative rolls 1d20 + Finesse into the turn order.";
-export const HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar. Click the bar to heal or hurt.";
+export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds).";
+export const INITIATIVE_HELP = "Rolls **1d20 + Finesse** and puts you in the turn order.";
+export const HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
 export const POOL_HELP = "All the energy you've cultivated. It sets your Rank; it doesn't run down when you use abilities — that's Energy, below.";
-export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar. Click the bar to spend or restore.";
+export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar (the +number). Click the bar to spend or restore, or to set Temp Energy.";
 export const WOUNDS_HELP = "Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.";
 export const TRAITS_HELP = "Hover a trait (tap it on a phone) to see what it does and use its rolls. Click it (double-tap or hold on a phone) to open it. **Show all** lays every trait out in full — just for you, and it stays that way until you press it again.";
 /** The vitals' boxes: each stat in its own frame, boxes in a row the same height. */
 export const VITALS_LOOK = { bg: "#1c1917", outline: "#d4a24c55", radius: 10, padding: 10, gap: 10, boxed: true };
 /**
- * Rank, Energy Pool and DC, then Health, Energy and Focus — two rows of three
- * matching boxes at the top of the Overview (a bar under each resource).
+ * Rank, Energy Pool, DC and Initiative, then Health, Energy and Focus — two rows
+ * of matching boxes at the top of the Overview. Each resource is a bar with its
+ * numbers on it; clicking it sets the value (and its Temp points).
  */
 export function vitalsNodes(initiativeActionId: string | null): DocNode[] {
   const title = (iconName: string, color: string, text: string, help: string) => p(icon(iconName, color, 16), " ", b(text), " ", tip(help));
   const big = (ref: string, color?: string) => val(ref, { look: { bold: true, fontSize: 16, ...(color ? { color } : {}) } });
-  const bar = (ref: string, maxRef: string, color: string) => block(ref, { maxRef, display: "bar", showLabel: false, look: { color, track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } });
+  const bar = (ref: string, maxRef: string, color: string) => block(ref, { maxRef, display: "bar", showLabel: false, look: { color, track: "#3f3a2a", height: 16, radius: 4, numbers: "fraction", fontSize: 11 } });
   return [
     columns([
       [title("Star", GILT, "Rank", RANK_HELP), p(big("rank", GILT), "  ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } }))],
       [title("Zap", GILT, "Energy Pool", POOL_HELP), p(big("energy_pool"))],
-      [title("Shield", GILT, "DC", DC_HELP), p(big("dc", GILT), ...(initiativeActionId ? ["   ", button(initiativeActionId, "Initiative", { height: 24, fontSize: 12 })] : []))],
+      [title("Shield", GILT, "DC", DC_HELP), p(big("dc", GILT))],
+      [title("Swords", GILT, "Initiative", INITIATIVE_HELP), ...(initiativeActionId ? [p(button(initiativeActionId, "Roll", { height: 26, fontSize: 12 }))] : [])],
     ], VITALS_LOOK),
     columns([
-      [title("Heart", "#f43f5e", "Health", HEALTH_HELP), p(big("hp"), " / ", big("hp_max")), bar("hp", "hp_max", "#f43f5e"), p(muted("Temp "), val("temp_hp", { display: "input" }))],
-      [title("Zap", "#22d3ee", "Energy", ENERGY_HELP), p(big("energy"), " / ", big("usable_energy")), bar("energy", "usable_energy", "#06b6d4"), p(muted("Temp "), val("temp_energy", { display: "input" }))],
-      [title("Sparkles", "#a78bfa", "Focus", FOCUS_NOTE), p(big("focus"), " / ", big("focus_max")), bar("focus", "focus_max", "#8b5cf6")],
+      [title("Heart", "#f43f5e", "Health", HEALTH_HELP), bar("hp", "hp_max", "#f43f5e")],
+      [title("Zap", "#22d3ee", "Energy", ENERGY_HELP), bar("energy", "usable_energy", "#06b6d4")],
+      [title("Sparkles", "#a78bfa", "Focus", FOCUS_NOTE), bar("focus", "focus_max", "#8b5cf6")],
     ], VITALS_LOOK),
   ];
 }
@@ -723,7 +726,7 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
 
 // --------------------------------------------------------------------------- wounds & traits
 /** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
-export const FOCUS_NOTE = "6 to start, +1 per star. Resets on a long rest. Click the bar (or double-click the number) to spend or restore it.";
+export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
 
