@@ -11,7 +11,7 @@ import * as repo from "../repo";
 import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
-import { appendNodes, insertNodes, p, muted, val, button, pAlign } from "./doc";
+import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
   // Levels 1–7 built the single-use abilities that level 8 turns into techniques.
@@ -26,11 +26,13 @@ import {
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
+  vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
+  LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 15;
+export const CA_KIT_LEVEL = 16;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -58,6 +60,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 13) await upgrade13(store);
   if (level < 14) await upgrade14(store);
   if (level < 15) await upgrade15(store);
+  if (level < 16) await upgrade16(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -940,4 +943,225 @@ async function upgrade15(store: ScopeStore) {
     return { ...c, layout: { ...c.layout, items } };
   });
   if (changed) await store.run((cs) => store.putSettings({ ...st, tracker: { ...st.tracker, cards } }, cs));
+}
+
+// --------------------------------------------------------------------------- level 16
+// Help text moves out of the way: each grey description under a title becomes
+// a ? beside that title. The Overview is condensed — Rank, DC, Health, Energy
+// Pool, Energy and Focus in one panel on top, then the identity chips (no
+// Level: C.A. goes by rank; DC is up in the panel; Languages across the whole
+// row), the traits as icons, and Wounds. The Traits tab goes (traits are on the
+// Overview) and traits get Rolls like items and abilities. The point budgets
+// lose their level terms.
+
+const MUTED = "#a8a29e";
+/** A plain grey help paragraph the kit put under something (no values or buttons in it). */
+function isMutedHelp(el: Y.XmlElement): boolean {
+  if (el.nodeName !== "paragraph" || !el.length) return false;
+  let text = "";
+  for (const c of el.toArray()) {
+    if (!(c instanceof Y.XmlText)) return false;
+    for (const d of c.toDelta() as Array<{ insert: unknown; attributes?: any }>) {
+      if (typeof d.insert !== "string") return false;
+      if (!d.insert.trim()) { text += d.insert; continue; }
+      if (d.attributes?.textStyle?.color !== MUTED) return false;
+      text += d.insert;
+    }
+  }
+  return text.trim().length > 0;
+}
+const tipNode = (text: string): DocNode => tip(text.trim());
+/** Put a ? with `text` beside a title: after a heading's words, or after the bold title in a columns' first cell. */
+function addTipTo(title: Y.XmlElement, text: string): boolean {
+  if (findAll(title, (e) => e.nodeName === "agTip").length) return true;
+  const target = title.nodeName === "heading" ? title : title.nodeName === "agColumns" ? findAll(title, (e) => e.nodeName === "paragraph")[0] : undefined;
+  if (!target) return false;
+  const last = target.toArray()[target.length - 1];
+  if (last instanceof Y.XmlText) last.insert(last.length, " ");
+  else appendNodes(target, [{ text: " " } as any]);
+  appendNodes(target, [tipNode(text)]);
+  return true;
+}
+/** Every grey help paragraph whose title is close above it becomes that title's ?. */
+function helpToTips(frag: Y.XmlFragment | Y.XmlElement) {
+  for (const para of findAll(frag, isMutedHelp)) {
+    const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+    const kids = parent.toArray();
+    const at = kids.indexOf(para);
+    let title: Y.XmlElement | null = null;
+    for (let k = at - 1; k >= Math.max(0, at - 5); k--) {
+      const c = kids[k];
+      if (!(c instanceof Y.XmlElement) || c.nodeName === "horizontalRule") break;
+      if (c.nodeName === "heading" || (c.nodeName === "agColumns" && hasBoldTitle(c))) { title = c; break; }
+      if (isMutedHelp(c)) break;
+    }
+    if (title && addTipTo(title, textOf(para))) parent.delete(parent.toArray().indexOf(para), 1);
+  }
+}
+/** A columns row whose first cell starts with a bold title (a framed section's title row). */
+function hasBoldTitle(cols: Y.XmlElement): boolean {
+  const para = findAll(cols, (e) => e.nodeName === "paragraph")[0];
+  if (!para) return false;
+  return para.toArray().some((c) => c instanceof Y.XmlText && (c.toDelta() as any[]).some((d) => typeof d.insert === "string" && d.insert.trim() && d.attributes?.bold));
+}
+/** Remove the paragraph(s) starting with `starts`. */
+function dropPara(frag: Y.XmlFragment | Y.XmlElement, starts: string) {
+  for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).trim().startsWith(starts))) {
+    const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+    parent.delete(parent.toArray().indexOf(para), 1);
+  }
+}
+const KIT_OVERVIEW_SECTIONS = new Set(["Rank", "Health", "Energy Pool", "Focus", "Wounds"]);
+
+async function upgrade16(store: ScopeStore, characterTemplates: AgNote[]) {
+  const notes = Array.from(store.notes.values());
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = notes.filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const fieldOf = (n: AgNote, key: string) => store.fieldsByNote.get(n.id)?.get(key);
+  const traits = notes.filter((n) => n.type === "trait" && fieldOf(n, "summary"));
+
+  // Budgets without levels (where the GM hasn't changed them); then Level itself, unless something still uses it.
+  const flat = (x: string | null | undefined) => (x ?? "").replace(/\s+/g, "");
+  await store.run(async (cs) => {
+    for (const n of characters) {
+      const a = fieldOf(n, "attr_budget");
+      if (a && flat(a.formula) === flat(LEVEL_ATTR_BUDGET_FORMULA)) await store.putField({ ...a, formula: ATTR_BUDGET_FORMULA }, cs);
+      const k = fieldOf(n, "skill_budget");
+      if (k && flat(k.formula) === flat(LEVEL_SKILL_BUDGET_FORMULA)) await store.putField({ ...k, formula: SKILL_BUDGET_FORMULA }, cs);
+    }
+    for (const n of characters) {
+      const lvl = fieldOf(n, "level");
+      if (!lvl) continue;
+      const used = Array.from(store.fieldsByNote.get(n.id)?.values() ?? []).some((f) => f.key !== "level" && /\blevel\b/.test(f.formula ?? ""));
+      if (!used) await store.removeField(lvl.id, cs);
+    }
+  });
+
+  // Traits: a Rolls block (before their Effects), and help as ?s.
+  for (const n of traits) {
+    await editPage(n, (_doc, frag) => {
+      if (!hasType(frag, "agRolls")) {
+        const top = frag.toArray();
+        let at = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "heading" && textOf(c).trim() === "Effects");
+        if (at < 0) at = top.length;
+        insertNodes(frag, at, traitRollsNodes());
+      }
+      helpToTips(frag);
+    });
+  }
+
+  // Every other kit sheet: its help as ?s (abilities, aspects, items, wounds).
+  const others = notes.filter((n) => !charIds.has(n.id) && !(n.templateId && charIds.has(n.templateId)) && n.type !== "trait"
+    && ["ability", "aspect", "item", "wound"].includes(n.type));
+  for (const n of others) {
+    await editPage(n, (_doc, frag) => {
+      if (n.type === "ability") replacePara(frag, "Tag colour", [tagColourLine()]);
+      if (n.type === "item") {
+        for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).trim().startsWith("Heals") && textOf(e).includes("Using one takes it from the stack"))) {
+          const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+          const i = parent.toArray().indexOf(para);
+          // The "Use" heading above gets the explanation.
+          const head = parent.toArray().slice(0, i).reverse().find((c) => c instanceof Y.XmlElement && c.nodeName === "heading") as Y.XmlElement | undefined;
+          if (head) addTipTo(head, CONSUMABLE_HELP);
+          parent.delete(i, 1);
+          insertNodes(parent, i, [consumableLine()]);
+        }
+      }
+      helpToTips(frag);
+    });
+    for (const r of store.regionsOf(n.id)) await editRegion(n, r.id, helpToTips);
+  }
+
+  // Characters (and their template): the new Overview, no Traits tab, help as ?s.
+  for (const n of characters) {
+    const regions = store.regionsOf(n.id);
+    const wounds = regions.find((r) => r.label === "Wounds");
+    const initiative = store.actionsOf(n.id).find((a) => a.name === "Initiative");
+    await editPage(n, (doc, frag) => {
+      const tabsEls = findAll(frag, (e) => e.nodeName === "agTab");
+      const overview = tabsEls.find((e) => e.getAttribute("title") === "Overview");
+      const traitsTab = tabsEls.find((e) => e.getAttribute("title") === "Traits");
+      if (overview) {
+        // What the GM added to the Overview themselves stays, after the kit's parts.
+        const keep: Y.XmlElement[] = [];
+        let canvasId = "cv_identity";
+        for (const c of overview.toArray()) {
+          if (!(c instanceof Y.XmlElement)) continue;
+          if (c.nodeName === "agCanvas") { canvasId = String(c.getAttribute("canvasId") || canvasId); continue; }
+          if (c.nodeName === "horizontalRule") continue;
+          if (c.nodeName === "agRegion" && KIT_OVERVIEW_SECTIONS.has(store.regions.get(String(c.getAttribute("regionId")))?.label ?? "")) continue;
+          // Empty lines, and the initiative button's line (it moves into the panel).
+          if (c.nodeName === "paragraph" && !textOf(c).trim() && !findAll(c, () => true).length) continue;
+          if (c.nodeName === "paragraph" && initiative && findAll(c, (e) => e.nodeName === "agButton" && e.getAttribute("actionId") === initiative.id).length) continue;
+          // An earlier run's vitals panel.
+          if (c.nodeName === "agColumns" && findAll(c, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "energy_pool").length) continue;
+          if (c.nodeName === "heading" && textOf(c).trim() === "Traits") continue;
+          if (c.nodeName === "agLinks" && c.getAttribute("label") === "traits") continue;
+          keep.push(c.clone() as Y.XmlElement);
+        }
+        overview.delete(0, overview.length);
+        appendNodes(overview, [
+          vitalsNodes(initiative?.id ?? null),
+          { type: "agCanvas", attrs: { canvasId, width: 648, height: 162, background: "", look: {} } },
+          ...traitsNodes(),
+          ...(wounds ? [hr(), section(wounds.id, { bg: "#1c1917", outline: "#d4a24c55", radius: 10, padding: 12 })] : []),
+        ]);
+        if (keep.length) overview.insert(overview.length, keep);
+        // The identity chips, rearranged (cleared and laid out afresh; values are untouched).
+        const root = doc.getMap<Y.Map<any>>("canvases");
+        let m = root.get(canvasId);
+        if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set(canvasId, m); }
+        const chips = identityChips();
+        const ids = new Set(chips.map((c) => String(c.id)));
+        for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
+        for (const c of chips) m.set(String(c.id), c);
+      }
+      // The Traits tab goes; anything the GM put there besides the list moves to the Overview.
+      if (traitsTab) {
+        const extra = traitsTab.toArray().filter((c): c is Y.XmlElement => c instanceof Y.XmlElement && !(c.nodeName === "agLinks" && c.getAttribute("label") === "traits") && !(c.nodeName === "paragraph" && !textOf(c).trim() && !c.length));
+        if (overview && extra.length) overview.insert(overview.length, extra.map((c) => c.clone() as Y.XmlElement));
+        const parent = traitsTab.parent as Y.XmlElement;
+        if (parent.length > 1) parent.delete(parent.toArray().indexOf(traitsTab), 1);
+      }
+      // Skills: the budgets with their ?s; the dice note folds into Attribute Points'.
+      for (const cols of findAll(frag, (e) => e.nodeName === "agColumns" && textOf(e).trim().startsWith("Attribute Points"))) {
+        const parent = cols.parent as Y.XmlElement | Y.XmlFragment;
+        const i = parent.toArray().indexOf(cols);
+        parent.delete(i, 1);
+        insertNodes(parent, i, [budgetNodes()]);
+      }
+      dropPara(frag, "Each attribute sets the die its skills roll");
+      // Ability tab: Cultivation's note.
+      for (const cols of findAll(frag, (e) => e.nodeName === "agColumns" && textOf(e).trim().startsWith("Cultivation"))) {
+        const parent = cols.parent as Y.XmlElement | Y.XmlFragment;
+        const kids = parent.toArray();
+        const next = kids[kids.indexOf(cols) + 1];
+        if (next instanceof Y.XmlElement && isMutedHelp(next) && textOf(next).trim().startsWith("Energy type")) { addTipTo(cols, CULTIVATION_HELP); parent.delete(kids.indexOf(next), 1); }
+      }
+      // Inventory: its help goes behind an "Items" heading over the list.
+      for (const para of findAll(frag, (e) => isMutedHelp(e) && /^Each item's rolls are on its card/.test(textOf(e).trim()))) {
+        const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+        parent.delete(parent.toArray().indexOf(para), 1);
+        const list = parent.toArray().findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "agLinks" && c.getAttribute("label") === "items");
+        if (list >= 0) insertNodes(parent, list, [itemsHeading()]);
+      }
+      helpToTips(frag);
+    });
+    // The Wounds section: its note behind a ? by its title.
+    if (wounds) {
+      await editRegion(n, wounds.id, (frag) => {
+        for (const para of findAll(frag, (e) => isMutedHelp(e) && textOf(e).trim().startsWith("Minor = 5+"))) {
+          const parent = para.parent as Y.XmlElement | Y.XmlFragment;
+          const title = findAll(frag, (e) => e.nodeName === "agColumns")[0];
+          if (title) addTipTo(title, WOUNDS_HELP);
+          parent.delete(parent.toArray().indexOf(para), 1);
+        }
+      });
+    }
+    for (const r of regions) if (r.id !== wounds?.id && !KIT_OVERVIEW_SECTIONS.has(r.label ?? "")) await editRegion(n, r.id, helpToTips);
+  }
+  // The old Rank / Health / Energy Pool / Focus sections aren't on the page any more.
+  await store.run(async (cs) => {
+    for (const n of characters) for (const r of store.regionsOf(n.id)) if (r.label && r.label !== "Wounds" && KIT_OVERVIEW_SECTIONS.has(r.label)) await store.removeRegion(r.id, cs);
+  });
 }

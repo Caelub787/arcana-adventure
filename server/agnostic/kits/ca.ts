@@ -13,7 +13,7 @@ import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import { copySheet, markAsCopy, syncCopyOwners } from "../copies";
 import {
-  buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, val, block, button, columns, section, tabs, links, canvas, table, rolls, effects,
+  buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, tip, val, block, button, columns, section, tabs, links, canvas, table, rolls, effects,
 } from "./doc";
 
 export const CA_KIT_FOLDER = "Cultivator's Adventure";
@@ -100,10 +100,16 @@ export const USABLE_LADDER = LADDER.usable;
 /** Point budgets: every star (rank_index step) adds one attribute point and one skill (modifier) point. */
 // Attribute points: +1 per main rank (Silver, Gold…). Skill points: +1 per star — a rank up is one step, so one point.
 // Training items add bonus points (and pay for the values they raise directly).
-export const ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + floor(rank_index / 5) + bonus_attr_points";
-export const SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index + bonus_skill_points";
-export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per 3 levels + one per rank (Silver, Gold…) + bonus points from training items.";
-export const SKILL_BUDGET_NOTE = "8 + one per level + one per star (a rank up counts once) + bonus points from training items; up to 6 back from skills below 0.";
+// C.A. has no levels — characters grow by rank.
+export const ATTR_BUDGET_FORMULA = "4 + floor(rank_index / 5) + bonus_attr_points";
+export const SKILL_BUDGET_FORMULA = "8 + skill_reclaimed + rank_index + bonus_skill_points";
+/** The budgets before levels went (kit levels up to 15), to recognise ones the GM hasn't changed. */
+export const LEVEL_ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + floor(rank_index / 5) + bonus_attr_points";
+export const LEVEL_SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index + bonus_skill_points";
+export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per rank (Silver, Gold…) + bonus points from training items.";
+export const SKILL_BUDGET_NOTE = "8 + one per star (a rank up counts once) + bonus points from training items; up to 6 back from skills below 0.";
+export const ATTR_DIE_NOTE = "Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.";
+export const SKILL_ROLL_NOTE = "Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).";
 export const TEMP_HP_COLOR = "#22c55e";
 export const TEMP_ENERGY_COLOR = "#ec4899";
 export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
@@ -198,10 +204,10 @@ class Sheet {
   }
 }
 
-/** A titled, framed section: icon + title on the left, a value on the right, then a body. */
-function framed(sheet: Sheet, id: string, iconName: string, title: string, right: Array<DocNode | ReturnType<typeof t> | string>, body: DocNode[]): DocNode {
+/** A titled, framed section: icon + title (and its ? when it has one) on the left, a value on the right, then a body. */
+function framed(sheet: Sheet, id: string, iconName: string, title: string, right: Array<DocNode | ReturnType<typeof t> | string>, body: DocNode[], help?: string): DocNode {
   sheet.region(`r_${id}`, title, [
-    columns([[p(icon(iconName, GILT, 18), " ", b(title))], [pAlign("right", ...right)]], { ratio: "3:2", gap: 8 }),
+    columns([[p(icon(iconName, GILT, 18), " ", b(title), ...(help ? [" ", tip(help)] : []))], [pAlign("right", ...right)]], { ratio: "3:2", gap: 8 }),
     ...body,
   ]);
   return section(`r_${id}`, SECTION_LOOK);
@@ -212,7 +218,7 @@ function characterTemplate(): AgSnapshot {
   const s = new Sheet();
   // Identity
   s.text("race", "Race", "Human").num("dc", "DC", 5).choice("size", "Size", ["Tiny", "Small", "Medium", "Large", "Huge"], "Medium")
-    .num("level", "Level", 1, { min: 1 }).num("speed", "Speed", 30).num("fly_speed", "Fly Speed", 0).num("swim_speed", "Swim Speed", 15)
+    .num("speed", "Speed", 30).num("fly_speed", "Fly Speed", 0).num("swim_speed", "Swim Speed", 15)
     .num("age", "Age", 20).text("birthday", "Birthday").text("languages", "Languages", "Common");
   // Rank — read straight off the Energy Pool, never set by hand.
   s.num("energy_pool", "Energy Pool", 0, { min: 0 })
@@ -263,55 +269,16 @@ function characterTemplate(): AgSnapshot {
   // Joins the campaign's initiative order with 1d20 + Finesse (the C.A. rule).
   const initiative = s.action("a_initiative", "Initiative", [{ type: "initiative", expr: "1d20 + finesse", label: "Initiative" }], "#b45309", "owners", { icon: "fa-solid fa-bolt", showName: true, showIcon: true, listed: false });
 
-  // ---- Overview: identity chips on a canvas
-  const chip = (key: string, label: string, iconName: string, suffix?: string, w = 152) => ({ key, label, iconName, suffix, w });
-  const grid = [
-    [chip("race", "Race", "User"), chip("dc", "DC", "Shield"), chip("size", "Size", "Ruler"), chip("level", "Level", "Star")],
-    [chip("speed", "Speed", "Footprints", "ft"), chip("fly_speed", "Fly speed", "Feather", "ft"), chip("swim_speed", "Swim speed", "Waves", "ft"), chip("lifespan", "Lifespan", "Hourglass", "yrs")],
-    // Age and Birthday line up with the chips above; Languages runs long, so it spans the last two.
-    [chip("age", "Age", "Clock"), chip("birthday", "Birthday", "CalendarDays"), chip("languages", "Languages", "Languages", undefined, 152 * 2 + 8)],
-  ];
-  const chips: Record<string, unknown>[] = [];
-  grid.forEach((row, r) => {
-    let x = 4;
-    row.forEach((c) => {
-      const y = 4 + r * 52;
-      chips.push({ id: `bg_${c.key}`, x, y, w: c.w, h: 46, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
-      chips.push({ id: `v_${c.key}`, x: x + 8, y: y + 4, w: c.w - 12, h: 38, z: 1, widget: { kind: "field", ref: c.key, display: "value", showLabel: true, label: c.label, look: { labelPos: "below", labelUpper: true, labelSize: 9, fontSize: 14, bold: true, iconName: c.iconName, iconColor: GILT, suffix: c.suffix } } });
-      x += c.w + 8;
-    });
-  });
-
   const overview: DocNode[] = [
-    pAlign("right", button(initiative, "Roll initiative", { height: 30, fontSize: 12 })),
+    vitalsNodes(initiative),
     canvas("cv_identity", 648, 162),
-    framed(s, "rank", "Star", "Rank", [val("rank", { look: { color: GILT, bold: true } }), " ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } })], [
-      p(muted("Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus (hover the ? for the whole ladder).")),
-    ]),
-    hr(),
-    framed(s, "health", "Heart", "Health", [val("hp", { look: { bold: true } }), " / ", val("hp_max", { look: { bold: true } })], [
-      block("hp", { maxRef: "hp_max", display: "bar", showLabel: false, look: { color: "#f43f5e", track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } }),
-      p(muted("Temp HP "), val("temp_hp", { display: "input" }), muted("  — taken before HP; shows in green on the bar.")),
-      p(muted("20 base, +5 per star, +10 per rank — scales with Rank above, and a rank up adds its extra HP to your current HP. Click the bar to heal or hurt.")),
-    ]),
-    hr(),
-    framed(s, "energy", "Zap", "Energy Pool", [val("energy_pool", { look: { bold: true } })], [
-      p(muted("Usable Energy "), val("usable_energy", { look: { fontSize: 12, textColor: "#a8a29e" } }), muted(USABLE_NOTE)),
-      block("energy", { maxRef: "usable_energy", display: "bar", label: "Energy", showLabel: true, look: { color: "#06b6d4", track: "#3f3a2a", height: 16, radius: 4, labelPos: "above", numbers: "fraction", iconName: "Zap", iconColor: "#22d3ee" } }),
-      TEMP_ENERGY_LINE,
-    ]),
-    hr(),
-    framed(s, "focus", "Sparkles", "Focus", [val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })], [
-      block("focus", { maxRef: "focus_max", display: "bar", showLabel: false, look: { color: "#8b5cf6", track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } }),
-      p(muted(FOCUS_NOTE)),
-    ]),
+    ...traitsNodes(),
     hr(),
     framed(s, "wounds", "HeartPulse", "Wounds", [val("wounds_count", { look: { bold: true } })], [
       links("wounds", [{ ref: "severity", display: "badge" }, { ref: "location", display: "badge" }, { ref: "", display: "effects" }], {
         layout: "cards", accentBy: "severity", add: { types: ["wound"], reverse: "bearer", existing: false }, remove: "delete", emptyText: "No wounds.",
       }),
-      p(muted("Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.")),
-    ]),
+    ], WOUNDS_HELP),
   ];
 
   // ---- Skills
@@ -333,16 +300,11 @@ function characterTemplate(): AgSnapshot {
     ]);
   }
   const skillsTab: DocNode[] = [
-    columns([
-      [p(b("Attribute Points  "), val("attr_points", { look: { color: GILT, bold: true } })), p(muted(ATTR_BUDGET_NOTE))],
-      [p(b("Skill Points  "), val("skill_points", { look: { color: GILT, bold: true } })), p(muted(SKILL_BUDGET_NOTE))],
-    ], { gap: 12 }),
+    budgetNodes(),
     canvas("cv_attributes", 652, 172),
-    p(muted("Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.")),
     hr(),
-    h(3, icon("Zap", GILT, 18), " Skills"),
+    h(3, icon("Zap", GILT, 18), " Skills ", tip(SKILL_ROLL_NOTE)),
     table(skillRows),
-    p(muted("Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).")),
   ];
 
   // ---- Ability
@@ -354,18 +316,13 @@ function characterTemplate(): AgSnapshot {
       [p(muted("Weight Carried")), p(val("carried", { look: { fontSize: 18, bold: true, textColor: "#4ade80" } }), t(" / ", { bold: {} }), val("weight_capacity", { look: { fontSize: 18, bold: true } }), muted(" lbs"))],
       [p(muted("Currency")), p(val("currency", { look: { fontSize: 18, bold: true, textColor: "#facc15" } }), muted(" coins"))],
     ], { ...SECTION_LOOK, gap: 12 }),
+    itemsHeading(),
     links("items", [
       { ref: "item_type", display: "badge" }, { ref: "rarity", display: "badge" }, { ref: "rank_tag", display: "badge" },
       { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" },
       { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" },
       { ref: "equipped", display: "toggle", label: "Equip" }, { ref: "", display: "rolls" },
     ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
-    p(muted(INVENTORY_HELP)),
-  ];
-
-  // ---- Traits
-  const traitsTab: DocNode[] = [
-    links("traits", [{ ref: "summary", display: "value", label: "" }], { layout: "cards", search: true, add: { types: ["trait"], reverse: "holder", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No traits added yet." }),
   ];
 
   const page: DocNode[] = [
@@ -374,11 +331,76 @@ function characterTemplate(): AgSnapshot {
       { title: "Skills", icon: "Zap", content: skillsTab },
       { title: "Ability", icon: "Flame", content: abilityTab },
       { title: "Inventory", icon: "Backpack", content: inventoryTab },
-      { title: "Traits", icon: "Star", content: traitsTab },
     ], { color: GILT }),
   ];
-  return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: chips, cv_attributes: attrBoxes });
+  return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: identityChips(), cv_attributes: attrBoxes });
 }
+
+// ---- The Overview's parts (also used to bring existing characters up to date)
+export const RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
+export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds). Initiative rolls 1d20 + Finesse into the turn order.";
+export const HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar. Click the bar to heal or hurt.";
+export const POOL_HELP = "All the energy you've cultivated. It sets your Rank; it doesn't run down when you use abilities — that's Energy, below.";
+export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar. Click the bar to spend or restore.";
+export const WOUNDS_HELP = "Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.";
+export const TRAITS_HELP = "Hover a trait (tap it on a phone) to see what it does and use its rolls. Click it (double-tap or hold on a phone) to open it. **Show all** lays every trait out in full — just for you, and it stays that way until you press it again.";
+/** Rank, DC, Health, Energy Pool, Energy and Focus in one compact panel at the top of the Overview. */
+export function vitalsNodes(initiativeActionId: string | null): DocNode {
+  const title = (iconName: string, color: string, text: string, help: string) => [icon(iconName, color, 16), " ", b(text), " ", tip(help), "  "];
+  const bar = (ref: string, maxRef: string, color: string) => block(ref, { maxRef, display: "bar", showLabel: false, look: { color, track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } });
+  return columns([
+    [
+      p(...title("Star", GILT, "Rank", RANK_HELP), val("rank", { look: { color: GILT, bold: true } }), " ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } })),
+      p(...title("Shield", GILT, "DC", DC_HELP), val("dc", { look: { bold: true, color: GILT } }), ...(initiativeActionId ? ["   ", button(initiativeActionId, "Initiative", { height: 26, fontSize: 12 })] : [])),
+      p(...title("Heart", "#f43f5e", "Health", HEALTH_HELP), val("hp", { look: { bold: true } }), " / ", val("hp_max", { look: { bold: true } }), muted("   Temp "), val("temp_hp", { display: "input" })),
+      bar("hp", "hp_max", "#f43f5e"),
+    ],
+    [
+      p(...title("Zap", GILT, "Energy Pool", POOL_HELP), val("energy_pool", { look: { bold: true } })),
+      p(...title("Zap", "#22d3ee", "Energy", ENERGY_HELP), val("energy", { look: { bold: true } }), " / ", val("usable_energy", { look: { bold: true } }), muted("   Temp "), val("temp_energy", { display: "input" })),
+      bar("energy", "usable_energy", "#06b6d4"),
+      p(...title("Sparkles", "#a78bfa", "Focus", FOCUS_NOTE), val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })),
+      bar("focus", "focus_max", "#8b5cf6"),
+    ],
+  ], { ...SECTION_LOOK, gap: 16 });
+}
+/** Race, size, age… as chips (no Level — C.A. goes by rank — and DC is up in the vitals); Languages runs the whole last row. */
+export function identityChips(): Record<string, unknown>[] {
+  const chip = (key: string, label: string, iconName: string, suffix?: string, w = 152) => ({ key, label, iconName, suffix, w });
+  const grid = [
+    [chip("race", "Race", "User"), chip("size", "Size", "Ruler"), chip("age", "Age", "Clock"), chip("birthday", "Birthday", "CalendarDays")],
+    [chip("speed", "Speed", "Footprints", "ft"), chip("fly_speed", "Fly speed", "Feather", "ft"), chip("swim_speed", "Swim speed", "Waves", "ft"), chip("lifespan", "Lifespan", "Hourglass", "yrs")],
+    [chip("languages", "Languages", "Languages", undefined, 152 * 4 + 8 * 3)],
+  ];
+  const chips: Record<string, unknown>[] = [];
+  grid.forEach((row, r) => {
+    let x = 4;
+    row.forEach((c) => {
+      const y = 4 + r * 52;
+      chips.push({ id: `bg_${c.key}`, x, y, w: c.w, h: 46, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
+      chips.push({ id: `v_${c.key}`, x: x + 8, y: y + 4, w: c.w - 12, h: 38, z: 1, widget: { kind: "field", ref: c.key, display: "value", showLabel: true, label: c.label, look: { labelPos: "below", labelUpper: true, labelSize: 9, fontSize: 14, bold: true, iconName: c.iconName, iconColor: GILT, suffix: c.suffix } } });
+      x += c.w + 8;
+    });
+  });
+  return chips;
+}
+export const TRAIT_ICON_COLUMNS = [{ ref: "summary", display: "text" }, { ref: "", display: "effects" }, { ref: "", display: "rolls" }];
+export const TRAIT_ICON_CONFIG = {
+  layout: "icons", expand: "page", add: { types: ["trait"], reverse: "holder", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No traits yet.",
+};
+/** The character's traits as small icons on the Overview. */
+export function traitsNodes(): DocNode[] {
+  return [h(3, icon("Star", GILT, 18), " Traits ", tip(TRAITS_HELP)), links("traits", TRAIT_ICON_COLUMNS, TRAIT_ICON_CONFIG)];
+}
+/** Attribute and skill points at the top of the Skills tab. */
+export function budgetNodes(): DocNode {
+  return columns([
+    [p(b("Attribute Points"), " ", tip(`${ATTR_BUDGET_NOTE}\n\n${ATTR_DIE_NOTE}`), "  ", val("attr_points", { look: { color: GILT, bold: true } }))],
+    [p(b("Skill Points"), " ", tip(SKILL_BUDGET_NOTE), "  ", val("skill_points", { look: { color: GILT, bold: true } }))],
+  ], { gap: 12 });
+}
+/** The Inventory tab's heading over the items. */
+export function itemsHeading(): DocNode { return h(3, icon("Backpack", GILT, 18), " Items ", tip(INVENTORY_HELP)); }
 
 // --------------------------------------------------------------------------- abilities & aspects
 // An Ability is a set (gravity control, ember arts…); each single use of it is a
@@ -426,31 +448,31 @@ const ABILITY_TAG_COLORS = ["#a78bfa", "#f87171", "#34d399", "#60a5fa", "#fbbf24
 /** A colour for the n-th ability (so a character's abilities don't all look alike). */
 export const abilityColor = (n: number) => ABILITY_TAG_COLORS[n % ABILITY_TAG_COLORS.length];
 
+export const CULTIVATION_HELP = "Energy type. Double-click to set it.";
 /** The character's Ability tab: cultivation, its abilities, then all their aspects. */
 export function abilityTabContent(): DocNode[] {
   return [
-    columns([[p(icon("Flame", GILT, 18), " ", b("Cultivation"))], [pAlign("right", val("cultivation", { look: { bold: true } }))]], { ...SECTION_LOOK, ratio: "3:2", gap: 8 }),
-    p(muted("Energy type. Double-click to set it.")),
-    h(3, icon("Sparkles", GILT, 18), " Abilities"),
+    columns([[p(icon("Flame", GILT, 18), " ", b("Cultivation"), " ", tip(CULTIVATION_HELP))], [pAlign("right", val("cultivation", { look: { bold: true } }))]], { ...SECTION_LOOK, ratio: "3:2", gap: 8 }),
+    h(3, icon("Sparkles", GILT, 18), " Abilities ", tip(ABILITY_HELP)),
     links("abilities", ABILITY_LIST_COLUMNS, ABILITY_LIST_CONFIG),
-    p(muted(ABILITY_HELP)),
-    h(3, icon("Swords", GILT, 18), " Ability Aspects"),
+    h(3, icon("Swords", GILT, 18), " Ability Aspects ", tip(ASPECT_HELP)),
     links(`${ALL_ABILITIES}.aspects`, ASPECT_LIST_COLUMNS, ASPECT_LIST_CONFIG),
-    p(muted(ASPECT_HELP)),
   ];
 }
 
 export function abilityTemplateSnapshot(): AgSnapshot { return abilityTemplate(); }
 export function aspectTemplateSnapshot(): AgSnapshot { return aspectTemplate(); }
 
+export const ABILITY_ASPECTS_HELP = "Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.";
+/** An ability's tag colour (its ? explains it). */
+export const tagColourLine = (): DocNode => p(muted("Tag colour "), val("tag_color", { display: "input" }));
 /** An ability's page: what it is, its tag colour, its aspects, passive effects, GM notes. */
 export function abilityPage(gmRegionId: string | null): DocNode[] {
   return [
     block("description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
-    p(muted("Tag colour "), val("tag_color", { display: "input" }), muted("  — its aspects' tags and cards on the character use it.")),
-    h(3, icon("Swords", GILT, 16), " Ability Aspects"),
+    tagColourLine(),
+    h(3, icon("Swords", GILT, 16), " Ability Aspects ", tip(ABILITY_ASPECTS_HELP)),
     links("aspects", ASPECT_COLUMNS, ABILITY_ASPECTS_CONFIG),
-    p(muted("Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.")),
     ...subAbilityNodes(),
     ...effectsNodes("holder*", "", "Passive changes this ability makes to the character who has it (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
@@ -459,13 +481,14 @@ export function abilityPage(gmRegionId: string | null): DocNode[] {
 
 /** An ability's "Abilities within" heading, list and help. */
 export function subAbilityNodes(): DocNode[] {
-  return [h(3, icon("Orbit", GILT, 16), " Abilities within"), links("abilities", ABILITY_LIST_COLUMNS, SUB_ABILITY_CONFIG), p(muted(SUB_ABILITY_HELP))];
+  return [h(3, icon("Orbit", GILT, 16), " Abilities within ", tip(SUB_ABILITY_HELP)), links("abilities", ABILITY_LIST_COLUMNS, SUB_ABILITY_CONFIG)];
 }
 
 /** The ability an aspect belongs to, as a card at the top of its page. */
 export function aspectAbilityNode(): DocNode {
   return links("ability", [{ ref: "description", display: "text" }], { layout: "cards", accentBy: "tag_color", emptyText: "Not part of an ability yet — make it from an ability's Aspects, or connect it to one." });
 }
+export const ASPECT_ROLLS_HELP = "Each roll has its own dice, bonus and Energy / Focus cost, rolled and paid by whoever has this aspect's ability. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.";
 export const ASPECT_TEMPLATE_DESCRIPTION = "An aspect: one use of an ability — category, range, duration and as many rolls as it needs, each with its own dice and Energy / Focus cost.";
 
 /** An aspect's page: its ability, category, description, range / duration, its rolls, effects, GM notes. */
@@ -475,9 +498,8 @@ export function aspectPage(gmRegionId: string | null): DocNode[] {
     p(val("category", { display: "badge" })),
     block("description", { display: "value", showLabel: false, look: { fontSize: 13, textColor: "#d6d3d1" } }),
     p(muted("Range "), val("range", { look: { bold: true } }), "    ", muted("Duration "), val("duration", { look: { bold: true } })),
-    h(3, icon("Dices", GILT, 16), " Rolls"),
+    h(3, icon("Dices", GILT, 16), " Rolls ", tip(ASPECT_ROLLS_HELP)),
     rolls(ASPECT_VIA, ["energy", "focus"], "#9f1239", SECTION_LOOK),
-    p(muted("Each roll has its own dice, bonus and Energy / Focus cost, rolled and paid by whoever has this aspect's ability. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.")),
     ...effectsNodes(ASPECT_VIA, "", "Passive changes this aspect makes to whoever has its ability (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
@@ -544,7 +566,7 @@ export const WOUND_EFFECTS_HELP = "What this wound does to its bearer while it l
 export const ITEM_EFFECTS_HELP = "What this item changes on its owner. New effects only count while it's equipped (change “equipped” to always for ones that apply anyway).";
 /** An "Effects" heading and block: changes this sheet makes to `via`'s values. */
 export function effectsNodes(via: string, condition: string, help: string): DocNode[] {
-  return [h(3, icon("Activity", GILT, 16), " Effects"), effects(via, condition, SECTION_LOOK), p(muted(help))];
+  return [h(3, icon("Activity", GILT, 16), " Effects ", tip(help)), effects(via, condition, SECTION_LOOK)];
 }
 
 /** An item's rolls heading and block. */
@@ -565,6 +587,11 @@ function legacyAbilityTemplate(): AgSnapshot {
 }
 
 // --------------------------------------------------------------------------- items
+export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
+export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";
+export const consumableLine = (): DocNode => p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }));
+export const RUNE_HELP = "Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).";
+export const CONTAINER_HELP = "A Backpack raises its owner's carry weight by its capacity while equipped. A Storage Ring holds its own items (below).";
 type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training";
 
 /** What a training item can raise: every attribute and skill, by name → value key. */
@@ -616,11 +643,10 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
       { type: "remove", target: "self", when: "qty <= 0" },
     ], "#7c3aed", "owners", { icon: "fa-solid fa-scroll", showName: true, showIcon: true, listed: true, sortOrder: 0 });
     body.push(
-      h(3, icon("BookOpen", "#c084fc", 16), " Training"),
+      h(3, icon("BookOpen", "#c084fc", 16), " Training ", tip(TRAINING_HELP)),
       p(muted("RAISES "), val("raises", { display: "input" }), muted("  BY "), val("raise_by", { display: "input" })),
       p(muted("GRANTS "), val("grants_attr_points", { display: "input" }), muted(" attribute points  "), val("grants_skill_points", { display: "input" }), muted(" skill points")),
       p(button(use, "Use")),
-      p(muted("Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.")),
     );
   }
   if (kind === "Armor") {
@@ -647,24 +673,22 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
       ...used(),
     ], "#0f766e");
     body.push(
-      h(3, icon("FlaskConical", "#34d399", 16), " Use"),
+      h(3, icon("FlaskConical", "#34d399", 16), " Use ", tip(CONSUMABLE_HELP)),
       p(button(healHp, "Heal HP"), " ", button(healWound, "Heal a wound")),
-      p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }), muted(". Using one takes it from the stack; the last one is gone.")),
+      consumableLine(),
     );
   }
   if (kind === "Rune") {
     s.text("boosts", "Boosts", "Damage +2");
-    body.push(h(3, icon("Gem", "#c084fc", 16), " Boosts"), block("boosts", { display: "value", showLabel: false, look: { bold: true } }),
-      p(muted("Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).")));
+    body.push(h(3, icon("Gem", "#c084fc", 16), " Boosts ", tip(RUNE_HELP)), block("boosts", { display: "value", showLabel: false, look: { bold: true } }));
   }
   if (kind === "Container") {
     s.choice("container_kind", "Kind", ["Backpack", "Storage Ring"], "Backpack").num("capacity", "Capacity", 20, { min: 0 })
       .calc("stored", "Stored weight", "sum(@contents.total_weight)");
     s.modifier("owner", "weight_capacity", "capacity", `equipped && container_kind == "Backpack"`, "Backpack capacity while equipped");
     body.push(
-      h(3, icon("Backpack", GILT, 16), " Container"),
+      h(3, icon("Backpack", GILT, 16), " Container ", tip(CONTAINER_HELP)),
       p(muted("KIND "), val("container_kind", { look: { bold: true } }), "    ", muted("CAPACITY "), val("capacity", { look: { bold: true } }), muted(" lb    STORED "), val("stored", { look: { bold: true } })),
-      p(muted("A Backpack raises its owner's carry weight by its capacity while equipped. A Storage Ring holds its own items:")),
       links("contents", [{ ref: "item_type", display: "badge" }, { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" }], {
         layout: "cards", add: { types: ["item"], reverse: "container", existing: true }, remove: "disconnect", emptyText: "Empty.",
       }),
@@ -715,13 +739,20 @@ function woundTemplate(): AgSnapshot {
   return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects that really change its bearer's values (skills, speed…). Treat removes it." }, page);
 }
 
+export const TRAIT_EFFECTS_HELP = "What this trait changes on its holder, for as long as they have it.";
+export const TRAIT_ROLLS_HELP = "Rolls this trait gives the character who has it — they roll and pay. Hold a roll for advantage, disadvantage or a modifier. They show when you hover the trait on the character's Overview.";
+/** A trait's rolls heading and block (rolled and paid by its holder). */
+export function traitRollsNodes(): DocNode[] {
+  return [h(3, icon("Dices", GILT, 16), " Rolls ", tip(TRAIT_ROLLS_HELP)), rolls("holder", ["energy", "focus"], "#b45309", SECTION_LOOK)];
+}
 function traitTemplate(): AgSnapshot {
   const s = new Sheet();
   s.text("summary", "Summary", "");
   const page: DocNode[] = [
     block("summary", { display: "value", showLabel: false, look: { bold: true } }),
     p(i("Describe the trait here.")),
-    ...effectsNodes("holder", "", "What this trait changes on its holder, for as long as they have it."),
+    ...traitRollsNodes(),
+    ...effectsNodes("holder", "", TRAIT_EFFECTS_HELP),
   ];
   return s.snapshot({ type: "trait", name: "Trait", description: "A trait: a summary line, a description, optional effects and rolls." }, page);
 }
@@ -788,7 +819,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   let sheets = 0;
   if (opts.examples) {
     const hero = await createFrom(store, made.character, "Example Cultivator", {
-      race: "Human", dc: 5, level: 3, size: "Medium", speed: 30, fly_speed: 0, swim_speed: 15, age: 34, birthday: "3rd of Frostfall", languages: "Common, Old Veridish",
+      race: "Human", dc: 5, size: "Medium", speed: 30, fly_speed: 0, swim_speed: 15, age: 34, birthday: "3rd of Frostfall", languages: "Common, Old Veridish",
       energy_pool: 1200, hp: 40, energy: 480, focus: 9,
       might: 2, finesse: 1, constitution: 1, will: 1, anemos: 0, intelligence: 0,
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,

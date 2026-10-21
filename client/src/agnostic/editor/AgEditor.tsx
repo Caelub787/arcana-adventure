@@ -20,11 +20,11 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote,
   AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Plus, Hash, Gauge, Dices, EyeOff, Lock, Columns2, Columns3, LayoutGrid,
   Image as ImageIcon, Table as TableIcon, BarChart3, Link2, Puzzle, Minus, Highlighter, Palette, Loader2, FileText, Code, Sparkles, PanelsTopLeft, Backpack,
-  Activity,
+  Activity, HelpCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
-import { usePlayView } from "../viewMode";
+import { usePlayView, useForcedPlayView, ForcePlayView } from "../viewMode";
 import { parseDocName } from "@shared/agnostic/types";
 import { CANVAS_ORIGIN } from "../client";
 import { AG_NODES, AgDocContext, FieldConfig, lookKindFor } from "./nodes";
@@ -65,20 +65,24 @@ const AgImage = Image.extend({
 });
 
 // --------------------------------------------------------------------------- editor
-export function AgEditor({ docName, noteId, nested, inline, placeholder }: { docName: string; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string }) {
+/** `locked`: always shown as in Player view (another sheet's page shown inside this one); its values and buttons still work. */
+export function AgEditor({ docName, noteId, nested, inline, placeholder, locked }: { docName: string; noteId: string; nested?: boolean; inline?: boolean; placeholder?: string; locked?: boolean }) {
   const handle = useDoc(docName);
   const { previewUserId, state, realViewer } = useAg();
   // Player view locks the page, but the GM's own GM-only sections stay writable:
   // they're notes, not layout.
   const parsed = parseDocName(docName);
   const gmSection = parsed?.kind === "region" && realViewer.isGM && state.regions.get(parsed.id)?.acl.view === "gm";
-  const play = usePlayView() && !gmSection;
+  const forced = useForcedPlayView();
+  const play = locked || forced || (usePlayView() && !gmSection);
   if (!handle) return null;
   if (handle.revoked) return null; // no longer allowed: nothing to show
   if (!handle.synced) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;
   // Blocks draw their tools once, for the editability they started with: switching
   // GM / Player view (or previewing a player) builds the editor afresh.
-  return <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} locked={play} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
+  const editor = <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} locked={play} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;
+  // Everything inside a locked page (its rolls, effects, sections) shows as players see it.
+  return locked ? <ForcePlayView>{editor}</ForcePlayView> : editor;
 }
 
 function BoundEditor({ doc, awareness, readOnly, locked: play, noteId, nested, inline, placeholder }: {
@@ -267,6 +271,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Link to a sheet", hint: "A chip that opens another sheet", icon: <FileText className="h-4 w-4" />, run: () => { setOpen(false); setPicker("note"); } },
     { label: "Component", hint: "One of your reusable designs", icon: <Puzzle className="h-4 w-4" />, run: () => configure("agComponent", { componentId: "", bindings: {} }, "Component") },
     { label: "Icon", hint: "A small picture in the text (heart, sword, coins…)", icon: <Sparkles className="h-4 w-4" />, run: () => insert({ type: "agIcon", attrs: { name: "Star", color: "#d4a24c", size: 16 } }) },
+    { label: "Tooltip (?)", hint: "A ? that explains something on hover — e.g. after a title", icon: <HelpCircle className="h-4 w-4" />, run: () => insert({ type: "agTip", attrs: { text: "", size: 14 } }) },
     { label: "Divider", hint: "A horizontal line", icon: <Minus className="h-4 w-4" />, run: () => { editor?.chain().focus().setHorizontalRule().run(); setOpen(false); } },
   ];
   return (

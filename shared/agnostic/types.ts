@@ -500,7 +500,16 @@ export interface AgLinkColumn {
 
 /** How a connections table behaves — enough to build a full inventory. */
 export interface AgLinksConfig {
-  layout?: "table" | "cards";
+  /**
+   * icons: a small picture per sheet. Hover it (tap on a phone) for its columns —
+   * rolls work right there; click it (double-tap / hold on a phone) to open it.
+   * A button shows every one in full, remembered per viewer on their device.
+   */
+  layout?: "table" | "cards" | "icons";
+  /** Icons shown in full: their columns (default), or each one's whole page. */
+  expand?: "columns" | "page";
+  /** Icons: their size in pixels (default 40). */
+  iconSize?: number;
   search?: boolean;
   /** "name" or a column key. */
   sortBy?: string;

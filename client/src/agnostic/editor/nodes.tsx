@@ -21,7 +21,8 @@ import { RollsBlock } from "../rolls";
 import { EffectsBlock } from "../effects";
 import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
-import { BlockFrame, LookEditor, type LookKind } from "../look";
+import { BlockFrame, LookEditor, TooltipEditor, type LookKind } from "../look";
+import { TipIcon, TipContent } from "../tips";
 import { mergeLook } from "../lookUtil";
 // Circular by design: regions contain editors that contain regions.
 import { AgEditor } from "./AgEditor";
@@ -500,7 +501,7 @@ function LinksView(p: NodeViewProps) {
   const look = nodeLook(a);
   return (
     <Shell selected={p.selected} editable={p.editor.isEditable} label="connections" frame={{ look, onLook: lookUpdater(p), height: { value: look.height ?? 0, min: 60, max: 1200 } }} tools={<>
-      <ConfigPopover title={config.layout === "cards" ? "Inventory / item cards" : "Connections table"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
+      <ConfigPopover title={config.layout === "cards" ? "Inventory / item cards" : config.layout === "icons" ? "Connections as icons" : "Connections table"} look={{ value: look, onChange: (l) => p.updateAttributes({ look: l }), kind: "links" }}>
         <LinksConfigEditor noteId={ctx.noteId} value={{ label: a.label, columns: cols, config }} onChange={(v) => p.updateAttributes({ label: v.label, columns: v.columns, config: v.config ?? {} })} />
       </ConfigPopover>
       <ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
@@ -684,6 +685,44 @@ export const AgIconNode = Node.create({
   addNodeView: () => ReactNodeViewRenderer(IconView, { stopEvent: () => true, as: "span" }),
 });
 
+// --------------------------------------------------------------------------- tooltip (inline)
+// A "?" placed in the text — after a title, say — that explains it on hover
+// (or a tap on phones), so help text doesn't have to sit on the page.
+function TipView(p: NodeViewProps) {
+  const a = p.node.attrs;
+  const [open, setOpen] = useState(false);
+  const editable = p.editor.isEditable;
+  const text = String(a.text ?? "");
+  return (
+    <NodeViewWrapper as="span" className={`inline-flex align-middle ${p.selected ? "ring-1 ring-amber-400 rounded-full" : ""}`} data-testid="ag-tip-node">
+      <span contentEditable={false} className="inline-flex"
+        onClickCapture={editable ? (e) => { e.stopPropagation(); e.preventDefault(); setOpen(true); } : undefined}
+        title={editable ? "Click to change this tooltip" : undefined}>
+        {text.trim() ? <TipIcon text={text} size={a.size || 14} className={editable ? "ring-1 ring-dashed ring-amber-700/60 rounded-full" : ""} />
+          : editable ? <span className="inline-grid place-items-center h-4 w-4 rounded-full border border-dashed border-amber-600 text-[10px] text-amber-400 cursor-pointer">?</span> : null}
+      </span>
+      {open && (
+        <AgPanel title="Tooltip" onClose={() => setOpen(false)} width={360} height={380} testId="ag-tip-editor">
+          <TooltipEditor value={text} onChange={(t) => p.updateAttributes({ text: t })} hint="What this explains — shown behind the ? on hover (or a tap on phones)" />
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-stone-400">Size</span><input type="range" min={10} max={28} value={a.size || 14} onChange={(e) => p.updateAttributes({ size: Number(e.target.value) })} className="flex-1 accent-amber-500" />
+            <button type="button" onClick={() => { setOpen(false); p.deleteNode(); }} className="h-7 px-2 rounded text-red-300 hover:bg-red-950">Remove</button>
+          </div>
+          {text.trim() && <div className="rounded border border-stone-800 bg-stone-950/60 p-2"><div className="text-[10px] uppercase tracking-wide text-stone-500 mb-1">Preview</div><TipContent text={text} /></div>}
+        </AgPanel>
+      )}
+    </NodeViewWrapper>
+  );
+}
+
+export const AgTipNode = Node.create({
+  name: "agTip", group: "inline", inline: true, atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ text: { default: "" }, size: { default: 14 } }),
+  parseHTML: () => [{ tag: "span[data-ag-tip]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { "data-ag-tip": "" })],
+  addNodeView: () => ReactNodeViewRenderer(TipView, { stopEvent: () => true, as: "span" }),
+});
+
 // --------------------------------------------------------------------------- tabs
 // A row of tabs, each holding its own part of the page. Which tab is open is
 // each viewer's own (remembered on this device); the content is shared.
@@ -830,5 +869,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

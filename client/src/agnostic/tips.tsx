@@ -71,22 +71,31 @@ export function TipContent({ text, current }: { text: string; current?: string |
   return <div className="space-y-0.5">{out}</div>;
 }
 
-/** The "?" and its pop-up. */
-export function TipIcon({ text, current, size = 14, className = "" }: { text?: string | null; current?: string | null; size?: number; className?: string }) {
+/**
+ * A pop-up anchored to an element: shows on hover (mouse), stays while the
+ * pointer is over it, and pins open on a tap (phones) until a tap elsewhere.
+ * Shared by the "?" tooltips and anything else that wants the same behaviour
+ * (e.g. a connected sheet's icon showing its rolls).
+ */
+export function useAnchoredPopup(relayoutKey?: unknown) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
-  const iconRef = useRef<HTMLSpanElement>(null);
+  const anchorRef = useRef<HTMLElement | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last press inside the pop-up's React tree — including panels it opened (a roll's options), which are portalled elsewhere.
+  const insideAt = useRef(0);
   const [pos, setPos] = useState<{ left: number; top: number; maxH: number } | null>(null);
 
   const show = () => { if (hideTimer.current) clearTimeout(hideTimer.current); setOpen(true); };
   const hideSoon = () => { if (pinned) return; if (hideTimer.current) clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setOpen(false), 180); };
+  const pin = () => { setPinned(true); setOpen(true); };
+  const close = () => { setOpen(false); setPinned(false); };
 
-  // Place it beside the "?" and keep it on screen; it scrolls inside if it's long.
+  // Place it beside the anchor and keep it on screen; it scrolls inside if it's long.
   useLayoutEffect(() => {
-    if (!open || !iconRef.current) return;
-    const r = iconRef.current.getBoundingClientRect();
+    if (!open || !anchorRef.current) return;
+    const r = anchorRef.current.getBoundingClientRect();
     const w = Math.min(360, window.innerWidth - 16);
     const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
     const below = window.innerHeight - r.bottom - 12;
@@ -95,41 +104,51 @@ export function TipIcon({ text, current, size = 14, className = "" }: { text?: s
     const maxH = Math.max(120, Math.min(420, useBelow ? below : above));
     const h = Math.min(maxH, popRef.current?.scrollHeight ?? maxH);
     setPos({ left, top: useBelow ? r.bottom + 6 : r.top - 6 - h, maxH });
-  }, [open, text]);
+  }, [open, relayoutKey]);
 
   // Tapped open (phones): a tap anywhere else closes it.
   useEffect(() => {
     if (!open || !pinned) return;
-    const close = (e: PointerEvent) => {
-      if (iconRef.current?.contains(e.target as Node) || popRef.current?.contains(e.target as Node)) return;
-      setOpen(false); setPinned(false);
+    const onDown = (e: PointerEvent) => {
+      if (anchorRef.current?.contains(e.target as Node) || popRef.current?.contains(e.target as Node)) return;
+      // React hears the press after this listener; let it say whether it was ours first.
+      setTimeout(() => { if (Date.now() - insideAt.current > 400) close(); }, 0);
     };
-    document.addEventListener("pointerdown", close, true);
-    return () => document.removeEventListener("pointerdown", close, true);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
   }, [open, pinned]);
   useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
 
+  const portal = (content: React.ReactNode, testId = "ag-tip-popup") => open ? createPortal(
+    <div ref={popRef} role="tooltip" onMouseEnter={show} onMouseLeave={hideSoon}
+      // Using something in it (a roll, its options) keeps it open until a press elsewhere.
+      onPointerDownCapture={() => { insideAt.current = Date.now(); setPinned(true); }}
+      className="fixed z-[30000] w-[min(360px,calc(100vw-16px))] overflow-y-auto overscroll-contain rounded-lg border border-stone-700 bg-stone-900/98 shadow-2xl p-3 text-left"
+      style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, maxHeight: pos?.maxH ?? 420 }}
+      data-testid={testId}>
+      {content}
+    </div>,
+    document.body,
+  ) : null;
+  return { open, pinned, show, hideSoon, pin, close, anchorRef, portal };
+}
+
+/** The "?" and its pop-up. */
+export function TipIcon({ text, current, size = 14, className = "" }: { text?: string | null; current?: string | null; size?: number; className?: string }) {
+  const pop = useAnchoredPopup(text);
   if (!text?.trim()) return null;
   return (
     <>
-      <span ref={iconRef} role="button" tabIndex={0} aria-label="More about this" contentEditable={false}
-        className={`inline-grid place-items-center align-middle shrink-0 cursor-help text-stone-500 hover:text-amber-300 ${open ? "text-amber-300" : ""} ${className}`}
-        onMouseEnter={show} onMouseLeave={hideSoon}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (pinned) { setPinned(false); setOpen(false); } else { setPinned(true); setOpen(true); } }}
+      <span ref={pop.anchorRef as React.RefObject<HTMLSpanElement>} role="button" tabIndex={0} aria-label="More about this" contentEditable={false}
+        className={`inline-grid place-items-center align-middle shrink-0 cursor-help text-stone-500 hover:text-amber-300 ${pop.open ? "text-amber-300" : ""} ${className}`}
+        onMouseEnter={pop.show} onMouseLeave={pop.hideSoon}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (pop.pinned) pop.close(); else pop.pin(); }}
         onDoubleClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPinned(!open); setOpen(!open); } if (e.key === "Escape") { setOpen(false); setPinned(false); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (pop.open) pop.close(); else pop.pin(); } if (e.key === "Escape") pop.close(); }}
         data-testid="ag-tip">
         <HelpCircle style={{ width: size, height: size }} />
       </span>
-      {open && createPortal(
-        <div ref={popRef} role="tooltip" onMouseEnter={show} onMouseLeave={hideSoon}
-          className="fixed z-[30000] w-[min(360px,calc(100vw-16px))] overflow-y-auto overscroll-contain rounded-lg border border-stone-700 bg-stone-900/98 shadow-2xl p-3 text-left"
-          style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, maxHeight: pos?.maxH ?? 420 }}
-          data-testid="ag-tip-popup">
-          <TipContent text={text} current={current} />
-        </div>,
-        document.body,
-      )}
+      {pop.portal(<TipContent text={text} current={current} />)}
     </>
   );
 }

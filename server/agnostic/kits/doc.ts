@@ -63,6 +63,8 @@ export const pAlign = (align: "left" | "center" | "right", ...content: Array<Doc
 export const h = (level: 1 | 2 | 3, ...content: Array<DocNode | DocText | string>): DocNode => ({ type: "heading", attrs: { level }, content: content.map((c) => (typeof c === "string" ? t(c) : c)) });
 export const hr = (): DocNode => ({ type: "horizontalRule" });
 export const icon = (name: string, color = "#d4a24c", size = 16): DocNode => ({ type: "agIcon", attrs: { name, color, size } });
+/** A "?" in the text that explains something on hover (or a tap on phones) — e.g. after a title. */
+export const tip = (text: string, size = 14): DocNode => ({ type: "agTip", attrs: { text, size } });
 /** A value inside the text. */
 export const val = (ref: string, opts: { display?: string; label?: string; showLabel?: boolean; look?: Record<string, unknown> } = {}): DocNode =>
   ({ type: "agField", attrs: { ref, display: opts.display ?? "value", label: opts.label ?? "", showLabel: opts.showLabel ?? false, look: opts.look ?? {} } });

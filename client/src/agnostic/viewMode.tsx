@@ -46,10 +46,19 @@ export function useAgViewMode(key: string | null, isGM: boolean): AgViewMode {
 }
 
 /** True while the current campaign is in Player view (always false in libraries). */
+/** Inside it, everything shows as in Player view (another sheet's page shown inside this one). */
+const ForcedPlayView = React.createContext(false);
+export function ForcePlayView({ children }: { children: React.ReactNode }) {
+  return <ForcedPlayView.Provider value>{children}</ForcedPlayView.Provider>;
+}
+
+export const useForcedPlayView = () => React.useContext(ForcedPlayView);
+
 export function usePlayView(): boolean {
+  const forced = React.useContext(ForcedPlayView);
   const ctx = useAgMaybe();
   const key = ctx && ctx.scope.kind === "campaign" ? ctx.key : null;
-  return useAgViewMode(key, !!ctx?.realViewer.isGM) === "player";
+  return useAgViewMode(key, !!ctx?.realViewer.isGM) === "player" || forced;
 }
 
 /** The switch in the map's left button column. */

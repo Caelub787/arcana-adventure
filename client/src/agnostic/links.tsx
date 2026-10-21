@@ -4,9 +4,9 @@
 // this is a whole inventory: the rows are real sheets (open one to see it in
 // full), their values are live, and equipped items' modifiers reach the owner.
 import React, { useMemo, useState } from "react";
-import { Plus, Search, X, Trash2, Unlink, ArrowUp, ArrowDown, Package, LayoutList, Table as TableIcon } from "lucide-react";
+import { Plus, Search, X, Trash2, Unlink, ArrowUp, ArrowDown, Package, LayoutList, Table as TableIcon, ExternalLink, Maximize2, Minimize2, Grid3x3 } from "lucide-react";
 import type { AgField, AgLinkColumn, AgLinksConfig, AgLook, AgNote } from "@shared/agnostic/types";
-import { AG_BUILTIN_TYPES, agTypeLabel } from "@shared/agnostic/types";
+import { AG_BUILTIN_TYPES, agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, follow, followWithParents, isLinkPath, resolveRef, effOf, usePerms } from "./hooks";
@@ -14,7 +14,9 @@ import { Portrait, FieldInput, ResourceBar, useFieldWriter, EditOnDoubleClick, C
 import { RollsList } from "./rolls";
 import { EffectsList } from "./effects";
 import { AgSelector, agConfirm, type SelItem } from "./float";
-import { TipIcon } from "./tips";
+import { TipIcon, useAnchoredPopup } from "./tips";
+// A list can show its sheets' pages, and pages contain lists: the editor is loaded when first needed.
+const AgEditor = React.lazy(() => import("./editor/AgEditor").then((m) => ({ default: m.AgEditor })));
 
 export const normCol = (c: string | AgLinkColumn): AgLinkColumn => (typeof c === "string" ? { ref: c } : c);
 
@@ -239,6 +241,17 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
 
   const empty = <div className="px-2 py-3 text-stone-500 text-xs text-center">{ids.length ? "Nothing matches." : config.emptyText || `Nothing connected as “${label}” yet.`}</div>;
 
+  if (config.layout === "icons") {
+    return (
+      <div className="space-y-1.5" style={fontStyle} data-testid="ag-links">
+        <IconsList noteId={noteId} label={label} rows={rows} columns={columns} config={config} look={look} cell={cell} fieldOf={fieldOf} accentOf={accentOf}
+          dragRow={dragRow} removeBtn={removeBtn} mayAdd={mayAdd} onAdd={() => (viaPath ? openAddPath() : openAdd())} search={config.search ? { q, setQ } : null} empty={!rows.length ? empty : null} />
+        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
+      </div>
+    );
+  }
+
   if (config.layout === "cards") {
     const badges = columns.filter((c) => c.display === "badge");
     const stats = columns.filter((c) => !c.display || c.display === "value" || c.display === "input");
@@ -318,6 +331,196 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
       {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------- icons
+// Each connected sheet as a small picture. Hover it (tap on a phone) for what it
+// does — its columns, with working rolls; click it (double-tap or hold on a
+// phone) to open it. "Show all" lays every one out in full; that choice is each
+// viewer's own, remembered on their device.
+const expandedKey = (noteId: string, label: string) => `ag-links-open:${noteId}:${label}`;
+const expandedLists = new Map<string, boolean>();
+const expandListeners = new Set<() => void>();
+function getExpanded(k: string): boolean {
+  if (!expandedLists.has(k)) { let v = false; try { v = localStorage.getItem(k) === "1"; } catch { /* storage blocked */ } expandedLists.set(k, v); }
+  return expandedLists.get(k)!;
+}
+function setExpanded(k: string, on: boolean) {
+  expandedLists.set(k, on);
+  try { if (on) localStorage.setItem(k, "1"); else localStorage.removeItem(k); } catch { /* storage blocked */ }
+  expandListeners.forEach((l) => l());
+}
+function useExpanded(k: string): [boolean, (on: boolean) => void] {
+  const [, force] = useState(0);
+  React.useEffect(() => { const l = () => force((n) => n + 1); expandListeners.add(l); return () => { expandListeners.delete(l); }; }, []);
+  return [getExpanded(k), (on) => setExpanded(k, on)];
+}
+
+const initialsOf = (name: string) => (name.trim().split(/\s+/).slice(0, 2).map((w) => w[0] ?? "").join("") || "?").toUpperCase();
+
+/** A sheet's picture as a small square — its initials on its colour when it has none. */
+function IconFace({ note, size, accent }: { note: AgNote; size: number; accent?: string }) {
+  const { state } = useAg();
+  if (note.portrait) return <Portrait note={note} size={size} radius={Math.round(size / 5)} />;
+  const col = accent ?? noteColor(state, note.id) ?? "#d4a24c";
+  return (
+    <span className="grid place-items-center font-bold shrink-0 border" style={{ width: size, height: size, borderRadius: Math.round(size / 5), fontSize: Math.round(size * 0.36), color: col, borderColor: `color-mix(in srgb, ${col} 55%, transparent)`, background: `color-mix(in srgb, ${col} 16%, #1c1917)` }}>
+      {initialsOf(note.name || "?")}
+    </span>
+  );
+}
+
+type CellFn = (id: string, c: AgLinkColumn, compact?: boolean) => React.ReactNode;
+
+/** Everything a connected sheet's columns show, stacked (the pop-up and the "show all" view). */
+function ColumnsDetail({ id, columns, cell, fieldOf }: { id: string; columns: AgLinkColumn[]; cell: CellFn; fieldOf: (id: string, ref: string) => AgField | undefined }) {
+  const badges = columns.filter((c) => c.display === "badge" || c.display === "connection");
+  const stats = columns.filter((c) => !c.display || c.display === "value" || c.display === "input" || c.display === "bar");
+  const texts = columns.filter((c) => c.display === "text");
+  const effectCols = columns.filter((c) => c.display === "effects");
+  const rollCols = columns.filter((c) => c.display === "rolls");
+  const actions = columns.filter((c) => c.display === "button" || c.display === "toggle");
+  return (
+    <div className="space-y-1.5 min-w-0">
+      {badges.length > 0 && <div className="flex flex-wrap items-center gap-1.5">{badges.map((c) => <React.Fragment key={`b-${c.ref}`}>{cell(id, c)}</React.Fragment>)}</div>}
+      {stats.length > 0 && (
+        <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-stone-400" data-no-open>
+          {stats.map((c) => { const f = fieldOf(id, c.ref); return <span key={c.ref} className="inline-flex items-center gap-1"><span className="text-stone-500">{colLabel(c, f)}</span>{cell(id, c, true)}</span>; })}
+        </div>
+      )}
+      {texts.map((c) => <div key={`t-${c.ref}`} className="text-[12.5px] leading-snug text-stone-300">{c.label ? <span className="text-stone-500">{c.label} </span> : null}{cell(id, c, true)}</div>)}
+      {effectCols.map((c, k) => <div key={`fx-${k}`}>{cell(id, c, true)}</div>)}
+      {rollCols.map((c, k) => <div key={`r-${k}`}>{cell(id, c)}</div>)}
+      {actions.length > 0 && <div className="flex flex-wrap gap-1.5" data-no-open>{actions.map((c) => <React.Fragment key={`a-${c.ref}`}>{cell(id, c)}</React.Fragment>)}</div>}
+    </div>
+  );
+}
+
+/** One connected sheet's page, shown inside this one (always as players see it; its values and rolls still work). */
+function EmbeddedPage({ note }: { note: AgNote }) {
+  return <div className="ag-embedded-page text-[13px]" data-testid={`ag-links-page-${note.name}`}><React.Suspense fallback={null}><AgEditor docName={noteDocName(note.id, note.docEpoch)} noteId={note.id} nested locked /></React.Suspense></div>;
+}
+
+const HOLD_OPEN_MS = 500;
+const DOUBLE_TAP_MS = 320;
+
+function IconTile({ id, columns, cell, fieldOf, accent, dragRow, removeBtn, size }: {
+  id: string; columns: AgLinkColumn[]; cell: CellFn; fieldOf: (id: string, ref: string) => AgField | undefined; accent?: string;
+  dragRow: (id: string) => (e: React.DragEvent) => void; removeBtn: (id: string) => React.ReactNode; size: number;
+}) {
+  const { state, openNote } = useAg();
+  const n = state.notes.get(id)!;
+  const pop = useAnchoredPopup(id);
+  const touch = React.useRef({ hold: null as ReturnType<typeof setTimeout> | null, fired: false, lastTap: 0, x: 0, y: 0, isTouch: false });
+  const cancelHold = () => { if (touch.current.hold) { clearTimeout(touch.current.hold); touch.current.hold = null; } };
+  const open = () => { pop.close(); openNote(id); };
+  const shown = columns;
+  return (
+    <>
+      <button ref={pop.anchorRef as React.RefObject<HTMLButtonElement>} type="button" draggable onDragStart={dragRow(id)}
+        aria-label={n.name || "Untitled"}
+        className={`relative rounded-lg p-0.5 border-2 transition-transform hover:scale-105 select-none touch-manipulation ${pop.open ? "scale-105" : ""}`}
+        style={{ borderColor: pop.open ? (accent ?? "#d4a24c") : "transparent", WebkitTouchCallout: "none" }}
+        onPointerEnter={(e) => { if (e.pointerType === "mouse") pop.show(); }}
+        onPointerLeave={(e) => { cancelHold(); if (e.pointerType === "mouse") pop.hideSoon(); }}
+        onPointerDown={(e) => {
+          touch.current.isTouch = e.pointerType !== "mouse";
+          if (!touch.current.isTouch) return;
+          touch.current.fired = false; touch.current.x = e.clientX; touch.current.y = e.clientY; cancelHold();
+          // Holding it opens the sheet.
+          touch.current.hold = setTimeout(() => { touch.current.hold = null; touch.current.fired = true; open(); }, HOLD_OPEN_MS);
+        }}
+        onPointerMove={(e) => { if (touch.current.hold && Math.hypot(e.clientX - touch.current.x, e.clientY - touch.current.y) > 10) cancelHold(); }}
+        onPointerUp={cancelHold} onPointerCancel={cancelHold}
+        onContextMenu={(e) => { if (touch.current.isTouch) e.preventDefault(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!touch.current.isTouch) { open(); return; }
+          if (touch.current.fired) { touch.current.fired = false; return; }
+          // A second tap straight after the first opens it; one tap shows what it does.
+          const now = Date.now();
+          if (now - touch.current.lastTap < DOUBLE_TAP_MS) { touch.current.lastTap = 0; open(); return; }
+          touch.current.lastTap = now;
+          if (pop.pinned) pop.close(); else pop.pin();
+        }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); open(); } if (e.key === " ") { e.preventDefault(); if (pop.open) pop.close(); else pop.pin(); } }}
+        data-testid={`ag-links-icon-${n.name}`}>
+        <IconFace note={n} size={size} accent={accent} />
+      </button>
+      {pop.portal(
+        <div className="space-y-2" data-testid={`ag-links-icon-tip-${n.name}`}>
+          <div className="flex items-center gap-2">
+            <IconFace note={n} size={30} accent={accent} />
+            <span className="flex-1 min-w-0 text-sm font-bold text-stone-100 truncate">{n.name || "Untitled"}</span>
+            <button type="button" onClick={open} className="h-7 px-2 rounded border border-stone-700 text-[11px] text-stone-300 hover:border-amber-600 hover:text-amber-200 inline-flex items-center gap-1 shrink-0" data-testid="ag-links-icon-open"><ExternalLink className="h-3 w-3" /> Open</button>
+            {removeBtn(id)}
+          </div>
+          <ColumnsDetail id={id} columns={shown} cell={cell} fieldOf={fieldOf} />
+        </div>,
+        "ag-links-icon-popup",
+      )}
+    </>
+  );
+}
+
+function IconsList({ noteId, label, rows, columns, config, look, cell, fieldOf, accentOf, dragRow, removeBtn, mayAdd, onAdd, search, empty }: {
+  noteId: string; label: string; rows: string[]; columns: AgLinkColumn[]; config: AgLinksConfig; look?: AgLook; cell: CellFn;
+  fieldOf: (id: string, ref: string) => AgField | undefined; accentOf: (id: string) => string | undefined;
+  dragRow: (id: string) => (e: React.DragEvent) => void; removeBtn: (id: string) => React.ReactNode;
+  mayAdd: boolean; onAdd: () => void; search: { q: string; setQ: (q: string) => void } | null; empty: React.ReactNode;
+}) {
+  const { state, openNote } = useAg();
+  const [expanded, setExpandedHere] = useExpanded(expandedKey(noteId, label));
+  const size = Math.max(24, Math.min(96, config.iconSize ?? 40));
+  const shown = columns;
+  const asPage = config.expand === "page";
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {search && (
+          <div className="relative flex-1 min-w-[120px]">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+            <input value={search.q} onChange={(e) => search.setQ(e.target.value)} placeholder="Search…" className="w-full h-7 pl-7 pr-2 rounded-md bg-stone-900 border border-stone-700 text-xs text-stone-100" data-testid="ag-links-search" />
+          </div>
+        )}
+        {!expanded && (
+          <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0" data-testid="ag-links-icons">
+            {rows.map((id) => <IconTile key={id} id={id} columns={columns} cell={cell} fieldOf={fieldOf} accent={accentOf(id)} dragRow={dragRow} removeBtn={removeBtn} size={size} />)}
+            {empty}
+          </div>
+        )}
+        <span className={`inline-flex items-center gap-1 shrink-0 ${expanded ? "ml-auto" : ""}`}>
+          {rows.length > 0 && (
+            <button type="button" onClick={() => setExpandedHere(!expanded)} aria-pressed={expanded}
+              className={`h-7 px-2 rounded-md border text-[11px] inline-flex items-center gap-1 ${expanded ? "border-amber-600 bg-amber-600/15 text-amber-200" : "border-stone-700 bg-stone-900 text-stone-300 hover:border-amber-700"}`}
+              title={expanded ? "Back to icons" : "Show every one in full (just for you, on this device)"} data-testid="ag-links-expand">
+              {expanded ? <><Minimize2 className="h-3.5 w-3.5" /> Icons</> : <><Maximize2 className="h-3.5 w-3.5" /> Show all</>}
+            </button>
+          )}
+          {mayAdd && <button type="button" onClick={onAdd} className="h-7 px-2.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] inline-flex items-center gap-1" data-testid="ag-links-add"><Plus className="h-3.5 w-3.5" /> Add</button>}
+        </span>
+      </div>
+      {expanded && (
+        <div className="space-y-2" data-testid="ag-links-expanded">
+          {rows.map((id) => {
+            const n = state.notes.get(id)!;
+            const accent = accentOf(id);
+            return (
+              <div key={id} draggable onDragStart={dragRow(id)} className="rounded-lg bg-stone-900/80 border p-2.5 space-y-2" style={{ borderColor: accent ?? look?.border ?? "#44403c" }} data-testid={`ag-links-row-${n.name}`}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => openNote(id)} className="shrink-0" title="Open"><IconFace note={n} size={32} accent={accent} /></button>
+                  <button type="button" onClick={() => openNote(id)} className="flex-1 min-w-0 text-left text-sm font-semibold text-stone-100 truncate hover:text-amber-200">{n.name || "Untitled"}</button>
+                  {removeBtn(id)}
+                </div>
+                {asPage ? <EmbeddedPage note={n} /> : <ColumnsDetail id={id} columns={shown} cell={cell} fieldOf={fieldOf} />}
+              </div>
+            );
+          })}
+          {empty}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -405,8 +608,19 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
         <span className="inline-flex rounded border border-stone-700 overflow-hidden">
           <button type="button" onClick={() => setCfg({ layout: "table" })} className={`h-7 px-2 text-xs inline-flex items-center gap-1 ${cfg.layout !== "cards" ? "bg-amber-600/40 text-amber-100" : "text-stone-400"}`}><TableIcon className="h-3.5 w-3.5" /> Table</button>
           <button type="button" onClick={() => setCfg({ layout: "cards" })} className={`h-7 px-2 text-xs inline-flex items-center gap-1 ${cfg.layout === "cards" ? "bg-amber-600/40 text-amber-100" : "text-stone-400"}`} data-testid="ag-links-cards"><LayoutList className="h-3.5 w-3.5" /> Item cards</button>
+          <button type="button" onClick={() => setCfg({ layout: "icons" })} className={`h-7 px-2 text-xs inline-flex items-center gap-1 ${cfg.layout === "icons" ? "bg-amber-600/40 text-amber-100" : "text-stone-400"}`} data-testid="ag-links-icons-layout"><Grid3x3 className="h-3.5 w-3.5" /> Icons</button>
         </span>
       ))}
+      {cfg.layout === "icons" && <>
+        <div className="text-[10px] text-stone-500">A small picture per sheet (its initials when it has none). Hover one — tap on a phone — for its columns below, rolls and all; click it (double-tap or hold on a phone) to open it. <b>Show all</b> lays them out in full, for each viewer on their own device.</div>
+        {row("Show all", (
+          <select value={cfg.expand ?? "columns"} onChange={(e) => setCfg({ expand: e.target.value as "columns" | "page" })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-xs" data-testid="ag-links-expand-mode">
+            <option value="columns">Their columns</option>
+            <option value="page">Each one's whole page</option>
+          </select>
+        ))}
+        {row("Icon size", <><input type="range" min={24} max={96} value={cfg.iconSize ?? 40} onChange={(e) => setCfg({ iconSize: Number(e.target.value) })} className="flex-1 accent-amber-500" /><span className="text-[11px] text-stone-400 w-8">{cfg.iconSize ?? 40}px</span></>)}
+      </>}
 
       <div className="text-[10px] uppercase tracking-wide text-amber-400/80 pt-1">Columns (values on each connected sheet)</div>
       <datalist id="ag-link-keys">{keys.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</datalist>
