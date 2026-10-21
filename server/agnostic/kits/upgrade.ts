@@ -32,7 +32,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 16;
+export const CA_KIT_LEVEL = 17;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -61,6 +61,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 14) await upgrade14(store);
   if (level < 15) await upgrade15(store);
   if (level < 16) await upgrade16(store, characterTemplates);
+  if (level < 17) await upgrade17(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1094,14 +1095,14 @@ async function upgrade16(store: ScopeStore, characterTemplates: AgNote[]) {
           if (c.nodeName === "paragraph" && !textOf(c).trim() && !findAll(c, () => true).length) continue;
           if (c.nodeName === "paragraph" && initiative && findAll(c, (e) => e.nodeName === "agButton" && e.getAttribute("actionId") === initiative.id).length) continue;
           // An earlier run's vitals panel.
-          if (c.nodeName === "agColumns" && findAll(c, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "energy_pool").length) continue;
+          if (isVitals(c)) continue;
           if (c.nodeName === "heading" && textOf(c).trim() === "Traits") continue;
           if (c.nodeName === "agLinks" && c.getAttribute("label") === "traits") continue;
           keep.push(c.clone() as Y.XmlElement);
         }
         overview.delete(0, overview.length);
         appendNodes(overview, [
-          vitalsNodes(initiative?.id ?? null),
+          ...vitalsNodes(initiative?.id ?? null),
           { type: "agCanvas", attrs: { canvasId, width: 648, height: 162, background: "", look: {} } },
           ...traitsNodes(),
           ...(wounds ? [hr(), section(wounds.id, { bg: "#1c1917", outline: "#d4a24c55", radius: 10, padding: 12 })] : []),
@@ -1164,4 +1165,39 @@ async function upgrade16(store: ScopeStore, characterTemplates: AgNote[]) {
   await store.run(async (cs) => {
     for (const n of characters) for (const r of store.regionsOf(n.id)) if (r.label && r.label !== "Wounds" && KIT_OVERVIEW_SECTIONS.has(r.label)) await store.removeRegion(r.id, cs);
   });
+}
+
+// --------------------------------------------------------------------------- level 17
+// The vitals panel as two mirrored rows of boxes (Rank · Energy Pool · DC, then
+// Health · Energy · Focus), each stat framed on its own. Its Initiative button
+// is the character's: a lone one left above the tabs goes.
+/** The Overview's vitals (either the one-panel version or a row of the boxed one). */
+const VITAL_REFS = ["energy_pool", "hp_max", "focus_max"];
+function isVitals(el: Y.XmlElement): boolean {
+  return el.nodeName === "agColumns" && findAll(el, (e) => e.nodeName === "agField" && VITAL_REFS.includes(String(e.getAttribute("ref")))).length > 0;
+}
+async function upgrade17(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  for (const n of characters) {
+    const initiative = store.actionsOf(n.id).find((a) => a.name === "Initiative");
+    await editPage(n, (_doc, frag) => {
+      const overview = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Overview")[0];
+      if (!overview) return;
+      const kids = overview.toArray();
+      const at = kids.findIndex((c) => c instanceof Y.XmlElement && isVitals(c));
+      if (at < 0) return;
+      // Every old vitals block goes (from the end, so the indexes hold); the new rows take the first one's place.
+      for (let i = kids.length - 1; i >= 0; i--) { const c = kids[i]; if (c instanceof Y.XmlElement && isVitals(c)) overview.delete(i, 1); }
+      insertNodes(overview, at, vitalsNodes(initiative?.id ?? null));
+      // A paragraph holding just the Initiative button, outside the tabs: the vitals have it now.
+      if (initiative) {
+        for (const c of frag.toArray()) {
+          if (!(c instanceof Y.XmlElement) || c.nodeName !== "paragraph" || textOf(c).trim()) continue;
+          const els = findAll(c, () => true);
+          if (els.length === 1 && els[0].nodeName === "agButton" && els[0].getAttribute("actionId") === initiative.id) frag.delete(frag.toArray().indexOf(c), 1);
+        }
+      }
+    });
+  }
 }

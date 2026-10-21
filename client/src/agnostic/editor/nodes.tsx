@@ -325,11 +325,15 @@ function ColumnsView(p: NodeViewProps) {
           <ToolButton title="Remove columns" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
         </div>
       )}
+      {/* Boxed: the frame goes round each column instead of the whole row. */}
       <div style={{
         width: look.width ? `${look.width}%` : undefined, marginLeft: look.align && look.align !== "left" ? "auto" : undefined, marginRight: look.align === "center" ? "auto" : undefined,
-        background: look.bg, border: look.outline ? `1px solid ${look.outline}` : undefined, borderRadius: look.bg || look.outline ? (look.radius ?? 6) : undefined, padding: look.padding,
+        ...(look.boxed ? {} : { background: look.bg, border: look.outline ? `1px solid ${look.outline}` : undefined, borderRadius: look.bg || look.outline ? (look.radius ?? 6) : undefined, padding: look.padding }),
       }}>
-        <NodeViewContent className="ag-columns" style={{ ["--ag-cols" as any]: n, ["--ag-cols-tpl" as any]: template, ["--ag-gap" as any]: look.gap !== undefined ? `${look.gap}px` : undefined }} />
+        <NodeViewContent className={`ag-columns ${look.boxed ? "ag-columns-boxed" : ""}`} style={{
+          ["--ag-cols" as any]: n, ["--ag-cols-tpl" as any]: template, ["--ag-gap" as any]: look.gap !== undefined ? `${look.gap}px` : undefined,
+          ...(look.boxed ? { ["--ag-box-bg" as any]: look.bg ?? "rgba(28,25,23,0.8)", ["--ag-box-border" as any]: look.outline ?? "#44403c", ["--ag-box-radius" as any]: `${look.radius ?? 8}px`, ["--ag-box-pad" as any]: `${look.padding ?? 10}px` } : {}),
+        }} />
       </div>
     </NodeViewWrapper>
   );

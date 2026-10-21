@@ -36,6 +36,11 @@
 .ag-column { min-width: 0; border-left: 1px dashed transparent; padding-left: 2px; }
 .ProseMirror-focused .ag-column, .ag-columns-wrap:hover .ag-column { border-left-color: rgba(120,113,108,.35); }
 @container (max-width: 520px) { .ag-columns > div { grid-template-columns: minmax(0, 1fr); } }
+/* Boxed columns: a framed box per column; boxes in a row share one height. */
+.ag-columns-boxed > div > .ag-column, .ProseMirror-focused .ag-columns-boxed .ag-column, .ag-columns-wrap:hover .ag-columns-boxed .ag-column {
+  background: var(--ag-box-bg); border: 1px solid var(--ag-box-border); border-radius: var(--ag-box-radius); padding: var(--ag-box-pad);
+}
+.ag-columns-boxed .ag-column > p { margin: 0.15em 0; }
 
 /* Collaborators' cursors */
 .ag-prose .collaboration-carets__caret { border-left: 1px solid; border-right: 1px solid; margin-left: -1px; margin-right: -1px; pointer-events: none; position: relative; word-break: normal; }

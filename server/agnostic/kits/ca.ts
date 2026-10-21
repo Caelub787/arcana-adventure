@@ -270,7 +270,7 @@ function characterTemplate(): AgSnapshot {
   const initiative = s.action("a_initiative", "Initiative", [{ type: "initiative", expr: "1d20 + finesse", label: "Initiative" }], "#b45309", "owners", { icon: "fa-solid fa-bolt", showName: true, showIcon: true, listed: false });
 
   const overview: DocNode[] = [
-    vitalsNodes(initiative),
+    ...vitalsNodes(initiative),
     canvas("cv_identity", 648, 162),
     ...traitsNodes(),
     hr(),
@@ -344,25 +344,28 @@ export const POOL_HELP = "All the energy you've cultivated. It sets your Rank; i
 export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar. Click the bar to spend or restore.";
 export const WOUNDS_HELP = "Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.";
 export const TRAITS_HELP = "Hover a trait (tap it on a phone) to see what it does and use its rolls. Click it (double-tap or hold on a phone) to open it. **Show all** lays every trait out in full — just for you, and it stays that way until you press it again.";
-/** Rank, DC, Health, Energy Pool, Energy and Focus in one compact panel at the top of the Overview. */
-export function vitalsNodes(initiativeActionId: string | null): DocNode {
-  const title = (iconName: string, color: string, text: string, help: string) => [icon(iconName, color, 16), " ", b(text), " ", tip(help), "  "];
+/** The vitals' boxes: each stat in its own frame, boxes in a row the same height. */
+export const VITALS_LOOK = { bg: "#1c1917", outline: "#d4a24c55", radius: 10, padding: 10, gap: 10, boxed: true };
+/**
+ * Rank, Energy Pool and DC, then Health, Energy and Focus — two rows of three
+ * matching boxes at the top of the Overview (a bar under each resource).
+ */
+export function vitalsNodes(initiativeActionId: string | null): DocNode[] {
+  const title = (iconName: string, color: string, text: string, help: string) => p(icon(iconName, color, 16), " ", b(text), " ", tip(help));
+  const big = (ref: string, color?: string) => val(ref, { look: { bold: true, fontSize: 16, ...(color ? { color } : {}) } });
   const bar = (ref: string, maxRef: string, color: string) => block(ref, { maxRef, display: "bar", showLabel: false, look: { color, track: "#3f3a2a", height: 8, radius: 4, numbers: "none" } });
-  return columns([
-    [
-      p(...title("Star", GILT, "Rank", RANK_HELP), val("rank", { look: { color: GILT, bold: true } }), " ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } })),
-      p(...title("Shield", GILT, "DC", DC_HELP), val("dc", { look: { bold: true, color: GILT } }), ...(initiativeActionId ? ["   ", button(initiativeActionId, "Initiative", { height: 26, fontSize: 12 })] : [])),
-      p(...title("Heart", "#f43f5e", "Health", HEALTH_HELP), val("hp", { look: { bold: true } }), " / ", val("hp_max", { look: { bold: true } }), muted("   Temp "), val("temp_hp", { display: "input" })),
-      bar("hp", "hp_max", "#f43f5e"),
-    ],
-    [
-      p(...title("Zap", GILT, "Energy Pool", POOL_HELP), val("energy_pool", { look: { bold: true } })),
-      p(...title("Zap", "#22d3ee", "Energy", ENERGY_HELP), val("energy", { look: { bold: true } }), " / ", val("usable_energy", { look: { bold: true } }), muted("   Temp "), val("temp_energy", { display: "input" })),
-      bar("energy", "usable_energy", "#06b6d4"),
-      p(...title("Sparkles", "#a78bfa", "Focus", FOCUS_NOTE), val("focus", { display: "input" }), " / ", val("focus_max", { look: { bold: true } })),
-      bar("focus", "focus_max", "#8b5cf6"),
-    ],
-  ], { ...SECTION_LOOK, gap: 16 });
+  return [
+    columns([
+      [title("Star", GILT, "Rank", RANK_HELP), p(big("rank", GILT), "  ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } }))],
+      [title("Zap", GILT, "Energy Pool", POOL_HELP), p(big("energy_pool"))],
+      [title("Shield", GILT, "DC", DC_HELP), p(big("dc", GILT), ...(initiativeActionId ? ["   ", button(initiativeActionId, "Initiative", { height: 24, fontSize: 12 })] : []))],
+    ], VITALS_LOOK),
+    columns([
+      [title("Heart", "#f43f5e", "Health", HEALTH_HELP), p(big("hp"), " / ", big("hp_max")), bar("hp", "hp_max", "#f43f5e"), p(muted("Temp "), val("temp_hp", { display: "input" }))],
+      [title("Zap", "#22d3ee", "Energy", ENERGY_HELP), p(big("energy"), " / ", big("usable_energy")), bar("energy", "usable_energy", "#06b6d4"), p(muted("Temp "), val("temp_energy", { display: "input" }))],
+      [title("Sparkles", "#a78bfa", "Focus", FOCUS_NOTE), p(big("focus"), " / ", big("focus_max")), bar("focus", "focus_max", "#8b5cf6")],
+    ], VITALS_LOOK),
+  ];
 }
 /** Race, size, age… as chips (no Level — C.A. goes by rank — and DC is up in the vitals); Languages runs the whole last row. */
 export function identityChips(): Record<string, unknown>[] {
@@ -720,7 +723,7 @@ function itemTemplate(kind: ItemKind): AgSnapshot {
 
 // --------------------------------------------------------------------------- wounds & traits
 /** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
-export const FOCUS_NOTE = "6 to start, +1 per star. Resets on a long rest.";
+export const FOCUS_NOTE = "6 to start, +1 per star. Resets on a long rest. Click the bar (or double-click the number) to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
 

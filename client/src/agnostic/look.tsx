@@ -128,6 +128,9 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
       {s.padding && row("Padding", slider("padding", 0, 48, 0))}
       {s.radius && row("Corners", slider("radius", 0, 40, kind === "bar" || kind === "tokenBar" ? 2 : 6))}
       {s.columns && row("Gap", slider("gap", 0, 64, 14))}
+      {s.columns && row("Boxes", (
+        <label className="flex items-center gap-1.5 text-xs text-stone-300"><input type="checkbox" checked={!!L.boxed} onChange={(e) => set({ boxed: e.target.checked || undefined })} data-testid="ag-look-boxed" /> Each column in its own box</label>
+      ))}
       {s.columns && row("Widths", (
         <>
           {select("ratio", [["", "Equal"], ["2:1", "Wide left"], ["1:2", "Wide right"], ["3:1", "Very wide left"], ["1:3", "Very wide right"], ["1:2:1", "Wide middle"]], "")}

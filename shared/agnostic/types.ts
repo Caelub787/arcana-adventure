@@ -137,6 +137,8 @@ export interface AgLook {
   /** Columns: gap between columns (px) and relative widths ("1:2"). */
   gap?: number;
   ratio?: string;
+  /** Columns: each column in its own box (the frame colours, corners and padding), equal heights in a row. */
+  boxed?: boolean;
   /** Buttons: show the dice icon. */
   icon?: boolean;
   /** Text after a value, e.g. "lbs" or "ft". */
