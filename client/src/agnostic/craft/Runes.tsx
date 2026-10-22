@@ -5,12 +5,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
-import { traceAccuracy, runeTier, itemMatches, numOf, TIER_COLOR, TIER_LABEL, type RuneConfig } from "@shared/agnostic/crafting";
+import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, runesOn, qtyOf, type CraftState } from "./session";
 import { ItemTile, ResultBanner, QuickCraftButton, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
-import { drawSigil, loadImage, runePortrait, type MarkStyle, type RuneLook } from "./render";
+import { drawSigil, loadImage, runePortrait, weaponPortrait, type MarkStyle, type RuneLook } from "./render";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 type ScopeState = ReturnType<typeof useAg>["state"];
@@ -36,7 +36,28 @@ export function socketsOn(state: ScopeState, itemId: string): { used: number; ma
   const max = Math.max(0, Math.floor(numOf(valueOn(state, itemId, "rune_sockets"))));
   return { used, max, full: used >= max, label: max === 0 ? "no sockets" : `${used}/${max} sockets` };
 }
-const baseOf = (state: ScopeState, item: AgNote | undefined) => { if (!item) return null; const b = valueOn(state, item.id, "base_portrait"); return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null; };
+/**
+ * The item's picture without its runes. A forged weapon keeps how it was built, so it's drawn fresh from that (always
+ * as the parts were made, joined as they are now); anything else uses its picture from before its first rune.
+ */
+const baseOf = (state: ScopeState, item: AgNote | undefined) => {
+  if (!item) return null;
+  const build = valueOn(state, item.id, "forge_build");
+  if (typeof build === "string" && build) { const drawn = buildPicture(build); if (drawn) return drawn; }
+  const b = valueOn(state, item.id, "base_portrait");
+  return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null;
+};
+const buildCache = new Map<string, string | null>();
+function buildPicture(build: string): string | null {
+  if (buildCache.has(build)) return buildCache.get(build)!;
+  let out: string | null = null;
+  try {
+    const b = JSON.parse(build) as { failed?: boolean; parts: Array<{ key: string; label: string; role: ForgeRole; shape: string; color: string; metal: string | null }> };
+    out = weaponPortrait(b.parts.map((p) => ({ part: { key: p.key, label: p.label, role: p.role, shape: p.shape }, color: p.color, metal: p.metal ? unpackMetal(p.metal) : null })), 320, { failed: !!b.failed });
+  } catch { out = null; }
+  buildCache.set(build, out);
+  return out;
+}
 
 export function RuneTool({ characterId, state: s, set, start, playing, stationId }: Props) {
   const { state, request, scope, openNote } = useAg();

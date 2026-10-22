@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Flame, Hammer, Wind, Droplets, ArrowLeft, Check, Circle, Disc3 } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
-  FORGE_SHAPES, FINE_COLS, FINE_ROWS, startingStock, shapeMask, shapeScore, hammerMetal, grindMetal, grindable, breakLoose, packMetal, unpackMetal, partStats, numOf, TIER_COLOR, TIER_LABEL,
+  FORGE_SHAPES, FINE_COLS, FINE_ROWS, startingStock, shapeMask, shapeScore, hammerMetal, grindMetal, outlineDistance, GRIND_REACH, breakLoose, packMetal, unpackMetal, partStats, numOf, TIER_COLOR, TIER_LABEL,
   type ForgeConfig, type ForgePart, type Metal,
 } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
@@ -198,7 +198,7 @@ function ShapeChip({ shape, color }: { shape: string; color: string }) {
 const W = 760, H = 320;
 const BAR = { x: 20, y: 16, w: 720, h: 288 };
 const SKILL_WORDS = ["Rough: a blow often knocks the blocks beside it off too.", "Steadier: a blow sometimes takes a neighbour.", "Careful: now and then a neighbour goes too.", "Precise: each blow lands exactly where you strike.", "Master: drag to cut along a line, like a saw."];
-const wheelRadius = (skill: number) => [3.2, 2.8, 2.4, 2, 1.6][Math.max(0, Math.min(4, skill))];
+const wheelRadius = (skill: number) => [4, 4, 3.6, 3.3, 3][Math.max(0, Math.min(4, skill))];
 const GRIND_WORDS = ["Rough: the wheel often bites past the line.", "Steadier: it sometimes bites past the line.", "Careful: it rarely bites past the line.", "Precise: it hardly ever bites past the line.", "Master: it stops right at the line."];
 /** Which way is out from the metal at a point (radians): the wheel sits on that side, off the work, so it never hides the edge. */
 function outward(metal: Metal, fx: number, fy: number): number | null {
@@ -230,7 +230,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const [busy, setBusy] = useState(false);
   const tool: "hammer" | "grind" = s.tool === "grind" ? "grind" : "hammer";
   const [miss, setMiss] = useState(0);
-  const [skate, setSkate] = useState(0);
+  const [skate, setSkate] = useState<null | "far" | "loose">(null);
   // Watchers follow the crafter's heat and metal; the crafter runs the furnace.
   useEffect(() => { if (!playing) live.current.heat = Number(s.heat ?? 20); }, [s.heat, playing]);
   useEffect(() => { if (!playing || !live.current.dirty) live.current.metal = fromState(); }, [s.metal, playing]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -330,13 +330,15 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const grindAt = (x: number, y: number) => {
     const L = live.current;
     const [fx, fy] = toFine(x, y);
-    const { metal: ground, hit } = grindMetal(L.metal, part.shape, fx, fy, wheelRadius(skill), skill);
+    const { metal: ground, hit, loose } = grindMetal(L.metal, part.shape, fx, fy, wheelRadius(skill), skill);
     if (!hit.length) {
-      // On the metal but nowhere the hammer has opened up: the stone just skates.
+      // Stock too far from the line, or grinding here would knock a whole piece off: the stone skates (the hammer's job).
       const c = Math.floor(fx), r = Math.floor(fy);
-      if (c >= 0 && r >= 0 && c < FINE_COLS && r < FINE_ROWS && L.metal[r * FINE_COLS + c] && !grindable(L.metal, part.shape, Math.floor(r / 4), Math.floor(c / 4))) setSkate((k) => k + 1);
+      if (loose) setSkate("loose");
+      else if (c >= 0 && r >= 0 && c < FINE_COLS && r < FINE_ROWS && L.metal[r * FINE_COLS + c] && outlineDistance(part.shape)[r * FINE_COLS + c] > GRIND_REACH) setSkate("far");
       return;
     }
+    setSkate(null);
     const { metal, fell } = drop(ground, mat.color);
     L.metal = metal; L.dirty = true;
     sparks(x, y, "#fde68a", 3);
@@ -438,7 +440,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
         <div className="text-[11px] text-stone-500" data-testid="forge-hint">
           {tool === "hammer"
             ? <>Strike the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Strike the metal itself.</span>}</>
-            : <>The grindstone refines the hammer's work: hold it on the gold line beside blocks you've hammered away, and move along it to bring out points and curves. It only takes the stock the line runs through — the plain stock is the hammer's, however slowly you grind. <span className="text-stone-400">Blacksmithing {skill}: {GRIND_WORDS[skill]}</span>{skate > 0 && <span className="text-amber-300/90"> Only where the gold line runs, beside blocks you've hammered away.</span>}</>}
+            : <>The grindstone smooths the edge down to the gold line: hold it on the stock near the line and move along it to bring out points and curves. It wears from the outside in, only within about a block of the line — stock farther out is the hammer's. <span className="text-stone-400">Blacksmithing {skill}: {GRIND_WORDS[skill]}</span>{skate && <span className="text-amber-300/90" data-testid="forge-skate"> {skate === "far" ? "That's too far from the line — hammer it away first." : "Grinding there would knock a whole piece off — hammer the stock beyond it first."}</span>}</>}
         </div>
       )}
       <ResultBanner result={s.result} onOpen={openNote} />

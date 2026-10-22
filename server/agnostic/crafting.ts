@@ -390,6 +390,8 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", station) : null;
       const QUICK: Record<CraftTier, number> = { fail: 5, weak: 45, default: 72, slight: 88, huge: 98 };
       const used: AgNote[] = [];
+      // How it's put together — each part's shape, colour and metal as made — so its picture can be drawn again.
+      const build: Array<{ key: string; label: string; role: ForgeRole; shape: string; color: string; metal: string | null }> = [];
       const parts: Array<{ role: ForgeRole; durability: number; damageBonus: number; accuracy: number; weight: number; value: number; material: string; quality: number }> = [];
       for (const part of config.parts) {
         const id = body.op === "craft.forgeQuick" ? body.materials[part.key] : body.partIds[part.key];
@@ -397,6 +399,8 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         const it = inInventory(inv, id, body.op === "craft.forgeQuick" ? `The ${part.label.toLowerCase()} material` : `The ${part.label.toLowerCase()}`);
         if (used.some((u) => u.id === it.id) && (body.op === "craft.forgeWeapon" || qtyOf(store, it.id) < used.filter((u) => u.id === it.id).length + 1)) fail(`${it.name} can only be used once here`);
         used.push(it);
+        const metal = body.op === "craft.forgeWeapon" ? valueOf(store, it.id, "part_metal") : null;
+        build.push({ key: part.key, label: part.label, role: part.role, shape: part.shape, color: /^#[0-9a-f]{3,8}$/i.test(String(valueOf(store, it.id, "metal_color") ?? "")) ? String(valueOf(store, it.id, "metal_color")) : "#9ca3af", metal: typeof metal === "string" && metalFits(metal) ? metal : null });
         if (body.op === "craft.forgeWeapon") {
           if (String(valueOf(store, it.id, "part_key") ?? "") !== part.key || String(valueOf(store, it.id, "blueprint_id") ?? "") !== bp.id) fail(`${it.name} isn't a ${part.label.toLowerCase()} for ${bp.name}`);
           parts.push({ role: part.role, durability: numOf(valueOf(store, it.id, "durability")), damageBonus: numOf(valueOf(store, it.id, "damage_bonus")), accuracy: numOf(valueOf(store, it.id, "accuracy")), weight: numOf(valueOf(store, it.id, "weight")), value: numOf(valueOf(store, it.id, "value")), material: String(valueOf(store, it.id, "material") ?? ""), quality: numOf(valueOf(store, it.id, "quality"), 60) });
@@ -418,6 +422,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         const vals: Record<string, AgValue> = {
           durability: failed ? 10 : w.durability, durability_max: 100, damage_bonus: failed ? 0 : w.damageBonus + (quick ? TIER_BONUS[quick.tier] : 0),
           accuracy: failed ? 0 : w.accuracy, weight: w.weight, value: failed ? 0 : w.value, qty: 1, craft_tier: TIER_LABEL[tier], blueprint_id: bp.id,
+          forge_build: JSON.stringify({ failed, parts: build }),
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs);
         await applyEffects(store, item.id, config.effects ?? [], tier, cs);

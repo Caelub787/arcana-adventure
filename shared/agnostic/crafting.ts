@@ -357,65 +357,104 @@ export function hammerMetal(metal: Metal, fx: number, fy: number, skill: number,
   }
   return { metal: m, hit };
 }
-/** A block the hammer has cleared: part of the starting bar, and empty now. */
-const blockOpened = (metal: Metal, stock: Metal, R: number, C: number) => {
-  if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS || !blockHas(stock, R, C)) return false;
-  return !blockHas(metal, R, C);
-};
-/** Blocks the outline runs through: some of the part and some stock (fixed by the shape, whatever's been done since). */
-const edgeCache = new Map<string, Uint8Array>();
-function edgeBlocks(shape: string): Uint8Array {
-  let e = edgeCache.get(shape);
-  if (e) return e;
-  const mask = shapeMask(shape), stock = stockOf(shape);
-  e = new Uint8Array(FORGE_ROWS * FORGE_COLS);
-  for (let R = 0; R < FORGE_ROWS; R++) for (let C = 0; C < FORGE_COLS; C++) {
-    let part = false, extra = false;
-    for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) { const i = r * FINE_COLS + c; if (mask[i]) part = true; else if (stock[i]) extra = true; }
-    e[R * FORGE_COLS + C] = part && extra ? 1 : 0;
+/** How far (fine cells) from the outline the grindstone reaches: about a block. Stock farther out is the hammer's. */
+export const GRIND_REACH = 5;
+/** The most the grindstone may knock loose at once (fine cells): specks, not pieces. */
+const GRIND_LOOSE = 16;
+/** The outline's outermost layer of cells (the only part an unsteady wheel can bite). */
+const rimCache = new Map<string, Metal>();
+function outlineRim(shape: string): Metal {
+  let rim = rimCache.get(shape);
+  if (rim) return rim;
+  const mask = shapeMask(shape);
+  rim = new Uint8Array(N);
+  for (let r = 0; r < FINE_ROWS; r++) for (let c = 0; c < FINE_COLS; c++) {
+    const i = r * FINE_COLS + c;
+    if (mask[i] && [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].some(([rr, cc]) => rr < 0 || cc < 0 || rr >= FINE_ROWS || cc >= FINE_COLS || !mask[rr * FINE_COLS + cc])) rim[i] = 1;
   }
-  edgeCache.set(shape, e);
-  return e;
+  rimCache.set(shape, rim);
+  return rim;
+}
+/** Each fine cell's distance to the outline (0 inside it), per shape. */
+const distCache = new Map<string, Float32Array>();
+export function outlineDistance(shape: string): Float32Array {
+  let d = distCache.get(shape);
+  if (d) return d;
+  const mask = shapeMask(shape);
+  const edge: number[] = [];
+  for (let r = 0; r < FINE_ROWS; r++) for (let c = 0; c < FINE_COLS; c++) {
+    const i = r * FINE_COLS + c;
+    if (!mask[i]) continue;
+    if ([[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].some(([rr, cc]) => rr < 0 || cc < 0 || rr >= FINE_ROWS || cc >= FINE_COLS || !mask[rr * FINE_COLS + cc])) edge.push(r, c);
+  }
+  d = new Float32Array(N);
+  for (let r = 0; r < FINE_ROWS; r++) for (let c = 0; c < FINE_COLS; c++) {
+    const i = r * FINE_COLS + c;
+    if (mask[i]) continue;
+    let best = 1e9;
+    for (let k = 0; k < edge.length; k += 2) { const dr = edge[k] - r, dc = edge[k + 1] - c, q = dr * dr + dc * dc; if (q < best) best = q; }
+    d[i] = Math.sqrt(best);
+  }
+  distCache.set(shape, d);
+  return d;
 }
 /**
- * Where the grindstone can work: a block the outline runs through, right beside one the hammer has cleared. Blocks of
- * pure stock are the hammer's alone — the stone can't wear them down, however slowly it's worked — so grinding never
- * opens up more for itself.
+ * Whether the grindstone can take this cell: stock (not the part), on the surface, within reach of the outline — and
+ * nothing farther out still beside it, so it wears the stock down from the outside in, following the line (and can't
+ * cut a channel under stock the hammer should take).
  */
-export function grindable(metal: Metal, shape: string, R: number, C: number): boolean {
-  if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS || !edgeBlocks(shape)[R * FORGE_COLS + C]) return false;
-  const stock = stockOf(shape);
-  return blockOpened(metal, stock, R - 1, C) || blockOpened(metal, stock, R + 1, C) || blockOpened(metal, stock, R, C - 1) || blockOpened(metal, stock, R, C + 1);
+function grindableCell(metal: Metal, mask: Metal, dist: Float32Array, r: number, c: number): boolean {
+  const i = r * FINE_COLS + c;
+  if (!metal[i] || mask[i] || dist[i] > GRIND_REACH) return false;
+  let open = false;
+  for (const [rr, cc] of [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]) {
+    if (rr < 0 || cc < 0 || rr >= FINE_ROWS || cc >= FINE_COLS) { open = true; continue; }
+    const j = rr * FINE_COLS + cc;
+    if (!metal[j]) { open = true; continue; }
+    // Stock farther out that the stone could take goes first (so it follows the line); stock beyond its reach
+    // doesn't hold it up — and grinding can't cut that loose either (see grindMetal).
+    if (!mask[j] && dist[j] <= GRIND_REACH && dist[j] > dist[i] + 0.5) return false;
+  }
+  return open;
+}
+/** Whether the grindstone has anything to take within `radius` of (fx, fy) — for telling the smith why it skates. */
+export function grindableNear(metal: Metal, shape: string, fx: number, fy: number, radius: number): boolean {
+  const mask = shapeMask(shape), dist = outlineDistance(shape);
+  for (let r = Math.floor(fy - radius); r <= Math.ceil(fy + radius); r++) for (let c = Math.floor(fx - radius); c <= Math.ceil(fx + radius); c++) {
+    if (r < 0 || c < 0 || r >= FINE_ROWS || c >= FINE_COLS || (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 > radius * radius) continue;
+    if (grindableCell(metal, mask, dist, r, c)) return true;
+  }
+  return false;
 }
 /** How often a smith's wheel bites into the outline itself as it works an edge, by Blacksmithing (0–4), per cell per pass. */
 export const grindNick = (skill: number) => [0.05, 0.03, 0.015, 0.005, 0][Math.max(0, Math.min(4, Math.floor(skill)))];
 /**
- * The grindstone: the wheel takes the stock it touches (surface cells, next to air) off within its reach — only in
- * blocks the outline runs through beside blocks the hammer has cleared, and never a block's last bit. Only stock comes
- * off: a steady hand stops at the line, a less skilled one sometimes bites past it (grindNick).
+ * The grindstone: the wheel wears away the stock it touches, a layer at a time from the outside in, down to the
+ * outline — within about a block of it (GRIND_REACH), hammered or not. Only stock comes off: a steady hand stops at the
+ * line, a less skilled one sometimes bites past it (grindNick).
  */
-export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, radius: number, skill = 4, rand: () => number = Math.random): { metal: Metal; hit: number[] } {
-  const mask = shapeMask(shape);
+export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, radius: number, skill = 4, rand: () => number = Math.random): { metal: Metal; hit: number[]; /** Why nothing came off, when it's because it would knock a piece loose. */ loose?: boolean } {
+  const mask = shapeMask(shape), dist = outlineDistance(shape), rim = outlineRim(shape);
   const nick = grindNick(skill);
-  const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
+  const r0 = Math.max(0, Math.floor(fy - radius)), r1 = Math.min(FINE_ROWS - 1, Math.ceil(fy + radius));
+  const c0 = Math.max(0, Math.floor(fx - radius)), c1 = Math.min(FINE_COLS - 1, Math.ceil(fx + radius));
+  const inside = (r: number, c: number) => (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 <= radius * radius;
   const hit: number[] = [];
-  const ok = new Map<number, boolean>();
-  const left = new Map<number, number>();
-  const cellsIn = (R: number, C: number) => { let n = 0; for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) if (metal[r * FINE_COLS + c]) n++; return n; };
-  for (let r = Math.floor(fy - radius); r <= Math.ceil(fy + radius); r++) for (let c = Math.floor(fx - radius); c <= Math.ceil(fx + radius); c++) {
-    if (!at(r, c) || (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 > radius * radius) continue;
-    if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
+  const take = new Set<number>();
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    if (!inside(r, c)) continue;
     const i = r * FINE_COLS + c;
-    if (mask[i] && !(nick > 0 && rand() < nick)) continue;
-    const R = Math.floor(r / FINE), C = Math.floor(c / FINE), b = R * FORGE_COLS + C;
-    if (!ok.has(b)) { ok.set(b, grindable(metal, shape, R, C)); left.set(b, cellsIn(R, C)); }
-    if (!ok.get(b) || (left.get(b) ?? 0) <= 1) continue;
-    left.set(b, (left.get(b) ?? 0) - 1);
-    hit.push(i);
+    if (grindableCell(metal, mask, dist, r, c)) take.add(i);
+    // The line itself: only an unsteady hand bites into it.
+    // (only its outermost layer, so it never eats deeper the longer it's held there).
+    else if (nick > 0 && metal[i] && rim[i] && rand() < nick && [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]].some(([rr, cc]) => rr >= 0 && cc >= 0 && rr < FINE_ROWS && cc < FINE_COLS && !metal[rr * FINE_COLS + cc])) take.add(i);
   }
-  if (!hit.length) return { metal, hit };
+  if (!take.size) return { metal, hit };
   const m = metal.slice();
-  for (const i of hit) m[i] = 0;
+  take.forEach((i) => { m[i] = 0; });
+  // The stone may knock off specks, but never cut a whole piece of stock loose — that's the hammer's work.
+  if (breakLoose(m).fell.length > GRIND_LOOSE) return { metal, hit, loose: true };
+  take.forEach((i) => hit.push(i));
   return { metal: m, hit };
 }
 /** The cells' bounding box (fine cells), or null if there's no metal. */
