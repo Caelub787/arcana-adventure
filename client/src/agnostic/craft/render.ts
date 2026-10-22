@@ -1,6 +1,6 @@
 // Drawing for the crafting tools: glowing metal, finished weapons, sigils —
 // and the pictures crafted items get as their portraits.
-import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, FINE_COLS, FINE_ROWS, assemblyOrder, type ForgePart, type Metal } from "@shared/agnostic/crafting";
+import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, FINE_COLS, FINE_ROWS, PART_SCALE, assemblyOrder, shapeMask, metalBounds, type ForgePart, type Metal } from "@shared/agnostic/crafting";
 
 /** Metal colour by heat (0 cold … 1 white-hot), tinted toward the material's own colour when cool. */
 export function heatColor(t: number, base = "#9ca3af"): string {
@@ -64,7 +64,7 @@ function paintCells(pick: (i: number, r: number, c: number) => [number, number, 
 }
 
 /** The metal (its fine cells), glowing with its heat: lit along its top edges, shadowed along the bottom. */
-export function drawMetal(ctx: CanvasRenderingContext2D, metal: Metal, color: string, heat: number, x: number, y: number, w: number, h: number) {
+export function drawMetal(ctx: CanvasRenderingContext2D, metal: Metal, color: string, heat: number, x: number, y: number, w: number, h: number, crop?: { c0: number; r0: number; c1: number; r1: number }) {
   const [br, bg, bb] = rgbOf(heatColor(heat, color));
   const lift = heat > 0.3 ? 0.35 : 0.28;
   const on = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
@@ -78,7 +78,8 @@ export function drawMetal(ctx: CanvasRenderingContext2D, metal: Metal, color: st
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   if (heat > 0.3) { ctx.shadowColor = heatColor(Math.min(1, heat + 0.1), color); ctx.shadowBlur = 18 * heat; }
-  ctx.drawImage(img, x, y, w, h);
+  if (crop) ctx.drawImage(img, crop.c0, crop.r0, crop.c1 - crop.c0 + 1, crop.r1 - crop.r0 + 1, x, y, w, h);
+  else ctx.drawImage(img, x, y, w, h);
   ctx.restore();
 }
 
@@ -124,42 +125,58 @@ function layout(parts: Array<{ part: ForgePart }>) {
   return ordered.map((p) => { const w = len(p) / total; const r = { part: p, from: at, w }; at += w; return r; });
 }
 
-/** A whole weapon on a dark, glowing backdrop — the finished item's picture. */
+/**
+ * A whole weapon on a dark, glowing backdrop — the finished item's picture. Each part is drawn exactly as it was made
+ * (its own cells, cropped to the metal, never stretched), all at one scale, and joined end to end along the weapon:
+ * pommel, handle, guard, then the blade. A part made without the anvil (Quick Craft) is drawn as its outline.
+ */
 export function weaponPortrait(parts: Array<{ part: ForgePart; color: string; /** The part as it was actually hammered and ground. */ metal?: Metal | null }>, size = 320, opts: { failed?: boolean; tierColor?: string } = {}): string {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
   backdrop(ctx, size, opts.tierColor ?? "#f59e0b");
+  const byKey = new Map(parts.map((x) => [x.part.key, x]));
+  // Each piece in "weapon units": its box is PART_SCALE wide (and 0.4 of that tall); its metal's own extent within it.
+  const pieces = assemblyOrder(parts.map((x) => x.part)).map((p) => {
+    const it = byKey.get(p.key)!;
+    const metal = it.metal ?? shapeMask(p.shape);
+    const b = metalBounds(metal) ?? { c0: 0, r0: 0, c1: FINE_COLS - 1, r1: FINE_ROWS - 1 };
+    const unit = (PART_SCALE[p.shape] ?? 0.5) / FINE_COLS;
+    return { p, metal, b, color: opts.failed ? "#57534e" : it.color, w: (b.c1 - b.c0 + 1) * unit, h: (b.r1 - b.r0 + 1) * unit, unit };
+  });
+  if (!pieces.length) return c.toDataURL("image/png");
+  const overlap = (pc: typeof pieces[number]) => pc.unit * 1.5;
+  const total = pieces.reduce((t, pc, k) => t + pc.w - (k ? overlap(pc) : 0), 0);
+  const tall = Math.max(...pieces.map((pc) => pc.h));
+  const k = Math.min((size * 1.22) / total, (size * 0.42) / tall);
   ctx.save();
   ctx.translate(size / 2, size / 2);
   ctx.rotate(-Math.PI / 4);
-  const L = size * 1.12;
-  const colorOf = new Map(parts.map((x) => [x.part.key, x.color]));
-  const metalOf = new Map(parts.map((x) => [x.part.key, x.metal ?? null]));
-  for (const seg of layout(parts)) {
-    const w = seg.w * L, h = seg.part.role === "blade" ? Math.max(size * 0.13, w * 0.24) : seg.part.role === "handle" ? size * 0.09 : seg.part.shape === "guard" ? size * 0.26 : size * 0.12;
-    const x = -L / 2 + seg.from * L;
-    const col = opts.failed ? "#57534e" : colorOf.get(seg.part.key) ?? "#9ca3af";
-    const metal = metalOf.get(seg.part.key);
-    if (metal) drawMetal(ctx, metal, col, 0, x, -h / 2, w, h);
-    else drawSolidPart(ctx, seg.part.shape, col, x, -h / 2, w, h, seg.part.role === "blade" ? 10 : 0);
-  }
+  let x = (-total * k) / 2;
+  pieces.forEach((pc, n) => {
+    if (n) x -= overlap(pc) * k;
+    drawMetal(ctx, pc.metal, pc.color, 0, x, (-pc.h * k) / 2, pc.w * k, pc.h * k, pc.b);
+    x += pc.w * k;
+  });
   ctx.restore();
   if (opts.failed) crack(ctx, size);
   return c.toDataURL("image/png");
 }
 
-/** One part, as it came off the anvil. */
+/** One part, as it came off the anvil — the metal itself, filling the picture (cropped, not stretched). */
 export function partPortrait(shape: string, metal: Metal | null, color: string, size = 256): string {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
   backdrop(ctx, size, color);
-  const w = size * 0.86, h = w * 0.4;
+  const m = metal ?? shapeMask(shape);
+  const b = metalBounds(m) ?? { c0: 0, r0: 0, c1: FINE_COLS - 1, r1: FINE_ROWS - 1 };
+  const bw = b.c1 - b.c0 + 1, bh = b.r1 - b.r0 + 1;
+  // Laid diagonally, as big as fits.
+  const k = Math.min((size * 1.15) / bw, (size * 0.6) / bh);
   ctx.save();
   ctx.translate(size / 2, size / 2); ctx.rotate(-Math.PI / 6);
-  if (metal) drawMetal(ctx, metal, color, 0, -w / 2, -h / 2, w, h);
-  else drawSolidPart(ctx, shape, color, -w / 2, -h / 2, w, h, 6);
+  drawMetal(ctx, m, color, 0, (-bw * k) / 2, (-bh * k) / 2, bw * k, bh * k, b);
   ctx.restore();
   return c.toDataURL("image/png");
 }

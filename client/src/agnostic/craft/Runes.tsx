@@ -88,6 +88,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
     finally { setBusy(false); }
   };
 
+  const handSkill = Math.max(0, Math.min(4, Math.floor(numOf(valueOn(state, characterId, "rune_making")))));
   if (s.stage === "trace" && (rune || freehand) && target) {
     const useGuide = !freehand && guide;
     return (
@@ -98,7 +99,8 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
           <span className="text-[11px] text-stone-400">{look.style}{ink ? ` · ${ink.name}` : " · no ink"} · {freehand ? "no guide" : `guide ${guide ? "on" : "off"}`}</span>
           {!playing && <span className="text-[10px] px-2 py-0.5 rounded-full border border-stone-600 text-stone-300">Watching live</span>}
         </div>
-        <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={(st) => set({ strokes: st })} />
+        <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={(st) => set({ strokes: st })} skill={handSkill} />
+        {playing && <div className="text-[11px] text-stone-400" data-testid="rune-hand">Rune Making {handSkill}: {HAND_WORDS[handSkill]}</div>}
         {playing && (
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => set({ strokes: strokes.slice(0, -1) })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Undo2 className="h-4 w-4" /> Undo</button>
@@ -255,25 +257,66 @@ function PlacementEditor({ base, name, existing, sigil, placement, look, playing
 
 /** The tracing surface: zoomed in on where the rune goes (it fills the view, however small it is on the item) — the
  *  item, its runes, the guide and the strokes, live. Zoom in or out with the buttons. */
-function TraceCanvas({ base, name, existing, sigil, guide, placement, look, strokes, playing, onStrokes }: {
+/** How unsteady a rune maker's hand is, by Rune Making (0–4): how far the pen tip wanders (in the sigil's 0–100), and how
+ *  quickly it catches up with where they're aiming. At 4 it goes exactly where you draw. */
+const HAND = [{ wobble: 9, follow: 0.14 }, { wobble: 6.5, follow: 0.22 }, { wobble: 4, follow: 0.32 }, { wobble: 2, follow: 0.5 }, { wobble: 0, follow: 1 }];
+export const HAND_WORDS = ["Shaky: the pen wanders and lags behind your hand.", "Unsteady: the pen wanders a fair bit.", "Practised: a little wobble.", "Skilled: barely a tremor.", "Master: the pen goes exactly where you draw."];
+
+/** The tracing surface: zoomed in on where the rune goes (it fills the view, however small it is on the item) — the
+ *  item, its runes, the guide and the strokes, live. The ink comes from the pen's tip, which an unskilled hand can't hold
+ *  steady (it trails and wobbles); on a touch screen the pen is held just above the finger, so you can see its tip. */
+function TraceCanvas({ base, name, existing, sigil, guide, placement, look, strokes, playing, onStrokes, skill }: {
   base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; guide: boolean; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">;
-  strokes: number[][][]; playing: boolean; onStrokes: (s: number[][][]) => void;
+  strokes: number[][][]; playing: boolean; onStrokes: (s: number[][][]) => void; skill: number;
 }) {
   const S = 520;
   const ref = useRef<HTMLCanvasElement>(null);
   const img = useImage(base);
   const current = useRef<number[][] | null>(null);
   const lastSync = useRef(0);
-  const [, force] = useState(0);
   const local = useRef(strokes);
   const [zoomMul, setZoomMul] = useState(1);
   const zoom = Math.max(1, Math.min(14, fitZoom(placement) * zoomMul));
   const view: View = { z: zoom, cx: (placement.x / 100) * S, cy: (placement.y / 100) * S };
   const viewRef = useRef(view); viewRef.current = view;
+  const hand = HAND[Math.max(0, Math.min(4, Math.floor(skill)))];
+  // The pen: where it's aimed (sigil units), where its tip is, whether it's down, and its tremor's phases.
+  const pen = useRef({ aim: null as null | number[], tip: null as null | number[], down: false, touch: false, finger: null as null | number[], ph: [Math.random() * 9, Math.random() * 9, Math.random() * 9, Math.random() * 9] });
   useEffect(() => { if (!current.current) local.current = strokes; }, [strokes]);
+
+  const geo = () => ({ cx: (placement.x / 100) * S, cy: (placement.y / 100) * S, sz: (placement.s / 100) * S, a: ((placement.r ?? 0) * Math.PI) / 180 });
+  /** The item's pixels to the sigil's 0–100, and back. */
+  const toSig = (px: number, py: number) => { const { cx, cy, sz, a } = geo(); const dx = px - cx, dy = py - cy; const rx = dx * Math.cos(-a) - dy * Math.sin(-a), ry = dx * Math.sin(-a) + dy * Math.cos(-a); return [50 + (rx / sz) * 100, 50 + (ry / sz) * 100]; };
+  const fromSig = (x: number, y: number) => { const { cx, cy, sz, a } = geo(); const rx = ((x - 50) / 100) * sz, ry = ((y - 50) / 100) * sz; return [cx + rx * Math.cos(a) - ry * Math.sin(a), cy + rx * Math.sin(a) + ry * Math.cos(a)]; };
+  /** Where a pointer aims, in sigil units (a finger aims a little above itself, where the pen's tip is). */
+  const aimOf = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const lift = e.pointerType === "touch" ? (56 * S) / r.width : 0;
+    const v = viewRef.current;
+    const sx = ((e.clientX - r.left) / r.width) * S, sy = ((e.clientY - r.top) / r.height) * S - lift;
+    pen.current.finger = [((e.clientX - r.left) / r.width) * S, ((e.clientY - r.top) / r.height) * S];
+    return toSig((sx - S / 2) / v.z + v.cx, (sy - S / 2) / v.z + v.cy);
+  };
+
   useEffect(() => {
-    let raf = 0;
+    let raf = 0, last = performance.now();
     const f = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const P = pen.current;
+      // The tip follows the aim (a shaky hand lags) and trembles; the ink is laid where the tip is.
+      if (P.aim) {
+        if (!P.tip) P.tip = [...P.aim];
+        const k = 1 - Math.pow(1 - hand.follow, dt * 60);
+        P.tip = [P.tip[0] + (P.aim[0] - P.tip[0]) * k, P.tip[1] + (P.aim[1] - P.tip[1]) * k];
+      }
+      const ts = t / 1000;
+      const wob = [hand.wobble * (Math.sin(ts * 2.3 + P.ph[0]) * 0.7 + Math.sin(ts * 5.7 + P.ph[1]) * 0.3), hand.wobble * (Math.sin(ts * 1.9 + P.ph[2]) * 0.7 + Math.sin(ts * 6.1 + P.ph[3]) * 0.3)];
+      const ink = P.tip ? [Math.round((P.tip[0] + wob[0]) * 10) / 10, Math.round((P.tip[1] + wob[1]) * 10) / 10] : null;
+      if (P.down && ink && current.current) {
+        const lastPt = current.current[current.current.length - 1];
+        if (!lastPt || Math.hypot(ink[0] - lastPt[0], ink[1] - lastPt[1]) > 0.5) current.current.push(ink);
+        if (t - lastSync.current > 150) { lastSync.current = t; onStrokes([...local.current, current.current]); }
+      }
       const ctx = ref.current?.getContext("2d");
       if (ctx) {
         const v = viewRef.current;
@@ -281,7 +324,7 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
         applyView(ctx, S, v);
         paintItem(ctx, S, img, name);
         for (const r of existing) placeSigil(ctx, S, r);
-        const cx = (placement.x / 100) * S, cy = (placement.y / 100) * S, sz = (placement.s / 100) * S;
+        const { cx, cy, sz } = geo();
         ctx.save(); ctx.strokeStyle = "rgba(167,139,250,0.35)"; ctx.lineWidth = 1.5 / v.z; ctx.setLineDash([4 / v.z, 6 / v.z]); ctx.beginPath(); ctx.arc(cx, cy, sz * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         if (guide) {
           const pulse = 0.35 + 0.15 * Math.sin(t / 400);
@@ -291,33 +334,40 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
         }
         const all = current.current ? [...local.current, current.current] : local.current;
         if (all.length) placeSigil(ctx, S, { strokes: all, ...look, placement });
+        // The pen, at its tip (on screen, unzoomed).
+        if (playing && ink && (P.down || P.aim)) {
+          const [ix, iy] = fromSig(ink[0], ink[1]);
+          const sx = (ix - v.cx) * v.z + S / 2, sy = (iy - v.cy) * v.z + S / 2;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          if (P.touch && P.finger && P.down) { ctx.strokeStyle = "rgba(214,211,209,0.25)"; ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(P.finger[0], P.finger[1]); ctx.lineTo(sx, sy); ctx.stroke(); ctx.setLineDash([]); }
+          ctx.save(); ctx.translate(sx, sy); ctx.rotate(-Math.PI / 4);
+          ctx.fillStyle = look.style === "Carved" ? "#a8a29e" : "#d6d3d1";
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(7, 5); ctx.lineTo(7, 46); ctx.lineTo(-7, 46); ctx.lineTo(-7, 5); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = look.color || "#c4b5fd"; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
       }
       raf = requestAnimationFrame(f);
     };
     raf = requestAnimationFrame(f);
     return () => cancelAnimationFrame(raf);
-  }, [img, name, existing, sigil, guide, placement, look]);
+  }, [img, name, existing, sigil, guide, placement, look, hand, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** A pointer position in the sigil's own 0–100 coordinates (undoing the zoom and its placement). */
-  const toSigil = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const [px, py] = unview(e, S, viewRef.current);
-    const cx = (placement.x / 100) * S, cy = (placement.y / 100) * S, sz = (placement.s / 100) * S;
-    const a = (-(placement.r ?? 0) * Math.PI) / 180;
-    const dx = px - cx, dy = py - cy;
-    const rx = dx * Math.cos(a) - dy * Math.sin(a), ry = dx * Math.sin(a) + dy * Math.cos(a);
-    return [Math.round((50 + (rx / sz) * 100) * 10) / 10, Math.round((50 + (ry / sz) * 100) * 10) / 10];
+  const lift = () => {
+    const P = pen.current;
+    P.down = false; P.aim = null; P.tip = null;
+    if (!current.current) return;
+    const st = current.current; current.current = null;
+    if (st.length > 1) { local.current = [...local.current, st]; onStrokes(local.current); }
   };
   return (
     <div className="relative rounded-xl overflow-hidden border border-stone-700 mx-auto max-w-[520px]">
-      <canvas ref={ref} width={S} height={S} className={`w-full block touch-none select-none ${playing ? "cursor-crosshair" : ""}`} data-testid="rune-canvas"
-        onPointerDown={(e) => { if (!playing) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); current.current = [toSigil(e)]; force((x) => x + 1); }}
-        onPointerMove={(e) => {
-          if (!playing || !current.current) return;
-          current.current.push(toSigil(e));
-          const now = performance.now();
-          if (now - lastSync.current > 150) { lastSync.current = now; onStrokes([...local.current, current.current]); }
-        }}
-        onPointerUp={() => { if (!current.current) return; const st = current.current; current.current = null; if (st.length > 1) { local.current = [...local.current, st]; onStrokes(local.current); } }}
+      <canvas ref={ref} width={S} height={S} className={`w-full block touch-none select-none ${playing ? "cursor-none" : ""}`} data-testid="rune-canvas"
+        style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }} onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={(e) => { if (!playing) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); const P = pen.current; P.touch = e.pointerType === "touch"; P.aim = aimOf(e); P.tip = [...P.aim]; P.down = true; current.current = []; }}
+        onPointerMove={(e) => { if (!playing) return; const P = pen.current; if (!P.down && e.pointerType === "touch") return; P.touch = e.pointerType === "touch"; P.aim = aimOf(e); }}
+        onPointerUp={lift} onPointerCancel={lift} onLostPointerCapture={() => { if (pen.current.down) lift(); }}
+        onPointerLeave={() => { if (!pen.current.down) { pen.current.aim = null; pen.current.tip = null; } }}
       />
       <ZoomButtons zoom={zoomMul} setZoom={(z) => setZoomMul(Math.max(1 / fitZoom(placement), Math.min(3, z)))} testId="rune-trace-zoom" />
       <div className="absolute bottom-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-stone-200">{zoom.toFixed(1)}×</div>

@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from "@shared/agnostic/types";
 import { noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
-  traceAccuracy, stationAllows, metalFits, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
+  traceAccuracy, stationAllows, metalFits, sellValue, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
 } from "@shared/agnostic/crafting";
@@ -286,10 +286,9 @@ async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ 
     const v = e.values[tier];
     if (v === undefined) continue;
     const cur = numOf(fieldsOf(store, noteId).get(e.key)?.value);
-    const next = e.mode === "set" ? v : cur + v;
+    // Durability is a percentage.
+    const next = e.key === "durability" ? Math.max(0, Math.min(100, e.mode === "set" ? v : cur + v)) : e.mode === "set" ? v : cur + v;
     await setValue(store, noteId, e.key, next, cs);
-    // Durability set by craftsmanship is its full durability too.
-    if (e.key === "durability" && fieldsOf(store, noteId).has("durability_max")) await setValue(store, noteId, "durability_max", next, cs);
   }
 }
 
@@ -368,15 +367,15 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         const item = await giveItem(ctx, character, config.partTemplate, `${material.name} ${part.label}`, cs);
         const vals: Record<string, AgValue> = {
           item_type: "Part", part_key: part.key, part_role: part.role, part_shape: part.shape, blueprint_id: bp.id, part_of: bp.name, material: material.name,
-          metal_color: String(valueOf(store, material.id, "metal_color") ?? "#a8a29e"), quality: st.quality, durability: st.durability, durability_max: st.durability,
+          metal_color: String(valueOf(store, material.id, "metal_color") ?? "#a8a29e"), quality: st.quality, durability: st.durability, durability_max: 100,
           damage_bonus: st.damageBonus, accuracy: st.accuracy, weight: st.weight, value: st.value, qty: 1, craft_tier: TIER_LABEL[st.tier],
           ...(body.metal && metalFits(body.metal) ? { part_metal: body.metal } : {}),
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs);
         await setPortrait(ctx, item.id, body.portrait, cs);
         const name = store.notes.get(item.id)!.name;
-        await announce(ctx, `⚒ ${character.name} forged ${name} — shape ${st.quality}%, ${st.durability} durability.`);
-        return { tier: st.tier, tierLabel: TIER_LABEL[st.tier], noteId: item.id, name, message: `${name}: shape ${st.quality}%, durability ${st.durability}${part.role === "blade" ? `, damage ${st.damageBonus >= 0 ? "+" : ""}${st.damageBonus}` : part.role === "handle" ? `, accuracy ${st.accuracy >= 0 ? "+" : ""}${st.accuracy}` : ""}.` } satisfies CraftResult;
+        await announce(ctx, `⚒ ${character.name} forged ${name} — shape ${st.quality}%, ${st.durability}% durability.`);
+        return { tier: st.tier, tierLabel: TIER_LABEL[st.tier], noteId: item.id, name, message: `${name}: shape ${st.quality}%, durability ${st.durability}%${part.role === "blade" ? `, damage ${st.damageBonus >= 0 ? "+" : ""}${st.damageBonus}` : part.role === "handle" ? `, accuracy ${st.accuracy >= 0 ? "+" : ""}${st.accuracy}` : ""}.` } satisfies CraftResult;
       });
     }
     case "craft.forgeWeapon":
@@ -416,7 +415,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         for (const it of used) await consume(store, it, 1, cs);
         const item = await giveItem(ctx, character, config.output, name, cs);
         const vals: Record<string, AgValue> = {
-          durability: failed ? 1 : w.durability, durability_max: failed ? 1 : w.durability, damage_bonus: failed ? 0 : w.damageBonus + (quick ? TIER_BONUS[quick.tier] : 0),
+          durability: failed ? 10 : w.durability, durability_max: 100, damage_bonus: failed ? 0 : w.damageBonus + (quick ? TIER_BONUS[quick.tier] : 0),
           accuracy: failed ? 0 : w.accuracy, weight: w.weight, value: failed ? 0 : w.value, qty: 1, craft_tier: TIER_LABEL[tier], blueprint_id: bp.id,
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs);
@@ -424,7 +423,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         await patchWeaponRolls(store, item.id, config.damageDie, failed, cs);
         await setPortrait(ctx, item.id, body.portrait, cs);
         await announce(ctx, `⚒ ${character.name} ${quick ? "quick-forged" : "assembled"} ${name}${quick ? ` (${TIER_LABEL[tier]})` : ""}.`);
-        return { tier, tierLabel: TIER_LABEL[tier], noteId: item.id, name, roll: quick?.roll, message: failed ? `${name} is done — but it's a failure: it does nothing.` : `${name}: durability ${w.durability}, damage d${config.damageDie} ${vals.damage_bonus as number >= 0 ? "+" : ""}${vals.damage_bonus}, accuracy ${w.accuracy >= 0 ? "+" : ""}${w.accuracy}, worth ${w.value}.` } satisfies CraftResult;
+        return { tier, tierLabel: TIER_LABEL[tier], noteId: item.id, name, roll: quick?.roll, message: failed ? `${name} is done — but it's a failure: it does nothing.` : `${name}: durability ${w.durability}%, damage d${config.damageDie} ${vals.damage_bonus as number >= 0 ? "+" : ""}${vals.damage_bonus}, accuracy ${w.accuracy >= 0 ? "+" : ""}${w.accuracy}, worth ${w.value} (sells for ${sellValue(w.value, w.durability)}).` } satisfies CraftResult;
       });
     }
 

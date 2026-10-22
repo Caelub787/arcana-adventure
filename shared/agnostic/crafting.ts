@@ -239,7 +239,13 @@ export function shapeMask(shape: string): Metal {
   return out;
 }
 /** The starting bar: whole hammer blocks round the outline, with stock all round to work away. */
+const stockCache = new Map<string, Metal>();
 export function startingStock(shape: string): Metal {
+  let st = stockCache.get(shape);
+  if (!st) { st = makeStock(shape); stockCache.set(shape, st); }
+  return st.slice();
+}
+function makeStock(shape: string): Metal {
   const mask = shapeMask(shape);
   let r0 = FORGE_ROWS, r1 = -1, c0 = FORGE_COLS, c1 = -1;
   for (let i = 0; i < N; i++) if (mask[i]) { const R = Math.floor(Math.floor(i / FINE_COLS) / FINE), C = Math.floor((i % FINE_COLS) / FINE); r0 = Math.min(r0, R); r1 = Math.max(r1, R); c0 = Math.min(c0, C); c1 = Math.max(c1, C); }
@@ -308,10 +314,11 @@ export const hammerSlop = (skill: number) => Math.max(0, 3 - Math.max(0, Math.mi
  */
 export function hammerMetal(metal: Metal, fx: number, fy: number, skill: number, rand: () => number = Math.random): { metal: Metal; hit: number[] } {
   const c = Math.floor(fx), r = Math.floor(fy);
-  if (c < 0 || r < 0 || c >= FINE_COLS || r >= FINE_ROWS || !metal[r * FINE_COLS + c]) return { metal, hit: [] };
+  const R = Math.floor(r / FINE), C = Math.floor(c / FINE);
+  // It has to land on the bar: a block with metal in it.
+  if (c < 0 || r < 0 || c >= FINE_COLS || r >= FINE_ROWS || !blockHas(metal, R, C)) return { metal, hit: [] };
   const m = metal.slice();
   const hit: number[] = [];
-  const R = Math.floor(r / FINE), C = Math.floor(c / FINE);
   clearBlock(m, R, C, hit);
   const slop = hammerSlop(skill);
   if (slop) {
@@ -321,13 +328,33 @@ export function hammerMetal(metal: Metal, fx: number, fy: number, skill: number,
   }
   return { metal: m, hit };
 }
-/** The grindstone: the wheel takes the surface it touches (fine cells next to air) off within its reach. */
-export function grindMetal(metal: Metal, fx: number, fy: number, radius: number): { metal: Metal; hit: number[] } {
+/** A block the hammer has cleared: part of the starting bar, and empty now. */
+const blockOpened = (metal: Metal, stock: Metal, R: number, C: number) => {
+  if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS || !blockHas(stock, R, C)) return false;
+  return !blockHas(metal, R, C);
+};
+/** Where the grindstone can work: blocks right beside ones the hammer has cleared (it refines the hammer's work). */
+export function grindable(metal: Metal, shape: string, R: number, C: number): boolean {
+  const stock = startingStock(shape);
+  return blockOpened(metal, stock, R - 1, C) || blockOpened(metal, stock, R + 1, C) || blockOpened(metal, stock, R, C - 1) || blockOpened(metal, stock, R, C + 1);
+}
+/**
+ * The grindstone: the wheel takes the surface it touches (fine cells next to air) off within its reach — only beside
+ * blocks the hammer has already cleared, and never a block's last bit (taking whole blocks off is the hammer's job).
+ */
+export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, radius: number): { metal: Metal; hit: number[] } {
   const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
   const hit: number[] = [];
+  const ok = new Map<number, boolean>();
+  const left = new Map<number, number>();
+  const cellsIn = (R: number, C: number) => { let n = 0; for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) if (metal[r * FINE_COLS + c]) n++; return n; };
   for (let r = Math.floor(fy - radius); r <= Math.ceil(fy + radius); r++) for (let c = Math.floor(fx - radius); c <= Math.ceil(fx + radius); c++) {
     if (!at(r, c) || (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 > radius * radius) continue;
     if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
+    const R = Math.floor(r / FINE), C = Math.floor(c / FINE), b = R * FORGE_COLS + C;
+    if (!ok.has(b)) { ok.set(b, grindable(metal, shape, R, C)); left.set(b, cellsIn(R, C)); }
+    if (!ok.get(b) || (left.get(b) ?? 0) <= 1) continue;
+    left.set(b, (left.get(b) ?? 0) - 1);
     hit.push(r * FINE_COLS + c);
   }
   if (!hit.length) return { metal, hit };
@@ -335,6 +362,17 @@ export function grindMetal(metal: Metal, fx: number, fy: number, radius: number)
   for (const i of hit) m[i] = 0;
   return { metal: m, hit };
 }
+/** The cells' bounding box (fine cells), or null if there's no metal. */
+export function metalBounds(metal: Metal): { c0: number; r0: number; c1: number; r1: number } | null {
+  let r0 = FINE_ROWS, r1 = -1, c0 = FINE_COLS, c1 = -1;
+  for (let i = 0; i < N; i++) if (metal[i]) { const r = Math.floor(i / FINE_COLS), c = i % FINE_COLS; if (r < r0) r0 = r; if (r > r1) r1 = r; if (c < c0) c0 = c; if (c > c1) c1 = c; }
+  return r1 < 0 ? null : { c0, r0, c1, r1 };
+}
+/** How big each part's 100 × 40 box is in a finished weapon (one scale for its whole box, so its shape isn't stretched). */
+export const PART_SCALE: Record<string, number> = {
+  long_blade: 1, short_blade: 0.6, curved_blade: 0.95, axe_head: 0.45, scythe_blade: 0.8, spear_head: 0.45, arrow_tip: 0.25, hammer_head: 0.35,
+  bow_stave: 1.4, grip: 0.38, long_haft: 1.3, guard: 0.45, pommel: 0.25, fletching: 0.3,
+};
 /** Bits of metal no longer joined to the rest break off (all but the biggest piece). Returns the metal and what fell. */
 export function breakLoose(metal: Metal): { metal: Metal; fell: number[] } {
   const seen = new Int32Array(N).fill(-1);
@@ -366,8 +404,8 @@ export function breakLoose(metal: Metal): { metal: Metal; fell: number[] } {
 /** A part's numbers from its scores: shape (hammer accuracy) and heat (time in the material's range). */
 export function partStats(role: ForgeRole, shape: number, heat: number, material: { hardness: number; value: number; weight: number }) {
   const quality = Math.round(shape);
-  const baseDur = 10 + Math.max(0, material.hardness) * 6;
-  const durability = Math.max(1, Math.round(baseDur * (0.25 + 0.75 * Math.max(0, Math.min(100, heat)) / 100)));
+  // Durability is a percentage (0–100): how well it was shaped, how well the heat was kept, and how hard the material is.
+  const durability = Math.max(1, Math.min(100, Math.round(0.45 * Math.max(0, Math.min(100, shape)) + 0.4 * Math.max(0, Math.min(100, heat)) + 1.5 * Math.max(0, material.hardness) + 6)));
   const tier = accuracyTier(quality * 0.6 + heat * 0.4);
   return {
     quality, durability, tier,
@@ -377,7 +415,11 @@ export function partStats(role: ForgeRole, shape: number, heat: number, material
     value: material.value,
   };
 }
-/** The finished weapon: durability is the parts' average; worth is materials plus durability. */
+/** What an item sells for: its value at its durability (100 = full value) — nothing below 30. */
+export const sellValue = (value: number, durability: number) => (durability < 30 ? 0 : Math.floor((value * Math.max(0, Math.min(100, durability))) / 100));
+/** The same, as a formula on an item's own values. */
+export const SELL_VALUE_FORMULA = "if(durability < 30, 0, floor(value * min(100, max(0, durability)) / 100))";
+/** The finished weapon: durability is the parts' average; its worth is what went into it, twice over (it sells for that at its durability). */
 export function weaponStats(parts: Array<{ role: ForgeRole; durability: number; damageBonus: number; accuracy: number; weight: number; value: number }>) {
   const n = parts.length || 1;
   const durability = Math.round(parts.reduce((s, p) => s + p.durability, 0) / n);
@@ -386,7 +428,7 @@ export function weaponStats(parts: Array<{ role: ForgeRole; durability: number; 
     damageBonus: parts.filter((p) => p.role === "blade").reduce((s, p) => s + p.damageBonus, 0),
     accuracy: parts.filter((p) => p.role === "handle").reduce((s, p) => s + p.accuracy, 0),
     weight: Math.round(parts.reduce((s, p) => s + p.weight, 0) * 10) / 10,
-    value: Math.round(parts.reduce((s, p) => s + p.value, 0) + durability),
+    value: Math.round(parts.reduce((s, p) => s + p.value, 0) * 2 + 10),
   };
 }
 

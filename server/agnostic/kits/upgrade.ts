@@ -28,14 +28,15 @@ import {
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
-  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
+  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
+import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 22;
+export const CA_KIT_LEVEL = 23;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -70,6 +71,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 20) await upgrade20(store);
   if (level < 21) await upgrade21(store, characterTemplates);
   if (level < 22) await upgrade22(store, characterTemplates);
+  if (level < 23) await upgrade23(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1420,6 +1422,56 @@ async function upgrade22(store: ScopeStore, characterTemplates: AgNote[]) {
         if (Array.isArray(cols) && cols.some((c) => c?.ref === "rarity")) el.setAttribute("columns", cols.filter((c) => c?.ref !== "rarity") as any);
         const cfg = (el.getAttribute("config") ?? {}) as any;
         if (cfg.accentBy === "rarity") el.setAttribute("config", { ...cfg, accentBy: "rank_tag" } as any);
+      }
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 23
+// Durability is a percentage (0–100) on every item, and an item sells for its
+// value at that durability (nothing under 30%). What an item had becomes its
+// share of its old maximum; the maximum is always 100.
+async function upgrade23(store: ScopeStore, characterTemplates: AgNote[]) {
+  const items: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      const dur = fields?.get("durability");
+      if (!fields || !dur || n.type !== "item") continue;
+      items.push(n);
+      const max = fields.get("durability_max");
+      const d = typeof dur.value === "number" ? dur.value : 100;
+      const m = max && typeof max.value === "number" && max.value > 0 ? max.value : null;
+      const pct = Math.max(0, Math.min(100, Math.round(m ? (100 * d) / m : d)));
+      if (dur.type === "number") await store.putField({ ...dur, value: pct, options: { ...dur.options, min: 0, max: 100, tooltip: DURABILITY_HELP } }, cs);
+      if (max && max.type !== "formula") await store.putField({ ...max, type: "formula", value: null, formula: "100", options: { resultType: "number" } }, cs);
+      if (!fields.get("sell_value")) {
+        const order = Math.max(0, ...Array.from(fields.values()).map((f) => f.sortOrder)) + 1;
+        await store.putField({ id: randomUUID(), noteId: n.id, key: "sell_value", label: "Sells for", type: "formula", value: null, formula: SELL_VALUE_FORMULA, options: { resultType: "number", tooltip: SELL_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+      }
+    }
+  });
+  // Item pages: "Sells for" beside the value.
+  for (const n of items) {
+    await editPage(n, (_doc, frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "sell_value").length) return;
+      const v = findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "value")[0];
+      const para = v?.parent as Y.XmlElement | null;
+      if (!v || !para) return;
+      const idx = para.toArray().indexOf(v);
+      insertNodes(para, idx + 1, [{ text: "    " } as any, muted("SELLS FOR "), val("sell_value", { look: { bold: true, textColor: "#facc15" } })] as any);
+    });
+  }
+  // Inventories: what each item sells for.
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  for (const n of Array.from(store.notes.values()).filter((x) => charIds.has(x.id) || (x.templateId && charIds.has(x.templateId)))) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "items")) {
+        const cols = (el.getAttribute("columns") ?? []) as any[];
+        if (!Array.isArray(cols) || cols.some((c) => c?.ref === "sell_value")) continue;
+        const at = cols.findIndex((c) => c?.ref === "value");
+        const next = [...cols]; next.splice(at >= 0 ? at + 1 : next.length, 0, { ref: "sell_value", display: "value", label: "Sells" });
+        el.setAttribute("columns", next as any);
       }
     });
   }

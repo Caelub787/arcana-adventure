@@ -47,14 +47,37 @@ function frameBase(ctx: CanvasRenderingContext2D, hue: number, title: string, pr
   ctx.fillStyle = "#292524"; ctx.fillRect(14, H - 12, W - 28, 5);
   ctx.fillStyle = "#f59e0b"; ctx.fillRect(14, H - 12, (W - 28) * clamp(progress), 5);
 }
-/** A labelled meter with its good band in green and the needle. */
+/** A labelled meter: a rounded track, its good band glowing green, and the needle. */
 function meter(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, value: number, lo: number, hi: number, label: string) {
-  ctx.fillStyle = "#1c1917"; ctx.fillRect(x, y, w, 14);
-  ctx.fillStyle = "rgba(34,197,94,0.35)"; ctx.fillRect(x + w * lo, y, w * (hi - lo), 14);
-  ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 2; ctx.strokeRect(x + w * lo, y, w * (hi - lo), 14);
   const ok = value >= lo && value <= hi;
-  ctx.fillStyle = ok ? "#4ade80" : value < lo ? "#60a5fa" : "#f87171"; ctx.fillRect(x + w * clamp(value) - 3, y - 4, 6, 22);
-  ctx.fillStyle = "#a8a29e"; ctx.font = "16px ui-sans-serif, system-ui"; ctx.textAlign = "left"; ctx.fillText(label, x, y - 8);
+  ctx.save();
+  ctx.fillStyle = "#1c1917"; ctx.beginPath(); ctx.roundRect(x, y, w, 16, 8); ctx.fill();
+  ctx.strokeStyle = "#44403c"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = ok ? "rgba(34,197,94,0.45)" : "rgba(34,197,94,0.25)"; ctx.shadowColor = "#22c55e"; ctx.shadowBlur = ok ? 12 : 0;
+  ctx.beginPath(); ctx.roundRect(x + w * lo, y + 1, w * (hi - lo), 14, 6); ctx.fill(); ctx.shadowBlur = 0;
+  const col = ok ? "#4ade80" : value < lo ? "#60a5fa" : "#f87171";
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.roundRect(x + w * clamp(value) - 4, y - 5, 8, 26, 4); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#a8a29e"; ctx.font = "16px ui-sans-serif, system-ui"; ctx.textAlign = "left"; ctx.fillText(label, x, y - 9);
+}
+
+// Little effects: sparks and chips that fly, and words that pop up over a hit (how good it was).
+interface Fx { bits: Array<{ x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; g: number }>; pops: Array<{ x: number; y: number; text: string; color: string; life: number }> }
+const newFx = (): Fx => ({ bits: [], pops: [] });
+function burst(fx: Fx, x: number, y: number, color: string, n = 10, speed = 160, g = 420, size = 3) {
+  for (let k = 0; k < n; k++) { const a = Math.random() * Math.PI * 2; const v = speed * (0.4 + Math.random() * 0.8); fx.bits.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.4, life: 0.5 + Math.random() * 0.5, max: 1, color, size: size * (0.6 + Math.random() * 0.8), g }); }
+}
+function pop(fx: Fx, x: number, y: number, score: number, words: [string, string, string] = ["Perfect!", "Good", "Off"]) {
+  const [text, color] = score >= 85 ? [words[0], "#fde047"] : score >= 55 ? [words[1], "#86efac"] : [words[2], "#fca5a5"];
+  fx.pops.push({ x, y, text, color, life: 0.9 });
+}
+function drawFx(ctx: CanvasRenderingContext2D, fx: Fx, dt: number) {
+  for (const b of fx.bits) { b.life -= dt; b.vy += b.g * dt; b.x += b.vx * dt; b.y += b.vy * dt; ctx.globalAlpha = clamp(b.life / b.max); ctx.fillStyle = b.color; ctx.fillRect(b.x - b.size / 2, b.y - b.size / 2, b.size, b.size); }
+  fx.bits = fx.bits.filter((b) => b.life > 0);
+  for (const p of fx.pops) { p.life -= dt; ctx.globalAlpha = clamp(p.life * 1.6); ctx.fillStyle = p.color; ctx.font = "800 26px ui-sans-serif, system-ui"; ctx.textAlign = "center"; ctx.fillText(p.text, p.x, p.y - (0.9 - p.life) * 40); }
+  fx.pops = fx.pops.filter((p) => p.life > 0);
+  ctx.globalAlpha = 1;
 }
 /** Keep the live numbers moving for watchers (a few times a second). */
 function useSync(playing: boolean, set: StepGameProps["set"]) {
@@ -72,7 +95,8 @@ function useSync(playing: boolean, set: StepGameProps["set"]) {
 /** Stir: the vortex keeps slowing (in gusts) — tap to stir, and keep its speed in the green for the time asked. */
 export function MixGame({ step, s, set, playing, onDone }: StepGameProps) {
   const need = Math.max(3, Math.min(30, step.amount ?? 8));
-  const L = useRef({ speed: 0.2, inBand: 0, total: 0, started: false, done: false, spin: 0 });
+  const L = useRef({ speed: 0.2, inBand: 0, total: 0, started: false, done: false, spin: 0, was: false });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const lo = 0.45, hi = 0.7;
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
@@ -93,6 +117,14 @@ export function MixGame({ step, s, set, playing, onDone }: StepGameProps) {
     ctx.fillStyle = "hsl(150,70%,28%)"; ctx.beginPath(); ctx.arc(cx, cy, 72, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = `hsla(150,90%,75%,${0.3 + speed * 0.6})`; ctx.lineWidth = 3;
     for (let k = 0; k < 4; k++) { ctx.beginPath(); for (let a = 0; a < 5; a += 0.1) { const r = 6 + a * 13; const ang = M.spin + k * (Math.PI / 2) + a * 0.9; const x = cx + Math.cos(ang) * r, y = cy + Math.sin(ang) * r; if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
+    // Bubbles thrown up by the stirring; the spoon riding round the vortex.
+    if (Math.random() < speed * 0.6) { const a = Math.random() * Math.PI * 2, r = Math.random() * 60; fx.current.bits.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r, vx: 0, vy: -20, life: 0.6, max: 0.6, color: "rgba(167,243,208,0.7)", size: 4, g: 0 }); }
+    const sa = M.spin * 0.6, sx = cx + Math.cos(sa) * 46, sy = cy + Math.sin(sa) * 46;
+    ctx.strokeStyle = "#8b6b46"; ctx.lineWidth = 8; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 26, sy - 70); ctx.stroke(); ctx.lineCap = "butt";
+    const inNow = speed >= lo && speed <= hi;
+    if (playing && inNow && !M.was) pop(fx.current, 470, 70, 100, ["Steady!", "Steady!", "Steady!"]);
+    M.was = inNow;
+    drawFx(ctx, fx.current, dt);
     meter(ctx, 330, 100, 280, speed, lo, hi, "Speed");
     ctx.fillStyle = "#a8a29e"; ctx.font = "17px ui-sans-serif, system-ui"; ctx.fillText(`${Math.min(need, inBand).toFixed(1)} / ${need}s steady`, 330, 150);
   };
@@ -105,32 +137,58 @@ export function DiceGame({ step, s, set, playing, onDone }: StepGameProps) {
   const n = Math.max(1, Math.min(8, Math.round(step.amount ?? 3)));
   const x0 = 0.12, x1 = 0.88;
   const lines = Array.from({ length: n }, (_, k) => x0 + ((k + 1) * (x1 - x0)) / (n + 1));
-  const L = useRef({ phase: 0, cuts: [] as Array<{ at: number; score: number }>, done: false, flash: 0 });
+  const L = useRef({ phase: 0, cuts: [] as Array<{ at: number; score: number }>, done: false, chop: 0, trail: [] as number[], spread: [] as number[] });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
+  const top = 92, bot = 160;
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
     const D = L.current;
     if (playing && !D.done) { D.phase += dt * (0.32 + D.cuts.length * 0.07); sync({ knife: knifeAt(D.phase), cuts: D.cuts }); }
     const cuts: Array<{ at: number; score: number }> = playing ? D.cuts : s.st?.cuts ?? [];
     const knife = playing ? knifeAt(D.phase) : Number(s.st?.knife ?? 0.5);
-    frameBase(ctx, 95, playing ? "Tap to cut as the knife crosses each line" : "Dicing…", cuts.length / n);
-    // The board and the ingredient, split where it's been cut (the pieces drift apart).
-    ctx.fillStyle = "#3b2a1a"; ctx.fillRect(30, 70, W - 60, 110);
+    frameBase(ctx, 95, playing ? "Tap to chop as the knife crosses each line" : "Dicing…", cuts.length / n);
+    // The board: warm wood with its grain.
+    const wood = ctx.createLinearGradient(0, 62, 0, 186); wood.addColorStop(0, "#5a3d24"); wood.addColorStop(1, "#3a2615");
+    ctx.fillStyle = wood; ctx.beginPath(); ctx.roundRect(24, 62, W - 48, 124, 12); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.18)"; ctx.lineWidth = 1.5;
+    for (let k = 0; k < 7; k++) { ctx.beginPath(); for (let x = 30; x <= W - 30; x += 20) { const y = 72 + k * 16 + Math.sin(x / 55 + k * 1.7) * 4; if (x === 30) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke(); }
+    // The ingredient, in pieces that slide apart where it's been cut.
     const sorted = [...cuts].map((c) => c.at).sort((a, b) => a - b);
     const edges = [x0, ...sorted, x1];
+    while (D.spread.length < edges.length - 1) D.spread.push(0);
     for (let k = 0; k < edges.length - 1; k++) {
-      const a = edges[k] * W + k * 6, b = edges[k + 1] * W + k * 6 - (k < edges.length - 2 ? 0 : 0);
-      const g = ctx.createLinearGradient(0, 95, 0, 155); g.addColorStop(0, "#9bc25a"); g.addColorStop(1, "#4d6b1f");
-      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(a + 2, 95, Math.max(4, b - a - 4), 60, 14); ctx.fill();
+      D.spread[k] += (k * 8 - D.spread[k]) * Math.min(1, dt * 10);
+      const off = D.spread[k] - ((edges.length - 2) * 8) / 2;
+      const a = edges[k] * W + off + 2, b = edges[k + 1] * W + off - 2;
+      const g = ctx.createLinearGradient(0, top, 0, bot); g.addColorStop(0, "#b5d977"); g.addColorStop(0.5, "#7fa83d"); g.addColorStop(1, "#4d6b1f");
+      ctx.fillStyle = g; ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 8; ctx.shadowOffsetY = 4;
+      ctx.beginPath(); ctx.roundRect(a, top, Math.max(4, b - a), bot - top, k === 0 ? [30, 8, 8, 30] : k === edges.length - 2 ? [8, 30, 30, 8] : 8); ctx.fill();
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      // Its veins and a sheen, so it reads as a root, not a block.
+      ctx.save(); ctx.beginPath(); ctx.roundRect(a, top, Math.max(4, b - a), bot - top, 8); ctx.clip();
+      ctx.strokeStyle = "rgba(230,255,190,0.35)"; ctx.lineWidth = 2;
+      for (let v = 0; v < 3; v++) { ctx.beginPath(); ctx.moveTo(a, top + 18 + v * 16); ctx.bezierCurveTo(a + 40, top + 10 + v * 16, b - 40, top + 26 + v * 16, b, top + 18 + v * 16); ctx.stroke(); }
+      ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(a, top + 4, b - a, 8);
+      ctx.restore();
+      if (k > 0) { ctx.fillStyle = "#e2f5c4"; ctx.fillRect(a - 1, top + 2, 3, bot - top - 4); }
     }
-    // Lines still to cut.
-    ctx.setLineDash([6, 6]); ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 2;
-    for (const l of lines) { if (cuts.some((c) => Math.abs(c.at - l) < 0.06)) continue; ctx.beginPath(); ctx.moveTo(l * W, 82); ctx.lineTo(l * W, 168); ctx.stroke(); }
+    // Lines still to cut, gently pulsing.
+    ctx.setLineDash([7, 6]); ctx.strokeStyle = `rgba(255,255,255,${0.55 + 0.25 * Math.sin(t * 5)})`; ctx.lineWidth = 2.5;
+    for (const l of lines) { if (cuts.some((c) => Math.abs(c.at - l) < 0.06)) continue; ctx.beginPath(); ctx.moveTo(l * W, top - 12); ctx.lineTo(l * W, bot + 12); ctx.stroke(); }
     ctx.setLineDash([]);
-    // The knife.
+    // The knife, with a blur of where it's just been; it drops to chop.
     const kx = knife * W;
-    ctx.fillStyle = "#e7e5e4"; ctx.beginPath(); ctx.moveTo(kx - 5, 52); ctx.lineTo(kx + 5, 52); ctx.lineTo(kx + 2, 176); ctx.lineTo(kx - 2, 176); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#57534e"; ctx.fillRect(kx - 6, 34, 12, 20);
-    if (D.flash > 0) { D.flash -= dt; ctx.fillStyle = `rgba(253,224,71,${D.flash})`; ctx.fillRect(kx - 3, 70, 6, 110); }
+    D.trail.unshift(kx); D.trail = D.trail.slice(0, 6);
+    D.chop = Math.max(0, D.chop - dt * 5);
+    const drop = Math.sin(Math.min(1, D.chop) * Math.PI) * 46;
+    D.trail.forEach((tx, k) => { if (!k) return; ctx.fillStyle = `rgba(231,229,228,${0.12 - k * 0.018})`; ctx.fillRect(tx - 4, 58, 8, 88); });
+    ctx.save(); ctx.translate(kx, drop + 14);
+    const blade = ctx.createLinearGradient(-8, 0, 8, 0); blade.addColorStop(0, "#9ca3af"); blade.addColorStop(0.5, "#f5f5f4"); blade.addColorStop(1, "#a8a29e");
+    ctx.fillStyle = blade; ctx.beginPath(); ctx.moveTo(-8, 44); ctx.lineTo(8, 44); ctx.lineTo(3, 132); ctx.lineTo(-1, 136); ctx.lineTo(-3, 132); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#3f2a1d"; ctx.beginPath(); ctx.roundRect(-8, 12, 16, 34, 4); ctx.fill();
+    ctx.fillStyle = "#d4a24c"; ctx.fillRect(-9, 42, 18, 4);
+    ctx.restore();
+    drawFx(ctx, fx.current, dt);
   };
   const tap = () => {
     const D = L.current;
@@ -139,10 +197,13 @@ export function DiceGame({ step, s, set, playing, onDone }: StepGameProps) {
     const open = lines.filter((l) => !D.cuts.some((c) => Math.abs(c.at - l) < 0.06));
     const nearest = open.reduce((a, b) => (Math.abs(b - at) < Math.abs(a - at) ? b : a), open[0] ?? at);
     const err = Math.abs(nearest - at);
-    D.cuts = [...D.cuts, { at, score: Math.max(0, Math.round(100 - err * 1100)) }];
-    D.flash = 0.5;
+    const score = Math.max(0, Math.round(100 - err * 1100));
+    D.cuts = [...D.cuts, { at, score }];
+    D.chop = 1;
+    burst(fx.current, at * W, top + 30, "#b5d977", 12, 180, 600, 4);
+    pop(fx.current, at * W, top - 6, score, ["Clean!", "Good", "Ragged"]);
     sync({ knife: at, cuts: D.cuts }, true);
-    if (D.cuts.length >= n) { D.done = true; const sc = D.cuts.reduce((a, c) => a + c.score, 0) / n; setTimeout(() => onDone(sc, `Diced ${step.ingredient ?? "it"} into ${n + 1} pieces`), 500); }
+    if (D.cuts.length >= n) { D.done = true; const sc = D.cuts.reduce((a, c) => a + c.score, 0) / n; setTimeout(() => onDone(sc, `Diced ${step.ingredient ?? "it"} into ${n + 1} pieces`), 700); }
   };
   return <Pad testId="alchemy-dice-pad" playing={playing} frame={frame} onDown={tap} />;
 }
@@ -153,6 +214,7 @@ const knifeAt = (phase: number) => 0.08 + 0.84 * tri(phase);
 export function HeatGame({ step, s, set, playing, onDone }: StepGameProps) {
   const base = clamp((step.amount ?? 60) / 100, 0.15, 0.9);
   const L = useRef({ temp: 0.2, vel: 0, hold: false, onMark: 0, over: 0, total: 0, done: false });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const need = 3;
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
@@ -176,6 +238,12 @@ export function HeatGame({ step, s, set, playing, onDone }: StepGameProps) {
       const g = ctx.createLinearGradient(0, 190, 0, 190 - fh); g.addColorStop(0, "rgba(255,90,20,0.95)"); g.addColorStop(0.6, "rgba(255,190,60,0.7)"); g.addColorStop(1, "rgba(255,240,180,0)");
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(fx - 11, 190); ctx.quadraticCurveTo(fx, 190 - fh * 1.3, fx + 11, 190); ctx.fill();
     }
+    // The pot over the fire: it glows as it heats, and steams when it's on the mark.
+    ctx.fillStyle = "#1b1c1f"; ctx.beginPath(); ctx.ellipse(190, 128, 100, 44, 0, 0, Math.PI); ctx.fill();
+    ctx.fillStyle = `hsla(20,90%,${30 + temp * 30}%,${0.3 + temp * 0.5})`; ctx.beginPath(); ctx.ellipse(190, 128, 92, 14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#4b4f57"; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(190, 128, 100, 16, 0, 0, Math.PI * 2); ctx.stroke();
+    if (Math.abs(temp - mk) <= 0.05 && Math.random() < 0.4) fx.current.bits.push({ x: 120 + Math.random() * 140, y: 118, vx: (Math.random() - 0.5) * 12, vy: -40, life: 1.1, max: 1.1, color: "rgba(231,229,228,0.35)", size: 9, g: -20 });
+    drawFx(ctx, fx.current, dt);
     meter(ctx, 360, 100, 250, temp, mk - 0.05, mk + 0.05, `Heat ${Math.round(temp * 100)}° — mark ${Math.round(mk * 100)}°`);
     ctx.fillStyle = "#a8a29e"; ctx.font = "17px ui-sans-serif, system-ui"; ctx.textAlign = "left"; ctx.fillText(`${Math.min(need, on).toFixed(1)} / ${need}s on the mark`, 360, 150);
   };
@@ -187,6 +255,7 @@ export function HeatGame({ step, s, set, playing, onDone }: StepGameProps) {
 export function AddGame({ step, s, set, playing, onDone }: StepGameProps) {
   const drops = 3, fall = 0.55, surface = 168;
   const L = useRef({ t: 0, falling: [] as Array<{ x: number; at: number }>, landed: [] as Array<{ x: number; score: number }>, done: false, splash: [] as Array<{ x: number; life: number; good: boolean }> });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const dropperX = (t: number, k: number) => W / 2 + 230 * Math.sin(t * (1.5 + k * 0.25));
   const ringX = (t: number) => W / 2 + 170 * Math.sin(t * 0.8 + 1.3);
@@ -200,6 +269,8 @@ export function AddGame({ step, s, set, playing, onDone }: StepGameProps) {
         const score = Math.max(0, Math.round(100 - err * 0.75));
         A.landed = [...A.landed, { x: d.x, score }];
         A.splash.push({ x: d.x, life: 0.8, good: score >= 60 });
+        burst(fx.current, d.x, surface, score >= 60 ? "#f0abfc" : "#a78bfa", 14, 150, 500, 4);
+        pop(fx.current, d.x, surface - 30, score, ["Bullseye!", "Close", "Missed"]);
         if (A.landed.length >= drops) { A.done = true; setTimeout(() => onDone(A.landed.reduce((a, b) => a + b.score, 0) / drops, `Added ${step.ingredient ?? "it"} drop by drop`), 400); }
       }
       sync({ t: A.t, falling: A.falling, landed: A.landed });
@@ -219,6 +290,7 @@ export function AddGame({ step, s, set, playing, onDone }: StepGameProps) {
     for (const d of falling) { const p = clamp((tt - d.at) / fall); ctx.fillStyle = "#f5d0fe"; ctx.beginPath(); ctx.arc(d.x, 66 + (surface - 66) * p * p, 6, 0, Math.PI * 2); ctx.fill(); }
     for (const sp of L.current.splash) { sp.life -= dt; ctx.strokeStyle = sp.good ? `rgba(74,222,128,${sp.life})` : `rgba(248,113,113,${sp.life})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sp.x, surface + 4, 40 * (1.2 - sp.life), 9 * (1.2 - sp.life), 0, 0, Math.PI * 2); ctx.stroke(); }
     L.current.splash = L.current.splash.filter((x) => x.life > 0);
+    drawFx(ctx, fx.current, dt);
     ctx.fillStyle = "#a8a29e"; ctx.font = "17px ui-sans-serif, system-ui"; ctx.textAlign = "right"; ctx.fillText(landed.map((l) => `${l.score}%`).join("  ") || `${drops} drops`, W - 14, 58);
   };
   const tap = () => { const A = L.current; if (A.done || A.landed.length + A.falling.length >= drops) return; A.falling = [...A.falling, { x: dropperX(A.t, A.landed.length + A.falling.length), at: A.t }]; };
@@ -229,7 +301,8 @@ export function AddGame({ step, s, set, playing, onDone }: StepGameProps) {
 /** Grind: a ring closes on the mortar — tap as it meets the edge. The beat quickens. */
 export function GrindGame({ step, s, set, playing, onDone }: StepGameProps) {
   const need = Math.max(3, Math.min(12, Math.round(step.amount ?? 5)));
-  const L = useRef({ t: 0, beat: 1.2, hits: [] as number[], tapped: false, done: false, word: "", wordLife: 0 });
+  const L = useRef({ t: 0, beat: 1.2, hits: [] as number[], tapped: false, done: false, word: "", wordLife: 0, press: 0 });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const interval = (k: number) => Math.max(0.55, 1.05 - k * 0.06);
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
@@ -250,7 +323,14 @@ export function GrindGame({ step, s, set, playing, onDone }: StepGameProps) {
     ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
     const left = beat - tt, span = interval(hits.length);
     if (left > -0.3) { const rr = r + Math.max(0, left / span) * 90; ctx.strokeStyle = `rgba(253,230,138,${clamp(1 - left / span + 0.3)})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke(); }
-    if (G.wordLife > 0) { G.wordLife -= dt; ctx.fillStyle = `rgba(253,230,138,${G.wordLife * 1.6})`; ctx.font = "700 24px ui-sans-serif, system-ui"; ctx.textAlign = "center"; ctx.fillText(G.word, cx, cy - r - 18); }
+    if (G.wordLife > 0) { G.wordLife -= dt; ctx.fillStyle = `rgba(253,230,138,${G.wordLife * 1.6})`; ctx.font = "700 24px ui-sans-serif, system-ui"; ctx.textAlign = "center"; ctx.fillText(G.word, cx + r + 90, cy + 8); }
+    // The pestle, pressing down on each stroke.
+    G.press = Math.max(0, G.press - dt * 6);
+    const py = cy - 40 + Math.sin(Math.min(1, G.press) * Math.PI) * 28;
+    ctx.save(); ctx.translate(cx + 30, py); ctx.rotate(0.35);
+    const pg = ctx.createLinearGradient(-9, 0, 9, 0); pg.addColorStop(0, "#78716c"); pg.addColorStop(0.5, "#d6d3d1"); pg.addColorStop(1, "#78716c");
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.roundRect(-9, -40, 18, 80, 9); ctx.fill(); ctx.restore();
+    drawFx(ctx, fx.current, dt);
     hits.forEach((h, k) => { ctx.fillStyle = `hsl(${h * 1.2},80%,50%)`; ctx.fillRect(W - 24 - (need - k) * 18, 46, 14, 10); });
     for (let k = hits.length; k < need; k++) { ctx.fillStyle = "#292524"; ctx.fillRect(W - 24 - (need - k) * 18, 46, 14, 10); }
   };
@@ -260,7 +340,8 @@ export function GrindGame({ step, s, set, playing, onDone }: StepGameProps) {
     const err = Math.abs(G.t - G.beat);
     if (err > 0.4) { G.word = "Too early"; G.wordLife = 0.6; return; }
     const sc = Math.max(0, Math.round(100 - err * 260));
-    G.hits = [...G.hits, sc]; G.tapped = true; G.word = sc >= 85 ? "Perfect" : sc >= 55 ? "Good" : "Off"; G.wordLife = 0.6;
+    G.hits = [...G.hits, sc]; G.tapped = true; G.word = sc >= 85 ? "Perfect" : sc >= 55 ? "Good" : "Off"; G.wordLife = 0.6; G.press = 1;
+    burst(fx.current, W / 2, 118, sc >= 55 ? "#e7e5e4" : "#a8a29e", 10, 120, 300, 3);
     sync({ t: G.t, beat: G.beat, hits: G.hits }, true);
   };
   return <Pad testId="alchemy-grind-pad" playing={playing} frame={frame} onDown={tap} />;
@@ -270,6 +351,7 @@ export function GrindGame({ step, s, set, playing, onDone }: StepGameProps) {
 /** Strain: hold to tip the pot — the flow follows slowly. Too slow and it takes forever; too fast and it spills. */
 export function StrainGame({ s, set, playing, onDone }: Omit<StepGameProps, "step"> & { step?: AlchemyStep }) {
   const L = useRef({ hold: false, tilt: 0, flow: 0, poured: 0, spill: 0, total: 0, done: false });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const lo = 0.35, hi = 0.7;
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
@@ -294,6 +376,9 @@ export function StrainGame({ s, set, playing, onDone }: Omit<StepGameProps, "ste
     ctx.fillStyle = "hsla(200,80%,50%,0.6)"; ctx.fillRect(225, 205 - poured * 0.35, 50, poured * 0.35);
     ctx.strokeStyle = "#78716c"; ctx.strokeRect(225, 170, 50, 36);
     if (flow > hi && Math.random() < 0.5) { ctx.fillStyle = "rgba(96,165,250,0.8)"; ctx.beginPath(); ctx.arc(200 + Math.random() * 100, 160 + Math.random() * 40, 2.5, 0, Math.PI * 2); ctx.fill(); }
+    if (flow > 0.05 && Math.random() < flow) fx.current.bits.push({ x: 245 + (Math.random() - 0.5) * 10, y: 150, vx: (Math.random() - 0.5) * 20, vy: 60, life: 0.4, max: 0.4, color: "rgba(125,211,252,0.8)", size: 3, g: 600 });
+    if (flow > hi && Math.random() < 0.6) fx.current.bits.push({ x: 245, y: 150, vx: (Math.random() - 0.5) * 220, vy: -60, life: 0.6, max: 0.6, color: "rgba(96,165,250,0.9)", size: 4, g: 700 });
+    drawFx(ctx, fx.current, dt);
     meter(ctx, 360, 100, 250, flow, lo, hi, "Flow");
     ctx.fillStyle = "#a8a29e"; ctx.font = "17px ui-sans-serif, system-ui"; ctx.textAlign = "left"; ctx.fillText(`${Math.round(poured)}% strained${spill > 0.5 ? ` · spilled ${Math.round(spill)}` : ""}`, 360, 150);
   };
@@ -306,6 +391,7 @@ export function RestGame({ step, s, set, playing, onDone }: StepGameProps) {
   const need = Math.max(4, Math.min(30, step.amount ?? 6));
   type Mote = { id: number; x: number; y: number; life: number; gold: boolean };
   const L = useRef({ t: 0, next: 0.6, motes: [] as Mote[], seq: 0, spawned: 0, skimmed: 0, wrong: 0, done: false, pops: [] as Array<{ x: number; y: number; life: number; good: boolean }> });
+  const fx = useRef(newFx());
   const sync = useSync(playing, set);
   const cx = W / 2, cy = 118, rx = 250, ry = 62;
   const frame = (ctx: CanvasRenderingContext2D, t: number, dt: number) => {
@@ -339,6 +425,9 @@ export function RestGame({ step, s, set, playing, onDone }: StepGameProps) {
     }
     for (const p of R.pops) { p.life -= dt; ctx.strokeStyle = p.good ? `rgba(74,222,128,${p.life * 2})` : `rgba(248,113,113,${p.life * 2})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, 18 * (1.5 - p.life), 0, Math.PI * 2); ctx.stroke(); }
     R.pops = R.pops.filter((p) => p.life > 0);
+    // Slow bubbles rising through the settling brew.
+    if (Math.random() < 0.25) { const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * 0.8; fx.current.bits.push({ x: cx + Math.cos(a) * rx * d, y: cy + Math.sin(a) * ry * d, vx: 0, vy: -6, life: 0.9, max: 0.9, color: "rgba(165,180,252,0.35)", size: 5, g: 0 }); }
+    drawFx(ctx, fx.current, dt);
     ctx.fillStyle = "#a8a29e"; ctx.font = "17px ui-sans-serif, system-ui"; ctx.textAlign = "right";
     ctx.fillText(`skimmed ${playing ? R.skimmed : Number(s.st?.skimmed ?? 0)}${(playing ? R.wrong : Number(s.st?.wrong ?? 0)) ? ` · ${playing ? R.wrong : s.st?.wrong} glints lost` : ""}`, W - 14, 58);
   };
@@ -350,6 +439,9 @@ export function RestGame({ step, s, set, playing, onDone }: StepGameProps) {
     R.motes = R.motes.filter((m) => m !== hit.m);
     if (hit.m.gold) R.wrong++; else R.skimmed++;
     R.pops.push({ x: hit.m.x, y: hit.m.y, life: 0.5, good: !hit.m.gold });
+    burst(fx.current, hit.m.x, hit.m.y, hit.m.gold ? "#fde047" : "#57534e", 8, 90, 200, 3);
+    if (hit.m.gold) fx.current.pops.push({ x: hit.m.x, y: hit.m.y - 16, text: "Not that one!", color: "#fca5a5", life: 0.9 });
+    else pop(fx.current, hit.m.x, hit.m.y - 16, 100, ["Skimmed", "Skimmed", "Skimmed"]);
   };
   return <Pad testId="alchemy-rest-pad" playing={playing} frame={frame} onDown={tap} />;
 }

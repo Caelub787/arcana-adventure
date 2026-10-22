@@ -7,6 +7,7 @@
 // they land, treating them, potions healing them) without the body diagram:
 // each wound is its own small sheet connected to the character, and its
 // effects are modifiers on the character.
+import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { randomUUID } from "crypto";
 import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue } from "@shared/agnostic/types";
 import type { ChangeSet, ScopeStore } from "../store";
@@ -95,6 +96,8 @@ export const ITEM_RANKS = [...RANK_NAMES];
 export const ITEM_RANK_COLORS: Record<string, string> = Object.fromEntries(RANK_NAMES.map((r, i) => [r, ["#c2783e", "#cbd5e1", "#facc15", "#a78bfa", "#34d399", "#f472b6", "#38bdf8", "#f87171"][i % 8]]));
 /** Rune sockets by rank: none at the lowest, one more each rank up. */
 export const RUNE_SOCKETS_FORMULA = RANK_NAMES.slice(1).reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
+export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Use wears it down; a smith can mend it.";
+export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
 export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.";
 /** The item rank a character rank or an old item rank comes down to ("Gold 3" → "Gold", "Unranked" → the lowest). */
 export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : RANK_NAMES[0]; };
@@ -334,7 +337,7 @@ function characterTemplate(): AgSnapshot {
     links("items", [
       { ref: "item_type", display: "badge" }, { ref: "rank_tag", display: "badge" },
       { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" },
-      { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" },
+      { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" }, { ref: "sell_value", display: "value", label: "Sells" },
       { ref: "equipped", display: "toggle", label: "Equip" }, { ref: "", display: "rolls" },
     ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rank_tag", add: { types: ["item"], reverse: "owner", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
   ];
@@ -674,13 +677,15 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" || kind === "Ink" || kind === "Ingredient" || kind === "Scroll" ? 0 : kind === "Material" ? 2 : 1, { min: 0, step: 0.1 })
     .calc("total_weight", "Total weight", "weight * qty").num("value", "Value", kind === "Currency" ? 1 : 10, { min: 0 })
     .calc("coin_total", "Coins", `if(item_type == "Currency", qty * value, 0)`)
-    .num("durability", "Durability", 10, { min: 0 }).num("durability_max", "Max durability", 10, { min: 0 }).bool("equipped", "Equipped", false);
+    .num("durability", "Durability", 100, { min: 0, max: 100, tooltip: DURABILITY_HELP }).calc("durability_max", "Max durability", "100")
+    .calc("sell_value", "Sells for", SELL_VALUE_FORMULA).tip("sell_value", SELL_HELP).bool("equipped", "Equipped", false);
 
   const body: DocNode[] = [];
   const stats = p(
     muted("QTY "), val("qty", { look: { bold: true } }), "    ",
     muted("WEIGHT "), val("weight", { look: { bold: true } }), muted(" lb"), "    ",
     muted("VALUE "), val("value", { look: { bold: true, textColor: "#f97316" } }), "    ",
+    muted("SELLS FOR "), val("sell_value", { look: { bold: true, textColor: "#facc15" } }), "    ",
     muted("EQUIPPED "), val("equipped", { display: "input" }),
   );
 
@@ -929,7 +934,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,
       cultivation: "Ember", weight_capacity: 50,
     }, cs);
-    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Silver", weight: 3, value: 400, durability: 40, durability_max: 40, equipped: true, damage_bonus: 6 }, cs);
+    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Silver", weight: 3, value: 400, durability: 90, equipped: true, damage_bonus: 6 }, cs);
     await setRoll(store, sword, "Strike", { add: "might" }, cs);
     const shield = await createFrom(store, made.Armor, "Bulwark of Veridun", { rarity: "Uncommon", weight: 6, value: 180, armor_dc: 2, equipped: true }, cs);
     const potion = await createFrom(store, made.Consumable, "Minor Health Potion", { rarity: "Uncommon", qty: 2, weight: 0.2, value: 50 }, cs);

@@ -1,7 +1,7 @@
 // One Agnostic sheet: portrait + name, then the GM's free-form document.
 // GMs also get the sheet's data (Values), Connections and Settings.
 import React, { useEffect, useRef, useState } from "react";
-import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2, Share2 } from "lucide-react";
+import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2, Share2, ZoomIn } from "lucide-react";
 import { agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel } from "./float";
@@ -14,6 +14,7 @@ import { FieldsPanel } from "./FieldsPanel";
 import { ConnectionsPanel } from "./ConnectionsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { Portrait, CommitInput, uploadImage, storeAgImage } from "./widgets";
+import { PortraitViewer } from "./portraitView";
 import { undoLast, isTextTarget, onUndoChange, peekUndo } from "./undo";
 import { ShareDialog } from "./AgNotesBrowser";
 import { GuideButton } from "./AgGuide";
@@ -129,6 +130,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
   const [busy, setBusy] = useState(false);
   const [browse, setBrowse] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   if (!note) return null;
   const template = note.templateId ? state.notes.get(note.templateId) : undefined;
@@ -142,13 +144,15 @@ function SheetHeader({ noteId }: { noteId: string }) {
           {menu && (
             <AgPanel title={`Portrait — ${note.name || "Untitled"}`} onClose={() => setMenu(false)} width={300} height={300} testId="ag-portrait-panel">
               <div className="flex justify-center">{portrait}</div>
+              {note.portrait && <button type="button" onClick={() => { setMenu(false); setViewing(true); }} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2" data-testid="ag-portrait-view"><ZoomIn className="h-4 w-4" /> View larger</button>}
               <button type="button" onClick={() => fileRef.current?.click()} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload…</button>
               <button type="button" onClick={() => setBrowse(true)} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Image library…</button>
               {note.portrait && <button type="button" onClick={() => setPortrait(null)} className="w-full h-9 px-3 rounded-lg text-sm text-red-300 hover:bg-red-950">Remove portrait</button>}
             </AgPanel>
           )}
         </>
-      ) : portrait}
+      ) : note.portrait ? <button type="button" onClick={() => setViewing(true)} className="relative shrink-0 group" title="View larger" data-testid="ag-portrait">{portrait}<span className="absolute inset-0 rounded-[10px] bg-black/40 opacity-0 group-hover:opacity-100 grid place-items-center"><ZoomIn className="h-4 w-4" /></span></button> : portrait}
+      {viewing && <PortraitViewer note={note} onClose={() => setViewing(false)} />}
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async (e) => {
         const f = e.target.files?.[0]; e.target.value = "";
         if (!f) return;

@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Flame, Hammer, Wind, Droplets, ArrowLeft, Check, Circle, Disc3 } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
-  FORGE_SHAPES, FINE_COLS, FINE_ROWS, startingStock, shapeMask, shapeScore, hammerMetal, grindMetal, breakLoose, packMetal, unpackMetal, partStats, numOf, TIER_COLOR, TIER_LABEL,
+  FORGE_SHAPES, FINE_COLS, FINE_ROWS, startingStock, shapeMask, shapeScore, hammerMetal, grindMetal, grindable, breakLoose, packMetal, unpackMetal, partStats, numOf, TIER_COLOR, TIER_LABEL,
   type ForgeConfig, type ForgePart, type Metal,
 } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
@@ -136,7 +136,7 @@ function ForgePlan({ characterId, defs, s, set, start, playing, openNote, statio
                   {pieces.length > 0 && (
                     <ChoiceRow label="Made">
                       {pieces.map((n) => <ItemTile key={n.id} compact note={n} selected={piece?.id === n.id} disabled={!playing} onClick={() => set({ picks: { ...picks, [part.key]: n.id } })}
-                        sub={`${numOf(valueOn(state, n.id, "quality"))}% · dur ${numOf(valueOn(state, n.id, "durability"))}`} testId={`forge-saved-${part.key}-${n.name}`} />)}
+                        sub={`${numOf(valueOn(state, n.id, "quality"))}% · dur ${numOf(valueOn(state, n.id, "durability"))}%`} testId={`forge-saved-${part.key}-${n.name}`} />)}
                     </ChoiceRow>
                   )}
                   <div className="flex items-center gap-2 min-w-0">
@@ -216,6 +216,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const [busy, setBusy] = useState(false);
   const tool: "hammer" | "grind" = s.tool === "grind" ? "grind" : "hammer";
   const [miss, setMiss] = useState(0);
+  const [skate, setSkate] = useState(0);
   // Watchers follow the crafter's heat and metal; the crafter runs the furnace.
   useEffect(() => { if (!playing) live.current.heat = Number(s.heat ?? 20); }, [s.heat, playing]);
   useEffect(() => { if (!playing || !live.current.dirty) live.current.metal = fromState(); }, [s.metal, playing]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -309,8 +310,13 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const grindAt = (x: number, y: number) => {
     const L = live.current;
     const [fx, fy] = toFine(x, y);
-    const { metal: ground, hit } = grindMetal(L.metal, fx, fy, wheelRadius(skill));
-    if (!hit.length) return;
+    const { metal: ground, hit } = grindMetal(L.metal, part.shape, fx, fy, wheelRadius(skill));
+    if (!hit.length) {
+      // On the metal but nowhere the hammer has opened up: the stone just skates.
+      const c = Math.floor(fx), r = Math.floor(fy);
+      if (c >= 0 && r >= 0 && c < FINE_COLS && r < FINE_ROWS && L.metal[r * FINE_COLS + c] && !grindable(L.metal, part.shape, Math.floor(r / 4), Math.floor(c / 4))) setSkate((k) => k + 1);
+      return;
+    }
     const { metal, fell } = drop(ground, mat.color);
     L.metal = metal; L.dirty = true;
     sparks(x, y, "#fde68a", 3);
@@ -400,7 +406,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
             <Wind className="h-4 w-4" /> Bellows <span className="text-[10px] text-stone-400">hold</span>
           </button>
         )}
-        <span className="text-[11px] text-stone-400">Durability <b className="text-stone-200">{preview.durability}</b> · {part.role === "blade" ? <>Damage <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.damageBonus >= 0 ? "+" : ""}{preview.damageBonus}</b></> : part.role === "handle" ? <>Accuracy <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.accuracy >= 0 ? "+" : ""}{preview.accuracy}</b></> : <b style={{ color: TIER_COLOR[preview.tier] }}>{TIER_LABEL[preview.tier]}</b>}</span>
+        <span className="text-[11px] text-stone-400">Durability <b className="text-stone-200">{preview.durability}%</b> · {part.role === "blade" ? <>Damage <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.damageBonus >= 0 ? "+" : ""}{preview.damageBonus}</b></> : part.role === "handle" ? <>Accuracy <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.accuracy >= 0 ? "+" : ""}{preview.accuracy}</b></> : <b style={{ color: TIER_COLOR[preview.tier] }}>{TIER_LABEL[preview.tier]}</b>}</span>
         {playing && (
           <button type="button" disabled={busy || (strikes === 0 && shapePct === 0)} onClick={quench}
             className="ml-auto h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40" data-testid="forge-quench">
@@ -412,7 +418,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
         <div className="text-[11px] text-stone-500" data-testid="forge-hint">
           {tool === "hammer"
             ? <>Strike the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Strike the metal itself.</span>}</>
-            : <>Hold the grindstone on the edge and move along it to shape the points and curves the hammer can't. It takes the surface off a little at a time — don't linger.</>}
+            : <>The grindstone refines the hammer's work: hold it on an edge beside blocks you've hammered away, and move along it to shape points and curves (and add depth). It can't take whole blocks off — that's the hammer's job.{skate > 0 && <span className="text-amber-300/90"> Hammer the blocks beside it away first.</span>}</>}
         </div>
       )}
       <ResultBanner result={s.result} onOpen={openNote} />
