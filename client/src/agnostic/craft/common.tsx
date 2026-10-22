@@ -63,19 +63,20 @@ export function NoneKnown({ what, extra }: { what: string; extra?: React.ReactNo
   );
 }
 
-export function ItemTile({ note, selected, onClick, sub, disabled, color, testId }: { note: AgNote; selected?: boolean; onClick?: () => void; sub?: React.ReactNode; disabled?: boolean; color?: string; testId?: string }) {
+export function ItemTile({ note, selected, onClick, sub, disabled, color, testId, compact }: { note: AgNote; selected?: boolean; onClick?: () => void; sub?: React.ReactNode; disabled?: boolean; color?: string; testId?: string; /** A small chip (lists that scroll sideways). */ compact?: boolean }) {
   const { state } = useAg();
   const q = qtyOf(state, note.id);
+  const face = compact ? 26 : 34;
   return (
     <button type="button" disabled={disabled} onClick={onClick}
-      className={`relative flex items-center gap-2 rounded-md border p-1.5 pr-2 text-left transition-colors min-w-0 disabled:opacity-40 ${selected ? "bg-amber-500/10" : "bg-stone-900 hover:bg-stone-800"}`}
+      className={`relative flex items-center rounded-md border text-left transition-colors min-w-0 shrink-0 disabled:opacity-40 ${compact ? "gap-1.5 p-1 pr-2 max-w-[11rem]" : "gap-2 p-1.5 pr-2"} ${selected ? "bg-amber-500/10" : "bg-stone-900 hover:bg-stone-800"}`}
       style={{ borderColor: selected ? "#f59e0b" : color ?? "#44403c" }} data-testid={testId ?? `craft-item-${note.name}`}>
       <span className="relative shrink-0">
-        {note.portrait ? <Portrait note={note} size={34} radius={6} /> : <SupplyFace note={note} size={34} />}
+        {note.portrait ? <Portrait note={note} size={face} radius={6} /> : <SupplyFace note={note} size={face} />}
         {color && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border border-stone-900" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />}
       </span>
       <span className="min-w-0">
-        <span className="block text-xs font-semibold text-stone-100 truncate">{note.name || "Untitled"}</span>
+        <span className={`block font-semibold text-stone-100 truncate ${compact ? "text-[11px]" : "text-xs"}`}>{note.name || "Untitled"}</span>
         <span className="block text-[10px] text-stone-400 truncate">{sub ?? (q !== 1 ? `× ${q}` : " ")}</span>
       </span>
     </button>
@@ -157,6 +158,32 @@ export function Panel({ title, children, right, className = "" }: { title: React
       <div className="flex items-center gap-2"><div className="text-[10px] uppercase tracking-wide text-amber-400/80 flex-1 min-w-0">{title}</div>{right}</div>
       {children}
     </div>
+  );
+}
+
+/** A labelled row of choices that scrolls sideways (one line on a phone, never a wall of tiles). */
+export function ChoiceRow({ label, children, empty, testId }: { label: React.ReactNode; children: React.ReactNode; empty?: React.ReactNode; testId?: string }) {
+  const has = React.Children.toArray(children).some(Boolean);
+  return (
+    <div className="flex items-center gap-2 min-w-0" data-testid={testId}>
+      <span className="text-[10px] uppercase tracking-wide text-stone-500 w-16 shrink-0">{label}</span>
+      {has ? <div className="flex gap-1.5 overflow-x-auto no-scrollbar min-w-0 py-0.5">{children}</div> : <span className="text-[11px] text-amber-300/90 min-w-0">{empty}</span>}
+    </div>
+  );
+}
+
+/** A sideways strip of recipe cards (blueprints, recipes, runes). */
+export function DefStrip({ children }: { children: React.ReactNode }) {
+  return <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 snap-x">{children}</div>;
+}
+export function DefCard({ selected, locked, disabled, onClick, art, name, sub, testId }: { selected: boolean; locked?: boolean; disabled?: boolean; onClick: () => void; art: React.ReactNode; name: string; sub: React.ReactNode; testId?: string }) {
+  return (
+    <button type="button" disabled={disabled || locked} onClick={onClick} data-testid={testId}
+      className={`snap-start shrink-0 w-[6.5rem] rounded-md border p-1.5 text-left transition-colors disabled:cursor-default ${locked ? "border-stone-800 bg-stone-950 opacity-50" : selected ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`}>
+      <div className="h-16 grid place-items-center overflow-hidden rounded bg-stone-950">{art}</div>
+      <div className="text-[11px] font-semibold text-stone-100 truncate mt-1">{name}</div>
+      <div className="text-[10px] text-stone-400 truncate">{sub}</div>
+    </button>
   );
 }
 

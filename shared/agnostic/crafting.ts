@@ -217,7 +217,8 @@ export function pointInPolygon(x: number, y: number, poly: number[][]): boolean 
 }
 
 /** The forge's metal: a grid over the 100 × 40 box; "1" = metal still there. */
-export const FORGE_COLS = 50, FORGE_ROWS = 20;
+// Coarse enough to hammer with a fingertip on a phone; the outline follows the cells, so it can be matched exactly.
+export const FORGE_COLS = 40, FORGE_ROWS = 16;
 /** Which cells are inside the outline (to keep) — the rest are stock to hammer away. */
 export function shapeMask(shape: string): boolean[] {
   const pts = FORGE_SHAPES[shape]?.points ?? FORGE_SHAPES.long_blade.points;
@@ -237,6 +238,26 @@ export function startingStock(shape: string): string {
   for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) s += r >= r0 && r <= r1 && c >= c0 && c <= c1 ? "1" : "0";
   return s;
 }
+/**
+ * A hammer blow at (cx, cy) (in cells): it moves the metal's surface — the cells within reach that touch open air —
+ * one layer at a time, so working down to the outline takes care, not pixel-perfect aim (and over-working a spot
+ * eats into the outline). Returns the new metal and the cells moved.
+ */
+export function strikeMetal(metal: string, cx: number, cy: number, radius: number): { metal: string; hit: number[] } {
+  const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FORGE_ROWS && c < FORGE_COLS && metal[r * FORGE_COLS + c] === "1";
+  const arr = metal.split("");
+  const hit: number[] = [];
+  for (let r = Math.floor(cy - radius); r <= Math.ceil(cy + radius); r++) for (let c = Math.floor(cx - radius); c <= Math.ceil(cx + radius); c++) {
+    if (!at(r, c) || (c + 0.5 - cx) ** 2 + (r + 0.5 - cy) ** 2 > radius * radius) continue;
+    if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
+    hit.push(r * FORGE_COLS + c);
+  }
+  for (const i of hit) arr[i] = "0";
+  return { metal: arr.join(""), hit };
+}
+/** A forge session's metal from before the grid changed size: start that part over. */
+export const metalFits = (metal: unknown): metal is string => typeof metal === "string" && metal.length === FORGE_COLS * FORGE_ROWS;
+
 /** How close the metal is to the outline: the stock removed, less the outline hammered into. 0–100. */
 export function shapeScore(shape: string, metal: string): number {
   const mask = shapeMask(shape);

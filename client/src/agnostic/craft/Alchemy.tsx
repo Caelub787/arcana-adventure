@@ -7,11 +7,11 @@ import type { AgNote } from "@shared/agnostic/types";
 import { ALCHEMY_STEP_LABEL, TIER_COLOR, TIER_LABEL, accuracyTier, itemMatches, type AlchemyConfig, type AlchemyStep, type AlchemyStepType } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
-import { qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, NotHere, stationNameOf, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
+import { qtyOf, hasValue, inventoryOf, type CraftState } from "./session";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
 import { stepParticles, type Particle } from "./render";
 
-interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** The station item it's worked at. */ stationId?: string }
+interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 
 const STEP_HUE: Record<AlchemyStepType, number> = { mix: 150, dice: 95, heat: 18, add: 280, grind: 45, strain: 200, rest: 245 };
 const STEP_HINT: Record<AlchemyStepType, string> = {
@@ -24,19 +24,18 @@ const STEP_HINT: Record<AlchemyStepType, string> = {
   rest: "Rest: leave it be until it settles.",
 };
 
-export function AlchemyTool({ characterId, state: s, set, playing, stationId }: Props) {
+export function AlchemyTool({ characterId, state: s, set, start, playing, stationId }: Props) {
   const defs = useDefs<AlchemyConfig>("alchemy", characterId, stationId);
   const recipe = defs.find((d) => d.defId === s.recipe && d.here) ?? null;
   if (s.stage === "brew" && (recipe || s.experiment)) return <Brewing characterId={characterId} recipe={recipe} s={s} set={set} playing={playing} stationId={stationId} />;
-  return <Plan characterId={characterId} defs={defs} s={s} set={set} playing={playing} stationId={stationId} />;
+  return <Plan characterId={characterId} defs={defs} s={s} set={set} start={start} playing={playing} stationId={stationId} />;
 }
 
-function Plan({ characterId, defs, s, set, playing, stationId }: { characterId: string; defs: Array<KnownDef<AlchemyConfig>>; s: CraftState; set: Props["set"]; playing: boolean; stationId?: string }) {
+function Plan({ characterId, defs, s, set, start, playing, stationId }: { characterId: string; defs: Array<KnownDef<AlchemyConfig>>; s: CraftState; set: Props["set"]; start: Props["start"]; playing: boolean; stationId?: string }) {
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
   const character = state.notes.get(characterId);
-  const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
-    .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state, characterId]);
+  const inventory = inventoryOf(state, characterId);
   const recipe = defs.find((d) => d.defId === s.recipe && d.here) ?? null;
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
@@ -48,63 +47,65 @@ function Plan({ characterId, defs, s, set, playing, stationId }: { characterId: 
     try {
       const res: CraftOutcome = await request({ op: "craft.brew", characterId, stationId, recipeId: recipe.id, mode: "quick" });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
-      set({ result: res });
+      start({ result: res });
     } catch (e: any) { toast({ title: "Couldn't brew it", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
   };
+  const pot = inventory.filter((n) => !hasValue(state, n.id, "station_for") && !hasValue(state, n.id, "teaches"));
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <ResultBanner result={s.result} onOpen={openNote} onClose={playing ? () => set({ result: undefined }) : undefined} />
-      <Panel title="Recipe" right={playing && <button type="button" onClick={() => set({ recipe: undefined, experiment: true, ingredients: [], result: undefined })} className={`h-7 px-2 rounded-md border text-[11px] inline-flex items-center gap-1 ${s.experiment ? "border-amber-500 bg-amber-500/10 text-amber-200" : "border-stone-700 text-stone-300 hover:border-amber-700"}`} data-testid="alchemy-experiment"><Wand2 className="h-3.5 w-3.5" /> Experiment</button>}>
-        {!defs.length && <NoneKnown what="recipes" extra="Recipes aren't needed for alchemy, though — experiment with what you carry and you may discover one." />}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-1.5">
-          {defs.map((d) => (
-            <button key={d.defId} type="button" disabled={!playing || !d.here} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
-              className={`rounded-md border p-2 text-left transition-colors disabled:cursor-default ${!d.here ? "border-stone-800 bg-stone-950 opacity-50" : s.recipe === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`alchemy-recipe-${d.name}`}>
-              <div className="flex items-center gap-1.5"><FlaskConical className="h-4 w-4 text-emerald-300" /><span className="text-xs font-semibold text-stone-100 truncate">{d.name}</span></div>
-              <div className="text-[10px] text-stone-400 mt-0.5">{d.here ? `${d.config.steps.length} steps · ${d.config.ingredients.length} ingredients` : <NotHere station={stationNameOf(state, stationId)} />}</div>
-            </button>
-          ))}
-        </div>
-      </Panel>
+      <DefStrip>
+        <DefCard selected={!!s.experiment} disabled={!playing} onClick={() => set({ recipe: undefined, experiment: true, ingredients: [], result: undefined })}
+          art={<Wand2 className="h-8 w-8 text-stone-400" />} name="Experiment" sub="no recipe needed" testId="alchemy-experiment" />
+        {defs.map((d) => (
+          <DefCard key={d.defId} selected={!s.experiment && s.recipe === d.defId} locked={!d.here} disabled={!playing} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
+            art={<FlaskConical className="h-8 w-8 text-emerald-300" />} name={d.name.replace(/\s*recipe\s*$/i, "") || d.name} testId={`alchemy-recipe-${d.name}`}
+            sub={d.here ? `${d.config.steps.length} steps` : <NotHere station={stationNameOf(state, stationId)} />} />
+        ))}
+      </DefStrip>
+      {!defs.length && <NoneKnown what="recipes" extra="You don't need one to experiment, though — and you may discover one." />}
+      {!recipe && !s.experiment && defs.length > 0 && <div className="text-[11px] text-stone-400">Pick a recipe you know for a guided brew, or Experiment.</div>}
       {recipe && !s.experiment && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Panel title="Ingredients">
+        <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2.5 grid sm:grid-cols-2 gap-x-4 gap-y-2">
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wide text-stone-500">Ingredients</div>
             {recipe.config.ingredients.map((i, k) => { const h = have(i); return (
               <div key={k} className="flex items-center gap-2 text-xs"><span className={`h-2 w-2 rounded-full ${h >= i.qty ? "bg-emerald-400" : "bg-red-500"}`} /><span className="text-stone-200 flex-1">{i.qty} × {i.name}</span><span className="text-stone-500">have {h}</span></div>
             ); })}
-          </Panel>
-          <Panel title="Steps">
-            <ol className="space-y-1">{recipe.config.steps.map((st, k) => <li key={st.id} className="text-xs text-stone-300 flex gap-2"><span className="text-emerald-400 font-mono">{k + 1}.</span>{stepText(st)}</li>)}</ol>
-          </Panel>
+            {!recipe.config.ingredients.length && <div className="text-xs text-stone-500">None</div>}
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wide text-stone-500">Steps</div>
+            <ol className="space-y-0.5">{recipe.config.steps.map((st, k) => <li key={st.id} className="text-xs text-stone-300 flex gap-2"><span className="text-stone-500 font-mono">{k + 1}.</span>{stepText(st)}</li>)}</ol>
+          </div>
         </div>
       )}
       {s.experiment && (
-        <Panel title="Into the cauldron" right={<span className="text-[10px] text-stone-500">Pick what goes in</span>}>
-          <div className="flex flex-wrap gap-1.5">
-            {inventory.filter((n) => !Array.from(state.fields.values()).some((f) => f.noteId === n.id && f.key === "station_for")).map((n) => {
-              const c = chosen.find((x) => x.itemId === n.id);
-              return (
-                <span key={n.id} className="inline-flex items-center gap-1">
-                  <ItemTile note={n} selected={!!c} disabled={!playing} onClick={() => set({ ingredients: c ? chosen.filter((x) => x.itemId !== n.id) : [...chosen, { itemId: n.id, qty: 1 }] })} sub={c ? `using ${c.qty} of ${qtyOf(state, n.id)}` : undefined} testId={`alchemy-ing-${n.name}`} />
-                  {c && playing && <span className="flex flex-col"><button type="button" onClick={() => set({ ingredients: chosen.map((x) => x.itemId === n.id ? { ...x, qty: Math.min(qtyOf(state, n.id), x.qty + 1) } : x) })} className="h-4 w-5 grid place-items-center text-stone-400 hover:text-stone-100"><Plus className="h-3 w-3" /></button><button type="button" onClick={() => set({ ingredients: chosen.map((x) => x.itemId === n.id ? { ...x, qty: Math.max(1, x.qty - 1) } : x) })} className="h-4 w-5 grid place-items-center text-stone-400 hover:text-stone-100"><Minus className="h-3 w-3" /></button></span>}
-                </span>
-              );
-            })}
-          </div>
-        </Panel>
+        <ChoiceRow label="Put in" empty="Nothing to put in." testId="alchemy-pot">
+          {pot.map((n) => {
+            const c = chosen.find((x) => x.itemId === n.id);
+            return (
+              <span key={n.id} className="inline-flex items-center gap-0.5 shrink-0">
+                <ItemTile compact note={n} selected={!!c} disabled={!playing} onClick={() => set({ ingredients: c ? chosen.filter((x) => x.itemId !== n.id) : [...chosen, { itemId: n.id, qty: 1 }] })} sub={c ? `${c.qty} of ${qtyOf(state, n.id)}` : `× ${qtyOf(state, n.id)}`} testId={`alchemy-ing-${n.name}`} />
+                {c && playing && <span className="flex flex-col"><button type="button" onClick={() => set({ ingredients: chosen.map((x) => x.itemId === n.id ? { ...x, qty: Math.min(qtyOf(state, n.id), x.qty + 1) } : x) })} className="h-4 w-5 grid place-items-center text-stone-400 hover:text-stone-100"><Plus className="h-3 w-3" /></button><button type="button" onClick={() => set({ ingredients: chosen.map((x) => x.itemId === n.id ? { ...x, qty: Math.max(1, x.qty - 1) } : x) })} className="h-4 w-5 grid place-items-center text-stone-400 hover:text-stone-100"><Minus className="h-3 w-3" /></button></span>}
+              </span>
+            );
+          })}
+        </ChoiceRow>
       )}
       {playing && (recipe || s.experiment) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {recipe && !s.experiment && <QuickCraftButton kind="alchemy" characterId={characterId} busy={busy} disabled={!ready} onClick={quick} />}
-          <button type="button" disabled={s.experiment ? !chosen.length : !ready} onClick={() => set({ stage: "brew", step: 0, scores: [], log: [], steps: [], st: {}, result: undefined })}
-            className="h-9 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="alchemy-start">
-            <Play className="h-4 w-4" /> {s.experiment ? "Start experimenting" : "Start brewing"}
-          </button>
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={s.experiment ? !chosen.length : !ready} onClick={() => start({ stage: "brew", step: 0, scores: [], log: [], steps: [], st: {}, result: undefined })}
+              className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="alchemy-start">
+              <Play className="h-4 w-4" /> {s.experiment ? "Start experimenting" : "Start brewing"}
+            </button>
+            {recipe && !s.experiment && <QuickCraftButton kind="alchemy" characterId={characterId} busy={busy} disabled={!ready} onClick={quick} />}
+          </div>
+          <Needs items={recipe && !s.experiment ? recipe.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`) : s.experiment && !chosen.length ? ["Pick something to put in"] : []} />
         </div>
       )}
-      {playing && <Needs items={recipe && !s.experiment ? recipe.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`) : s.experiment && !chosen.length ? ["Pick at least one thing from your inventory to put in"] : []} />}
-      {playing && !recipe && !s.experiment && <div className="text-[11px] text-stone-400">Pick a recipe you know for a guided brew, or Experiment to brew freely.</div>}
     </div>
   );
 }

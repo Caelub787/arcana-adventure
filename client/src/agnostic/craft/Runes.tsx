@@ -9,10 +9,10 @@ import { traceAccuracy, runeTier, itemMatches, numOf, TIER_COLOR, TIER_LABEL, ty
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, runesOn, qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
+import { ItemTile, ResultBanner, QuickCraftButton, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
 import { drawSigil, loadImage, runePortrait, type MarkStyle, type RuneLook } from "./render";
 
-interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** The station item it's worked at. */ stationId?: string }
+interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 type ScopeState = ReturnType<typeof useAg>["state"];
 const FREEHAND = "freehand";
 /** Where a freehand rune will go (a plain ring, since there's no sigil to show). */
@@ -31,7 +31,8 @@ export function runeLookOf(state: ScopeState, rune: AgNote): RuneLook {
 }
 const baseOf = (state: ScopeState, item: AgNote | undefined) => { if (!item) return null; const b = valueOn(state, item.id, "base_portrait"); return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null; };
 
-export function RuneTool({ characterId, state: s, set, playing, stationId }: Props) {
+export function RuneTool({ characterId, state: s, set, start, playing, stationId }: Props) {
+  const [placing, setPlacing] = useState(false);
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
   const defs = useDefs<RuneConfig>("rune", characterId, stationId);
@@ -73,7 +74,7 @@ export function RuneTool({ characterId, state: s, set, playing, stationId }: Pro
       const portrait = await runePortrait(baseOf(state, target), target.name, [...existing, { strokes: drawn, ...look, placement }]);
       const res: CraftOutcome = await request({ op: "craft.rune", characterId, stationId, runeId: rune?.id ?? null, targetId: target.id, inkId: ink?.id ?? null, toolId: tool?.id ?? null, mode, accuracy, guide, strokes: drawn, placement, portrait: portrait || null });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
-      set({ stage: "plan", strokes: [], result: { ...res, message: mode === "game" ? `${res.message} (traced ${accuracy}%)` : res.message } });
+      start({ stage: "plan", strokes: [], result: { ...res, message: mode === "game" ? `${res.message} (traced ${accuracy}%)` : res.message } });
     } catch (e: any) { toast({ title: "Couldn't inscribe it", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
   };
@@ -102,70 +103,60 @@ export function RuneTool({ characterId, state: s, set, playing, stationId }: Pro
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <ResultBanner result={s.result} onOpen={openNote} onClose={playing ? () => set({ result: undefined }) : undefined} />
-      <Panel title="Rune">
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-1.5">
-          <button type="button" disabled={!playing} onClick={() => set({ rune: FREEHAND, strokes: [], result: undefined })}
-            className={`rounded-md border p-1.5 transition-colors ${freehand ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid="rune-freehand">
-            <div className="w-full max-w-[110px] mx-auto aspect-square rounded-md bg-stone-950 grid place-items-center"><PenTool className="h-8 w-8 text-stone-400" /></div>
-            <div className="text-[11px] font-semibold text-stone-100 truncate">Freehand</div>
-          </button>
-          {defs.map((d) => (
-            <button key={d.defId} type="button" disabled={!playing || !d.here} onClick={() => set({ rune: d.defId, strokes: [], result: undefined })}
-              className={`rounded-md border p-1.5 transition-colors disabled:cursor-default ${!d.here ? "border-stone-800 bg-stone-950 opacity-50" : s.rune === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`rune-def-${d.name}`}>
-              <SigilThumb strokes={d.config.sigil} />
-              <div className="text-[11px] font-semibold text-stone-100 truncate">{d.name}</div>{!d.here && <NotHere station={stationNameOf(state, stationId)} />}
-            </button>
-          ))}
-        </div>
-        <div className="text-[11px] text-stone-400">{defs.length ? "Runes you know (from scrolls) can be traced over a guide. " : "You don't know any runes yet (each is learned from a scroll). "}Freehand needs no scroll: draw without a guide, and if it comes close enough to a rune, it takes.</div>
-      </Panel>
+      <DefStrip>
+        <DefCard selected={freehand} disabled={!playing} onClick={() => set({ rune: FREEHAND, strokes: [], result: undefined })}
+          art={<PenTool className="h-8 w-8 text-stone-400" />} name="Freehand" sub="no scroll needed" testId="rune-freehand" />
+        {defs.map((d) => (
+          <DefCard key={d.defId} selected={s.rune === d.defId} locked={!d.here} disabled={!playing} onClick={() => set({ rune: d.defId, strokes: [], result: undefined })}
+            art={<SigilThumb strokes={d.config.sigil} />} name={d.name} testId={`rune-def-${d.name}`}
+            sub={d.here ? (d.config.effect ? `${d.config.effect.key.replace(/_/g, " ")} +${d.config.effect.values.default ?? 0}` : "rune") : <NotHere station={stationNameOf(state, stationId)} />} />
+        ))}
+      </DefStrip>
+      {!rune && !freehand && <div className="text-[11px] text-stone-400">{defs.length ? "Pick a rune you know to trace it over a guide — or " : "You don't know any runes yet (each is learned from a scroll) — "}draw Freehand: if it comes close enough to a rune, it takes.</div>}
       {(rune || freehand) && (
         <>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Panel title="Inscribe on">
-              <div className="flex flex-wrap gap-1.5">{targets.map((n) => <ItemTile key={n.id} note={n} selected={s.target === n.id} disabled={!playing} onClick={() => set({ target: n.id })} sub={`${runesOn(state, n.id).length} rune${runesOn(state, n.id).length === 1 ? "" : "s"}`} testId={`rune-target-${n.name}`} />)}</div>
-              {!targets.length && <div className="text-[11px] text-stone-500">Nothing to inscribe in the inventory.</div>}
-            </Panel>
-            <Panel title="Needs">
-              {freehand && <div className="text-[11px] text-stone-400">Whatever the rune you draw needs (its ingredients, tool and ink) — checked when it takes.</div>}
-              {rune && rune.config.ingredients.map((i, k) => { const h = have(i); return <div key={k} className="flex items-center gap-2 text-xs"><span className={`h-2 w-2 rounded-full ${h >= i.qty ? "bg-emerald-400" : "bg-red-500"}`} /><span className="flex-1 text-stone-200">{i.qty} × {i.name}</span><span className="text-stone-500">have {h}</span></div>; })}
-              {rune && rune.config.tools.length > 0 && <div className="text-xs text-stone-300 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${toolOk ? "bg-emerald-400" : "bg-red-500"}`} />Tool: {rune.config.tools.map((t) => t.name).join(" or ")}</div>}
-              {rune?.config.needsInk && <div className="text-xs text-stone-300 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${ink ? "bg-emerald-400" : "bg-red-500"}`} />A liquid or ink</div>}
-              {rune?.config.effect && <div className="text-[11px] text-stone-300">Effect: {rune.config.effect.key.replace(/_/g, " ")} {(["default", "slight", "huge"] as const).map((t) => `${rune.config.effect!.values[t] ?? 0}`).join(" / ")} (standard / fine / masterwork)</div>}
-            </Panel>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Panel title="Tool">
-              <div className="flex flex-wrap gap-1.5">{tools.map((n) => <ItemTile key={n.id} note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={String(valueOn(state, n.id, "mark_style") ?? "Carved")} testId={`rune-tool-${n.name}`} />)}</div>
-              {!tools.length && <div className="text-[11px] text-stone-500">No carving tools or pens (items with a mark style).</div>}
-            </Panel>
-            <Panel title="Ink or liquid">
-              <div className="flex flex-wrap gap-1.5">
-                {inks.map((n) => <ItemTile key={n.id} note={n} selected={s.ink === n.id} disabled={!playing} color={colorOf(state, n.id, "ink_color", "#a78bfa")} onClick={() => set({ ink: s.ink === n.id ? undefined : n.id })} sub={`glow ${numOf(valueOn(state, n.id, "ink_glow"))}`} testId={`rune-ink-${n.name}`} />)}
+          <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2 space-y-1.5">
+            <ChoiceRow label="On" empty="Nothing to inscribe in the inventory." testId="rune-targets">
+              {targets.map((n) => <ItemTile key={n.id} compact note={n} selected={s.target === n.id} disabled={!playing} onClick={() => set({ target: n.id })} sub={`${runesOn(state, n.id).length} rune${runesOn(state, n.id).length === 1 ? "" : "s"}`} testId={`rune-target-${n.name}`} />)}
+            </ChoiceRow>
+            <ChoiceRow label="Tool" empty="No carving tools or pens.">
+              {tools.map((n) => <ItemTile key={n.id} compact note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={String(valueOn(state, n.id, "mark_style") ?? "Carved")} testId={`rune-tool-${n.name}`} />)}
+            </ChoiceRow>
+            <ChoiceRow label="Ink" empty="No inks — the rune will be plain.">
+              {inks.map((n) => <ItemTile key={n.id} compact note={n} selected={s.ink === n.id} disabled={!playing} color={colorOf(state, n.id, "ink_color", "#a78bfa")} onClick={() => set({ ink: s.ink === n.id ? undefined : n.id })} sub={`glow ${numOf(valueOn(state, n.id, "ink_glow"))}`} testId={`rune-ink-${n.name}`} />)}
+            </ChoiceRow>
+            {rune && (rune.config.ingredients.length > 0) && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]"><span className="text-[10px] uppercase tracking-wide text-stone-500 w-16">Uses</span>
+                {rune.config.ingredients.map((i, k) => { const h = have(i); return <span key={k} className="inline-flex items-center gap-1"><span className={`h-1.5 w-1.5 rounded-full ${h >= i.qty ? "bg-emerald-400" : "bg-red-500"}`} />{i.qty}× {i.name} <span className="text-stone-500">({h})</span></span>; })}
               </div>
-              {!inks.length && <div className="text-[11px] text-stone-500">No inks or liquids (items with an ink colour) — the rune will be plain.</div>}
-            </Panel>
+            )}
+            {freehand && <div className="text-[11px] text-stone-500">Whatever the rune you draw needs (ingredients, tool, ink) is checked when it takes.</div>}
           </div>
           {target && (
-            <Panel title="Placement" right={!freehand && <label className="inline-flex items-center gap-1.5 text-[11px] text-stone-300"><input type="checkbox" checked={guide} disabled={!playing} onChange={(e) => set({ guide: e.target.checked })} data-testid="rune-guide" />{guide ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />} Guide</label>}>
-              <div className="grid sm:grid-cols-[220px_1fr] gap-3 items-start">
-                <PlacementPreview base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} />
-                <div className="space-y-1.5 text-xs">
-                  {(["x", "y", "s", "r"] as const).map((k) => (
-                    <label key={k} className="flex items-center gap-2"><span className="w-14 text-stone-400">{k === "x" ? "Across" : k === "y" ? "Down" : k === "s" ? "Size" : "Turn"}</span>
-                      <input type="range" min={k === "s" ? 12 : k === "r" ? -180 : 10} max={k === "s" ? 80 : k === "r" ? 180 : 90} value={placement[k]} disabled={!playing} onChange={(e) => set({ placement: { ...placement, [k]: Number(e.target.value) } })} className="flex-1 accent-violet-500" /></label>
-                  ))}
-                  <div className="text-[10px] text-stone-500">{freehand ? "Where the rune goes on the item." : "Hiding the guide makes it harder to follow — so the bonuses come easier."}</div>
-                </div>
+            <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setPlacing((v) => !v)} className="h-7 px-2 rounded-md border border-stone-700 text-[11px] text-stone-300 hover:border-stone-500" data-testid="rune-placement">{placing ? "Hide placement" : "Placement"}</button>
+                {!freehand && <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-stone-300"><input type="checkbox" checked={guide} disabled={!playing} onChange={(e) => set({ guide: e.target.checked })} data-testid="rune-guide" />{guide ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />} Guide <span className="text-stone-500">(off: harder, bonuses come easier)</span></label>}
               </div>
-            </Panel>
+              {placing && (
+                <div className="grid sm:grid-cols-[180px_1fr] gap-3 items-start">
+                  <div className="max-w-[180px]"><PlacementPreview base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} /></div>
+                  <div className="space-y-1.5 text-xs">
+                    {(["x", "y", "s", "r"] as const).map((k) => (
+                      <label key={k} className="flex items-center gap-2"><span className="w-14 text-stone-400">{k === "x" ? "Across" : k === "y" ? "Down" : k === "s" ? "Size" : "Turn"}</span>
+                        <input type="range" min={k === "s" ? 12 : k === "r" ? -180 : 10} max={k === "s" ? 80 : k === "r" ? 180 : 90} value={placement[k]} disabled={!playing} onChange={(e) => set({ placement: { ...placement, [k]: Number(e.target.value) } })} className="flex-1 accent-amber-500" /></label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {playing && (<>
             <div className="flex flex-wrap items-center gap-2">
+              <button type="button" disabled={!ready} onClick={() => start({ stage: "trace", strokes: [], result: undefined })} className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="rune-start"><PenTool className="h-4 w-4" /> {freehand ? "Start drawing" : "Start tracing"}</button>
               {rune && <QuickCraftButton kind="rune" characterId={characterId} busy={busy} disabled={!ready} onClick={() => inscribe("quick")} />}
-              <button type="button" disabled={!ready} onClick={() => set({ stage: "trace", strokes: [], result: undefined })} className="h-9 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="rune-start"><PenTool className="h-4 w-4" /> {freehand ? "Start drawing" : "Start tracing"}</button>
             </div>
             <Needs items={missing} />
           </>)}
@@ -178,7 +169,7 @@ export function RuneTool({ characterId, state: s, set, playing, stationId }: Pro
 function SigilThumb({ strokes }: { strokes: number[][][] }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => { const ctx = ref.current?.getContext("2d"); if (!ctx) return; ctx.clearRect(0, 0, 96, 96); drawSigil(ctx, strokes, 48, 48, 80, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 3 }); }, [strokes]);
-  return <canvas ref={ref} width={96} height={96} className="w-full max-w-[110px] mx-auto block aspect-square rounded-md bg-stone-950" />;
+  return <canvas ref={ref} width={96} height={96} className="h-16 w-16 block" />;
 }
 
 function useImage(src: string | null) {

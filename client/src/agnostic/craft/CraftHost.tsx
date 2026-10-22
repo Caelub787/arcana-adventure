@@ -9,7 +9,7 @@ import { CRAFT_KIND_LABEL, CRAFT_KIND_OF_STATION, CRAFT_DEF_TYPE, stationRecipes
 import { useAg, useAgMaybe, follow } from "../hooks";
 import { AgPanel, agConfirm } from "../float";
 import { useToast } from "@/hooks/use-toast";
-import { useCraftSession, valueOn, inventoryOf } from "./session";
+import { useCraftSession, valueOn, inventoryOf, type CraftState } from "./session";
 import { ForgeTool } from "./Forge";
 import { AlchemyTool } from "./Alchemy";
 import { RuneTool } from "./Runes";
@@ -33,7 +33,7 @@ export function AgCraftHost() {
   return <>{list.map((o) => <CraftWindow key={o.sessionId} {...o} />)}</>;
 }
 
-function CraftWindow({ sessionId, characterId, kind, stations, claim }: OpenCraft) {
+function CraftWindow({ sessionId, characterId, kind, stations }: OpenCraft) {
   const { state, request } = useAg();
   const { toast } = useToast();
   const session = useCraftSession(sessionId);
@@ -45,20 +45,28 @@ function CraftWindow({ sessionId, characterId, kind, stations, claim }: OpenCraf
     <AgPanel title={<span className="inline-flex items-center gap-2"><Icon className="h-4 w-4" style={{ color: CRAFT_ACCENT[kind] }} />{CRAFT_KIND_LABEL[kind]} — {character?.name ?? "…"}</span>}
       onClose={() => closeCraft(sessionId)} width={860} height={820} panelKey={`ag-craft-${sessionId}`} testId={`craft-window-${kind}`}
       footer={!session.readOnly ? <button type="button" onClick={end} className="h-8 px-3 rounded text-xs text-stone-400 hover:text-red-300">End session</button> : undefined}>
-      <CraftBody sessionId={sessionId} characterId={characterId} kind={kind} stations={stations} claim={claim} onClaimed={() => openCraft({ sessionId, characterId, kind, stations })} />
+      <CraftBody sessionId={sessionId} characterId={characterId} kind={kind} stations={stations} />
     </AgPanel>
   );
 }
 
-/** The live tool of a crafting session. One person is at the controls: whoever pressed Craft (a character can have
- *  several players — pressing Craft is what decides). Only the GM can take over from them, and give it back after;
- *  everyone else watches, every move live. */
-export function CraftBody({ sessionId, characterId, kind, stations, station: atStation, claim, onClaimed }: OpenCraft & { /** The station item this is open on (its sheet). */ station?: string; onClaimed?: () => void }) {
+/**
+ * The live tool of a crafting session. Before anyone is crafting, whoever may craft as the character plans on their own
+ * screen (recipe, materials…); the first real step — forging a part, starting a brew or a tracing, a Quick Craft —
+ * puts them at the controls, and from then on everyone watches them live. A character can have several players:
+ * that first step is what decides. Only the GM can take over, and give it back after.
+ */
+export function CraftBody({ sessionId, characterId, kind, stations, station: atStation, ensureSession, head, tail }: Omit<OpenCraft, "sessionId"> & {
+  sessionId: string | null; /** The station item this is open on (its sheet). */ station?: string;
+  /** Make the session when crafting starts (there's none until then). */ ensureSession?: () => Promise<string>;
+  head?: React.ReactNode; tail?: React.ReactNode;
+}) {
   const { state, viewer } = useAg();
   const { user } = useAuth() as any;
+  const { toast } = useToast();
   const session = useCraftSession(sessionId);
   const character = state.notes.get(characterId);
-  const mayPlay = !!character && !session.readOnly && (character.ownerIds.includes(viewer.userId) || viewer.isGM);
+  const mayPlay = !!character && (character.ownerIds.includes(viewer.userId) || viewer.isGM) && (!sessionId || !session.ready || !session.readOnly);
   const driver = typeof session.state.driver === "string" ? session.state.driver as string : "";
   // Whoever is at the controls sends a heartbeat; when it stops (they closed the page), nobody is.
   const beat = useRef({ key: "", at: Date.now() });
@@ -66,22 +74,37 @@ export function CraftBody({ sessionId, characterId, kind, stations, station: atS
   if (beat.current.key !== beatKey) beat.current = { key: beatKey, at: Date.now() };
   const [, tick] = useState(0);
   const present = !!driver && (driver === viewer.userId || Date.now() - beat.current.at < 12000);
-  const playing = mayPlay && driver === viewer.userId;
+  const playing = mayPlay && !!sessionId && session.ready && driver === viewer.userId;
+  const planning = mayPlay && !playing && !present && (!sessionId || session.ready);
   const myName = String(user?.username || user?.name || (viewer.isGM ? "The GM" : "Someone"));
-  const take = () => session.set({ driver: viewer.userId, driverName: myName, beat: Date.now(), returnTo: undefined });
+  // Planning is this viewer's own until they start.
+  const [local, setLocal] = useState<CraftState>({});
+  const toolState: CraftState = planning ? { ...session.state, stage: "plan", ...local } : session.state;
+  const toolSet = playing ? session.set : planning ? (p: CraftState) => setLocal((l) => ({ ...l, ...p })) : () => {};
+  const pending = useRef<CraftState | null>(null);
+  const flush = () => {
+    const p = pending.current;
+    if (!p || !session.ready) return;
+    pending.current = null;
+    const d = session.map?.get("driver"), b = Number(session.map?.get("beat") ?? 0);
+    if (d && d !== viewer.userId && Date.now() - b < 12000) { toast({ title: "Someone else just started crafting here", description: "You're watching them now." }); return; }
+    session.set({ ...p, driver: viewer.userId, driverName: myName, beat: Date.now(), returnTo: undefined });
+    setLocal({});
+  };
+  const start = (p: CraftState) => {
+    if (playing) { session.set(p); return; }
+    if (!planning) return;
+    pending.current = { ...local, ...p };
+    if (sessionId && session.ready) flush();
+    else if (ensureSession) ensureSession().catch((e: any) => { pending.current = null; toast({ title: "Couldn't start crafting", description: e.message, variant: "destructive" }); });
+  };
+  useEffect(() => { if (session.ready && pending.current) flush(); }, [session.ready, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
   // The GM taking over remembers whose turn it was, to hand it back.
   const takeOver = () => session.set({ driver: viewer.userId, driverName: myName, beat: Date.now(), returnTo: present && driver !== viewer.userId ? { id: driver, name: String(session.state.driverName ?? "them") } : undefined });
   const returnTo = session.state.returnTo && typeof session.state.returnTo.id === "string" ? session.state.returnTo as { id: string; name: string } : null;
   const giveBack = () => returnTo && session.set({ driver: returnTo.id, driverName: returnTo.name, beat: Date.now(), returnTo: undefined });
-  const stepAway = () => session.set({ driver: undefined, driverName: undefined, returnTo: undefined });
-  // Pressed Craft to get here: they're the one crafting.
-  // (Unless someone else already is — then they watch; only the GM takes over, with Take over.)
-  useEffect(() => {
-    if (!claim || !mayPlay || !session.ready) return;
-    const d = session.map?.get("driver");
-    if (!d || d === viewer.userId) take();
-    onClaimed?.();
-  }, [claim, mayPlay, session.ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Stepping away: whatever was made stays in the inventory (a part waits for its blueprint); unsaved work stops.
+  const stepAway = () => { session.set({ driver: undefined, driverName: undefined, returnTo: undefined, stage: "plan" }); setLocal({}); };
   const playingRef = useRef(playing); playingRef.current = playing;
   useEffect(() => {
     if (!session.ready) return;
@@ -90,36 +113,37 @@ export function CraftBody({ sessionId, characterId, kind, stations, station: atS
   }, [session.ready, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Leaving hands the controls back.
   const map = useRef(session.map); map.current = session.map;
-  useEffect(() => () => { const m = map.current; if (m && m.get("driver") === viewer.userId) m.delete("driver"); }, [viewer.userId]);
+  useEffect(() => () => { const m = map.current; if (m && m.get("driver") === viewer.userId) { m.doc?.transact(() => { m.delete("driver"); m.set("stage", "plan"); }); } }, [viewer.userId]);
   // The station they carry for this craft (live: it appears the moment the GM gives one).
   const station = atStation ? state.notes.get(atStation) : inventoryOf(state, characterId).find((n) => valueOn(state, n.id, "station_for") === CRAFT_KIND_LABEL[kind]);
   const missingStation = !!stations && mayPlay && !station;
-  const chip = "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-stone-700 bg-stone-900 text-[11px] text-stone-300";
+  const chip = "inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-stone-700 bg-stone-900 text-[11px] text-stone-300 max-w-full";
+  const btn = "h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5";
+  const status = playing ? <>
+    <span className={chip} data-testid="craft-playing"><Hand className="h-3.5 w-3.5 text-amber-400" />You're crafting</span>
+    {viewer.isGM && returnTo && <button type="button" onClick={giveBack} className={btn} data-testid="craft-give-back"><Undo2 className="h-3.5 w-3.5" /> Give back to {returnTo.name}</button>}
+    <button type="button" onClick={stepAway} className="h-7 px-2 rounded-md text-[11px] text-stone-400 hover:text-stone-100" data-testid="craft-step-away">Step away</button>
+  </> : present ? <>
+    <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{returnTo?.id === viewer.userId ? "The GM has taken over — watching" : `${String(session.state.driverName ?? "Someone")} is crafting — watching`}</span></span>
+    {viewer.isGM && <button type="button" onClick={takeOver} className={btn} data-testid="craft-take-over"><Hand className="h-3.5 w-3.5" /> Take over</button>}
+  </> : null;
+  const showTool = !missingStation && (planning || (sessionId && session.ready && session.note));
   return (
     // Drawing and hammering on the tools' canvases mustn't start dragging the sheet block they sit in.
     <div className="space-y-2" data-testid={`craft-body-${kind}`} onPointerDownCapture={(e) => { if ((e.target as HTMLElement).tagName === "CANVAS") e.preventDefault(); }} onDragStartCapture={(e) => { if ((e.target as HTMLElement).tagName === "CANVAS") e.preventDefault(); }}>
-      {session.ready && session.note && (
+      {(head || status || tail || (station && !atStation)) && (
         <div className="flex flex-wrap items-center gap-1.5">
+          {head}
           {station && !atStation && <StationChip note={station} kind={kind} />}
-          {playing ? <>
-            <span className={chip} data-testid="craft-playing"><Hand className="h-3.5 w-3.5 text-amber-400" />You're crafting</span>
-            {viewer.isGM && returnTo && <button type="button" onClick={giveBack} className="h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5" data-testid="craft-give-back"><Undo2 className="h-3.5 w-3.5" /> Give back to {returnTo.name}</button>}
-            <button type="button" onClick={stepAway} className="h-7 px-2 rounded-md text-[11px] text-stone-400 hover:text-stone-100" data-testid="craft-step-away">Step away</button>
-          </> : present ? <>
-            <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5" />{returnTo?.id === viewer.userId ? `The GM (${String(session.state.driverName ?? "")}) has taken over — you're watching` : `${String(session.state.driverName ?? "Someone")} is crafting — you're watching`}</span>
-            {mayPlay && viewer.isGM && <button type="button" onClick={takeOver} className="h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5" data-testid="craft-take-over"><Hand className="h-3.5 w-3.5" /> Take over</button>}
-          </> : <>
-            <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5" />Nobody is crafting</span>
-            {mayPlay && <button type="button" onClick={take} className="h-7 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-medium inline-flex items-center gap-1.5" data-testid="craft-start"><Hammer className="h-3.5 w-3.5" /> Craft</button>}
-          </>}
+          <span className="ml-auto inline-flex flex-wrap items-center justify-end gap-1.5">{status}{tail}</span>
         </div>
       )}
-      {!session.note ? <div className="text-sm text-stone-400 p-4">This crafting session has ended.</div>
+      {sessionId && session.ready && !session.note ? <div className="text-sm text-stone-400 p-4">This crafting session has ended.</div>
         : missingStation ? <NeedStation kind={kind} />
-        : !session.ready ? <div className="text-xs text-stone-400 inline-flex items-center gap-2 p-4"><Loader2 className="h-4 w-4 animate-spin" /> Getting ready…</div>
-        : kind === "forge" ? <ForgeTool characterId={characterId} state={session.state} set={session.set} playing={playing} stationId={station?.id} />
-        : kind === "alchemy" ? <AlchemyTool characterId={characterId} state={session.state} set={session.set} playing={playing} stationId={station?.id} />
-        : <RuneTool characterId={characterId} state={session.state} set={session.set} playing={playing} stationId={station?.id} />}
+        : !showTool ? (sessionId ? <div className="text-xs text-stone-400 inline-flex items-center gap-2 p-4"><Loader2 className="h-4 w-4 animate-spin" /> Getting ready…</div> : <div className="text-xs text-stone-500 p-3">Nobody is crafting here right now.</div>)
+        : kind === "forge" ? <ForgeTool characterId={characterId} state={toolState} set={toolSet} start={start} playing={playing || planning} stationId={station?.id} />
+        : kind === "alchemy" ? <AlchemyTool characterId={characterId} state={toolState} set={toolSet} start={start} playing={playing || planning} stationId={station?.id} />
+        : <RuneTool characterId={characterId} state={toolState} set={toolSet} start={start} playing={playing || planning} stationId={station?.id} />}
     </div>
   );
 }
@@ -143,59 +167,45 @@ export function holderOf(state: ReturnType<typeof useAg>["state"], itemId: strin
  */
 export function CraftBench({ noteId }: { noteId: string }) {
   const { state, request, viewer } = useAg();
-  const { toast } = useToast();
   const note = state.notes.get(noteId);
   const kind = CRAFT_KIND_OF_STATION[String(valueOn(state, noteId, "station_for") ?? "")];
   const holder = holderOf(state, noteId);
-  const mayPlay = !!holder && (holder.ownerIds.includes(viewer.userId) || viewer.isGM);
   const live = holder && kind ? follow(state, holder.id, "crafting").map((id) => state.notes.get(id))
     .find((n): n is AgNote => !!n && n.type === "craft" && valueOn(state, n.id, "craft_kind") === kind && !Number(valueOn(state, n.id, "craft_done") ?? 0) && String(valueOn(state, n.id, "station_id") ?? "") === noteId) : undefined;
   const [made, setMade] = useState<string | null>(null);
-  const [claim, setClaim] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [setup, setSetup] = useState(false);
   if (!note) return null;
   if (!kind) return viewer.isGM ? <StationSetup noteId={noteId} /> : null;
   const Icon = CRAFT_ICON[kind];
   const sessionId = live?.id ?? (made && state.notes.has(made) ? made : null);
-  // Pressing Craft: whoever does is the one crafting.
-  const craft = async () => {
-    if (!holder) return;
-    setBusy(true);
-    try { const r = await request<{ noteId: string }>({ op: "craft.session", characterId: holder.id, kind, stationId: noteId }); setMade(r.noteId); setClaim(true); }
-    catch (e: any) { toast({ title: "Couldn't start crafting", description: e.message, variant: "destructive" }); }
-    finally { setBusy(false); }
+  // The session (shared, live) only exists once someone starts crafting.
+  const ensureSession = async () => {
+    const r = await request<{ noteId: string }>({ op: "craft.session", characterId: holder!.id, kind, stationId: noteId });
+    setMade(r.noteId);
+    return r.noteId;
   };
-  const reset = () => sessionId && agConfirm("Work in progress here is lost (what's already been made stays in the inventory).", { title: "Start over?", confirm: "Start over" })
-    .then((ok) => { if (ok) request({ op: "craft.close", sessionId }).then(() => setMade(null)).catch((e: any) => { toast({ title: "Couldn't do that", description: e.message, variant: "destructive" }); }); });
   const skill = holder ? Number(valueOn(state, holder.id, SKILL_KEY[kind]) ?? 0) || 0 : 0;
   const bonus = Number(valueOn(state, noteId, "station_bonus") ?? 0) || 0;
-  const limits = stationRecipes(valueOn(state, noteId, "station_recipes"));
+  const head = (
+    <span className="inline-flex items-center gap-1.5 min-w-0">
+      <Icon className="h-4 w-4 text-amber-400 shrink-0" />
+      <span className="text-[10px] uppercase tracking-wide text-amber-400/80">{CRAFT_KIND_LABEL[kind]}</span>
+      {holder && <span className="text-[11px] text-stone-300 truncate">{holder.name} <span className="font-mono text-stone-400">{skill >= 0 ? "+" : "−"}{Math.abs(skill + bonus)}</span></span>}
+    </span>
+  );
+  const gear = viewer.isGM && (
+    <button type="button" onClick={() => setSetup((v) => !v)} title="Station setup (GM)" className={`h-7 w-7 rounded-md border grid place-items-center ${setup ? "border-amber-600 text-amber-200" : "border-stone-700 text-stone-400 hover:border-stone-500"}`} data-testid="craft-bench-setup"><Settings2 className="h-3.5 w-3.5" /></button>
+  );
   return (
     <div className="space-y-2" data-testid={`craft-bench-${kind}`}>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-700 bg-stone-900/60 px-2.5 py-1.5">
-        <Icon className="h-4 w-4 text-amber-400" />
-        <span className="text-[10px] uppercase tracking-wide text-amber-400/80">{CRAFT_KIND_LABEL[kind]}</span>
-        {holder && <span className="text-xs text-stone-200">{holder.name}</span>}
-        {holder && <span className="text-[11px] text-stone-400">skill <span className="font-mono text-stone-200">{skill >= 0 ? "+" : "−"}{Math.abs(skill)}</span>{bonus ? <> · station <span className="font-mono text-stone-200">{bonus > 0 ? "+" : "−"}{Math.abs(bonus)}</span></> : null}</span>}
-        <span className="text-[11px] text-stone-500" data-testid="craft-bench-makes">{limits ? `makes ${limits.length} recipe${limits.length === 1 ? "" : "s"}` : "makes every recipe"}</span>
-        <span className="ml-auto inline-flex items-center gap-1">
-          {mayPlay && sessionId && <button type="button" onClick={reset} className="h-7 px-2 rounded-md text-[11px] text-stone-400 hover:text-red-300" data-testid="craft-bench-reset">Start over</button>}
-          {viewer.isGM && <button type="button" onClick={() => setSetup((v) => !v)} className={`h-7 px-2 rounded-md border text-[11px] inline-flex items-center gap-1 ${setup ? "border-amber-600 text-amber-200" : "border-stone-700 text-stone-300 hover:border-stone-500"}`} data-testid="craft-bench-setup"><Settings2 className="h-3.5 w-3.5" /> Station setup</button>}
-        </span>
-      </div>
       {setup && viewer.isGM && <StationSetup noteId={noteId} />}
-      {note.isTemplate ? <div className="text-xs text-stone-500 p-2 rounded-md border border-dashed border-stone-700">Stations made from this template open their craft here.</div>
-        : !holder ? <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-3 text-xs text-stone-400 flex items-center gap-2" data-testid="craft-bench-unheld"><Icon className="h-4 w-4 text-amber-400/80" /> Give this to a character to craft with it — their {CRAFT_KIND_LABEL[kind]} opens here.</div>
-        : sessionId ? <CraftBody sessionId={sessionId} characterId={holder.id} kind={kind} station={noteId} claim={claim} onClaimed={() => setClaim(false)} />
-        : mayPlay ? (
-          <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-4 flex flex-wrap items-center gap-3">
-            <button type="button" disabled={busy} onClick={craft} className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50" data-testid={`craft-open-${kind}`}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />} Craft
-            </button>
-            <span className="text-xs text-stone-400">{holder.ownerIds.includes(viewer.userId) ? `Work the ${note.name} — whoever presses Craft is the one crafting.` : `Craft as ${holder.name} — or wait, and watch when they start.`}</span>
-          </div>
-        ) : <div className="text-xs text-stone-500 p-3">Nobody is crafting here right now.</div>}
+      {note.isTemplate || !holder ? (
+        <>
+          <div className="flex items-center gap-1.5">{head}<span className="ml-auto">{gear}</span></div>
+          {note.isTemplate ? <div className="text-xs text-stone-500 p-2 rounded-md border border-dashed border-stone-700">Stations made from this template open their craft here.</div>
+            : <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-3 text-xs text-stone-400 flex items-center gap-2" data-testid="craft-bench-unheld"><Icon className="h-4 w-4 text-amber-400/80" /> Give this to a character to craft with it — their {CRAFT_KIND_LABEL[kind]} opens here.</div>}
+        </>
+      ) : <CraftBody sessionId={sessionId} characterId={holder.id} kind={kind} station={noteId} ensureSession={ensureSession} head={head} tail={gear} />}
     </div>
   );
 }

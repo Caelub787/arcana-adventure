@@ -66,6 +66,37 @@ export function drawMetal(ctx: CanvasRenderingContext2D, metal: string, color: s
   ctx.restore();
 }
 
+/** The outline as the cells' own edges (what can actually be hammered to), and the stock still to move, tinted. */
+export function drawTarget(ctx: CanvasRenderingContext2D, mask: boolean[], metal: string, x: number, y: number, w: number, h: number, t: number) {
+  const cw = w / FORGE_COLS, ch = h / FORGE_ROWS;
+  const inMask = (r: number, c: number) => r >= 0 && c >= 0 && r < FORGE_ROWS && c < FORGE_COLS && mask[r * FORGE_COLS + c];
+  ctx.save();
+  // Stock outside the outline: a soft red wash, so what's left to do is obvious at a glance.
+  ctx.fillStyle = `rgba(239,68,68,${0.16 + 0.06 * Math.sin(t * 4)})`;
+  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
+    const i = r * FORGE_COLS + c;
+    if (metal[i] === "1" && !mask[i]) ctx.fillRect(x + c * cw, y + r * ch, cw, ch);
+  }
+  // Outline cells already hammered into: dark notches.
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
+    const i = r * FORGE_COLS + c;
+    if (mask[i] && metal[i] !== "1") ctx.fillRect(x + c * cw + 1, y + r * ch + 1, cw - 2, ch - 2);
+  }
+  ctx.beginPath();
+  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
+    if (!inMask(r, c)) continue;
+    const X = x + c * cw, Y = y + r * ch;
+    if (!inMask(r - 1, c)) { ctx.moveTo(X, Y); ctx.lineTo(X + cw, Y); }
+    if (!inMask(r + 1, c)) { ctx.moveTo(X, Y + ch); ctx.lineTo(X + cw, Y + ch); }
+    if (!inMask(r, c - 1)) { ctx.moveTo(X, Y); ctx.lineTo(X, Y + ch); }
+    if (!inMask(r, c + 1)) { ctx.moveTo(X + cw, Y); ctx.lineTo(X + cw, Y + ch); }
+  }
+  ctx.lineWidth = 2; ctx.strokeStyle = "rgba(250,204,21,0.95)"; ctx.shadowColor = "#facc15"; ctx.shadowBlur = 6;
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Where each part of an assembled weapon sits along it (fractions of its length). */
 function layout(parts: Array<{ part: ForgePart }>) {
   const len = (p: ForgePart) => (p.role === "blade" ? 0.58 : p.role === "handle" ? (p.shape === "long_haft" ? 0.7 : 0.3) : p.shape === "pommel" ? 0.07 : p.shape === "fletching" ? 0.16 : 0.07);
