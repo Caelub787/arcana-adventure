@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from "@shared/agnostic/types";
 import { noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
-  traceAccuracy, stationAllows, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
+  traceAccuracy, stationAllows, metalFits, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
 } from "@shared/agnostic/crafting";
@@ -264,6 +264,18 @@ export async function syncScrolls(store: ScopeStore, defId: string, cs: ChangeSe
   }
 }
 
+/** An item with "rune_sockets" takes that many runes (its rank decides); one with no such value, any number. */
+export function socketsOf(store: ScopeStore, itemId: string): { max: number | null; used: number } {
+  const used = store.linksOf(itemId).filter((l) => l.toNoteId === itemId && fieldsOf(store, l.fromNoteId).has("sigil")).length;
+  return fieldsOf(store, itemId).has("rune_sockets") ? { max: Math.max(0, Math.floor(numOf(valueOf(store, itemId, "rune_sockets")))), used } : { max: null, used };
+}
+function needSocket(store: ScopeStore, item: AgNote) {
+  const { max, used } = socketsOf(store, item.id);
+  if (max === null) return;
+  if (max === 0) fail(`${item.name} has no rune sockets — its rank is too low`);
+  if (used >= max) fail(`${item.name}'s rune sockets are full (${used} of ${max})`);
+}
+
 async function announce(ctx: Ctx, text: string) {
   if (ctx.store.scope.kind === "campaign") await ctx.host.postChat?.(ctx.store.scope.id, { sender: "Crafting", text, audience: "everyone" }).catch(() => {});
 }
@@ -274,7 +286,10 @@ async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ 
     const v = e.values[tier];
     if (v === undefined) continue;
     const cur = numOf(fieldsOf(store, noteId).get(e.key)?.value);
-    await setValue(store, noteId, e.key, e.mode === "set" ? v : cur + v, cs);
+    const next = e.mode === "set" ? v : cur + v;
+    await setValue(store, noteId, e.key, next, cs);
+    // Durability set by craftsmanship is its full durability too.
+    if (e.key === "durability" && fieldsOf(store, noteId).has("durability_max")) await setValue(store, noteId, "durability_max", next, cs);
   }
 }
 
@@ -355,6 +370,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
           item_type: "Part", part_key: part.key, part_role: part.role, part_shape: part.shape, blueprint_id: bp.id, part_of: bp.name, material: material.name,
           metal_color: String(valueOf(store, material.id, "metal_color") ?? "#a8a29e"), quality: st.quality, durability: st.durability, durability_max: st.durability,
           damage_bonus: st.damageBonus, accuracy: st.accuracy, weight: st.weight, value: st.value, qty: 1, craft_tier: TIER_LABEL[st.tier],
+          ...(body.metal && metalFits(body.metal) ? { part_metal: body.metal } : {}),
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs);
         await setPortrait(ctx, item.id, body.portrait, cs);
@@ -522,6 +538,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const rune = { name: def.name };
       const target = inInventory(inv, body.targetId, "The item to inscribe");
       if (target.id === body.inkId || target.id === body.toolId) fail("Pick a different item to inscribe");
+      needSocket(store, target);
       const use = gather(store, inv.filter((n) => n.id !== target.id), config.ingredients);
       let tool = body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
       // Freehand: nobody knew which rune it would be, so any fitting tool they carry will do.

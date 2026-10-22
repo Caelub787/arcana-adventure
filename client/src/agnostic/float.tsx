@@ -66,7 +66,7 @@ export interface SelItem {
 }
 
 /** The chooser: search, filter chips, a scrolling list of rows. Click a row to pick it. */
-export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen, noneLabel, actions, emptyText = "Nothing here yet.", searchPlaceholder = "Search…", freeText, testId = "ag-selector", hint }: {
+export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen, noneLabel, actions, emptyText = "Nothing here yet.", searchPlaceholder = "Search…", freeText, testId = "ag-selector", hint, onHold }: {
   title: React.ReactNode; items: SelItem[]; onPick: (id: string) => void; onClose: () => void;
   selectedId?: string | null; keepOpen?: boolean;
   /** Adds a first row that clears the choice (onPick("")). */
@@ -77,6 +77,8 @@ export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen
   /** Offer what was typed as a choice when it matches this test (e.g. @owner.hp). */
   freeText?: (q: string) => string | null;
   testId?: string; hint?: React.ReactNode;
+  /** Press and hold (or right-click) a row: e.g. choose how many before adding. */
+  onHold?: (id: string) => void;
 }) {
   const [q, setQ] = useState("");
   const [group, setGroup] = useState<string>("");
@@ -111,7 +113,7 @@ export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen
         )}
         {noneLabel && !s && <Row onClick={() => pick("")} icon={<X className="h-4 w-4 text-stone-500" />} name={noneLabel} active={!selectedId} testId={`${testId}-none`} />}
         {shown.map((i) => (
-          <Row key={i.id} onClick={() => pick(i.id)} image={i.image} icon={i.icon} name={i.name} sub={i.sub} badge={i.badge} active={selectedId === i.id} mono={i.mono} testId={`${testId}-item-${i.name}`} />
+          <Row key={i.id} onClick={() => pick(i.id)} onHold={onHold && !i.id.startsWith("b:") ? () => onHold(i.id) : undefined} image={i.image} icon={i.icon} name={i.name} sub={i.sub} badge={i.badge} active={selectedId === i.id} mono={i.mono} testId={`${testId}-item-${i.name}`} />
         ))}
         {!shown.length && !free && <div className="text-center py-8 text-sm text-stone-500">{s ? "Nothing matches." : emptyText}</div>}
       </div>
@@ -119,9 +121,19 @@ export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen
   );
 }
 
-function Row({ onClick, image, icon, name, sub, badge, active, mono, testId }: { onClick: () => void; image?: string | null; icon?: React.ReactNode; name: string; sub?: React.ReactNode; badge?: string; active?: boolean; mono?: boolean; testId?: string }) {
+function Row({ onClick, onHold, image, icon, name, sub, badge, active, mono, testId }: { onClick: () => void; onHold?: () => void; image?: string | null; icon?: React.ReactNode; name: string; sub?: React.ReactNode; badge?: string; active?: boolean; mono?: boolean; testId?: string }) {
+  // Holding a row (or right-clicking it) does the "more" action instead of the click.
+  const timer = useRef<number | null>(null);
+  const held = useRef(false);
+  const stop = () => { if (timer.current) { window.clearTimeout(timer.current); timer.current = null; } };
+  const hold = onHold ? {
+    onPointerDown: (e: React.PointerEvent) => { if (e.button !== 0) return; held.current = false; stop(); timer.current = window.setTimeout(() => { held.current = true; timer.current = null; onHold(); }, 450); },
+    onPointerUp: stop, onPointerLeave: stop, onPointerCancel: stop,
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); stop(); if (!held.current) onHold(); held.current = true; },
+    style: { WebkitTouchCallout: "none", userSelect: "none" } as React.CSSProperties,
+  } : {};
   return (
-    <button type="button" onClick={onClick} className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-left transition-colors ${active ? "bg-amber-900/25 border-amber-600" : "bg-stone-800 border-stone-700 hover:border-amber-700"}`} data-testid={testId}>
+    <button type="button" {...hold} onClick={() => { if (held.current) { held.current = false; return; } onClick(); }} className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-left transition-colors ${active ? "bg-amber-900/25 border-amber-600" : "bg-stone-800 border-stone-700 hover:border-amber-700"}`} data-testid={testId}>
       {image ? <img src={image} alt="" className="h-9 w-9 rounded object-cover shrink-0" draggable={false} />
         : <span className="h-9 w-9 rounded bg-stone-900 border border-stone-700 grid place-items-center shrink-0 text-amber-400">{icon ?? <span className="text-sm text-stone-500">{name.slice(0, 1).toUpperCase()}</span>}</span>}
       <span className="flex-1 min-w-0">
@@ -133,6 +145,29 @@ function Row({ onClick, image, icon, name, sub, badge, active, mono, testId }: {
       </span>
       {active ? <Check className="h-4 w-4 text-amber-400 shrink-0" /> : <ChevronRight className="h-4 w-4 text-stone-600 shrink-0" />}
     </button>
+  );
+}
+
+/** How many? — a small floating panel with big +/− buttons (thumb-sized on a phone) and quick amounts. */
+export function QtyPicker({ title, initial = 1, onPick, onClose, confirm = "Add", testId = "ag-qty-picker" }: { title: React.ReactNode; initial?: number; onPick: (n: number) => void; onClose: () => void; confirm?: string; testId?: string }) {
+  const [n, setN] = useState(String(initial));
+  const v = Math.max(1, Math.min(1_000_000, Math.round(Number(n) || 1)));
+  const btn = "h-11 w-11 rounded-lg border border-stone-700 bg-stone-800 text-stone-100 text-lg grid place-items-center active:bg-stone-700";
+  return (
+    <AgPanel title={title} onClose={onClose} width={320} height={280} testId={testId}>
+      <div className="space-y-3">
+        <div className="flex items-center justify-center gap-2">
+          <button type="button" className={btn} onClick={() => setN(String(Math.max(1, v - 1)))} aria-label="One less">−</button>
+          <input value={n} inputMode="numeric" onChange={(e) => setN(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { onPick(v); onClose(); } }} autoFocus
+            className="h-11 w-28 rounded-lg bg-stone-950 border border-stone-700 text-center text-xl font-mono text-stone-100 outline-none focus:border-amber-600" data-testid={`${testId}-input`} />
+          <button type="button" className={btn} onClick={() => setN(String(v + 1))} aria-label="One more">+</button>
+        </div>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {[1, 5, 10, 25, 50, 100].map((k) => <button key={k} type="button" onClick={() => setN(String(k))} className={`h-8 px-3 rounded-full border text-xs ${v === k ? "border-amber-500 text-amber-200 bg-amber-500/10" : "border-stone-700 text-stone-300"}`}>{k}</button>)}
+        </div>
+        <button type="button" onClick={() => { onPick(v); onClose(); }} className="w-full h-10 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" data-testid={`${testId}-ok`}>{confirm} {v}</button>
+      </div>
+    </AgPanel>
   );
 }
 

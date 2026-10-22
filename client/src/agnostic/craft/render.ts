@@ -1,6 +1,6 @@
 // Drawing for the crafting tools: glowing metal, finished weapons, sigils —
 // and the pictures crafted items get as their portraits.
-import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, assemblyOrder, type ForgePart } from "@shared/agnostic/crafting";
+import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, FINE_COLS, FINE_ROWS, assemblyOrder, type ForgePart, type Metal } from "@shared/agnostic/crafting";
 
 /** Metal colour by heat (0 cold … 1 white-hot), tinted toward the material's own colour when cool. */
 export function heatColor(t: number, base = "#9ca3af"): string {
@@ -45,55 +45,73 @@ export function drawSolidPart(ctx: CanvasRenderingContext2D, shape: string, colo
   ctx.restore();
 }
 
-/** The metal on the anvil, cell by cell, glowing with its heat. */
-export function drawMetal(ctx: CanvasRenderingContext2D, metal: string, color: string, heat: number, x: number, y: number, w: number, h: number) {
-  const cw = w / FORGE_COLS, ch = h / FORGE_ROWS;
-  const fill = heatColor(heat, color);
+const rgbOf = (css: string): [number, number, number] => { const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(css); return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : hexRgb(css); };
+let scratch: HTMLCanvasElement | null = null;
+const scratchCanvas = () => { if (!scratch) { scratch = document.createElement("canvas"); scratch.width = FINE_COLS; scratch.height = FINE_ROWS; } return scratch; };
+/** Paint fine cells into the scratch image: `pick` gives each cell's colour (or null to leave it clear). */
+function paintCells(pick: (i: number, r: number, c: number) => [number, number, number, number] | null): HTMLCanvasElement {
+  const c = scratchCanvas();
+  const g = c.getContext("2d")!;
+  const img = g.createImageData(FINE_COLS, FINE_ROWS);
+  for (let r = 0; r < FINE_ROWS; r++) for (let k = 0; k < FINE_COLS; k++) {
+    const i = r * FINE_COLS + k;
+    const v = pick(i, r, k);
+    if (!v) continue;
+    img.data.set(v, i * 4);
+  }
+  g.putImageData(img, 0, 0);
+  return c;
+}
+
+/** The metal (its fine cells), glowing with its heat: lit along its top edges, shadowed along the bottom. */
+export function drawMetal(ctx: CanvasRenderingContext2D, metal: Metal, color: string, heat: number, x: number, y: number, w: number, h: number) {
+  const [br, bg, bb] = rgbOf(heatColor(heat, color));
+  const lift = heat > 0.3 ? 0.35 : 0.28;
+  const on = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
+  const img = paintCells((i, r, c) => {
+    if (!metal[i]) return null;
+    const top = !on(r - 1, c), bottom = !on(r + 1, c);
+    const k = top ? lift : bottom ? -0.35 : 0;
+    const f = (v: number) => Math.round(k >= 0 ? v + (255 - v) * k : v * (1 + k));
+    return [f(br), f(bg), f(bb), 255];
+  });
   ctx.save();
+  ctx.imageSmoothingEnabled = false;
   if (heat > 0.3) { ctx.shadowColor = heatColor(Math.min(1, heat + 0.1), color); ctx.shadowBlur = 18 * heat; }
-  ctx.fillStyle = fill;
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    if (metal[r * FORGE_COLS + c] !== "1") continue;
-    ctx.fillRect(x + c * cw - 0.3, y + r * ch - 0.3, cw + 0.6, ch + 0.6);
-  }
-  ctx.shadowBlur = 0;
-  // Each cell's lit top edge, so the metal reads as hammered, not flat.
-  ctx.fillStyle = heat > 0.3 ? "rgba(255,255,220,0.25)" : "rgba(255,255,255,0.12)";
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    if (metal[r * FORGE_COLS + c] !== "1" || (r > 0 && metal[(r - 1) * FORGE_COLS + c] === "1")) continue;
-    ctx.fillRect(x + c * cw, y + r * ch, cw, Math.max(1, ch * 0.18));
-  }
+  ctx.drawImage(img, x, y, w, h);
   ctx.restore();
 }
 
-/** The outline as the cells' own edges (what can actually be hammered to), and the stock still to move, tinted. */
-export function drawTarget(ctx: CanvasRenderingContext2D, mask: boolean[], metal: string, x: number, y: number, w: number, h: number, t: number) {
-  const cw = w / FORGE_COLS, ch = h / FORGE_ROWS;
-  const inMask = (r: number, c: number) => r >= 0 && c >= 0 && r < FORGE_ROWS && c < FORGE_COLS && mask[r * FORGE_COLS + c];
+/** The outline to work to (its true points and curves), and the stock still to remove, tinted. */
+export function drawTarget(ctx: CanvasRenderingContext2D, shape: string, mask: Metal, metal: Metal, x: number, y: number, w: number, h: number, t: number) {
+  const a = Math.round(255 * (0.18 + 0.06 * Math.sin(t * 4)));
+  const img = paintCells((i) => (metal[i] && !mask[i] ? [239, 68, 68, a] : mask[i] && !metal[i] ? [0, 0, 0, 150] : null));
   ctx.save();
-  // Stock outside the outline: a soft red wash, so what's left to do is obvious at a glance.
-  ctx.fillStyle = `rgba(239,68,68,${0.16 + 0.06 * Math.sin(t * 4)})`;
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    const i = r * FORGE_COLS + c;
-    if (metal[i] === "1" && !mask[i]) ctx.fillRect(x + c * cw, y + r * ch, cw, ch);
-  }
-  // Outline cells already hammered into: dark notches.
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    const i = r * FORGE_COLS + c;
-    if (mask[i] && metal[i] !== "1") ctx.fillRect(x + c * cw + 1, y + r * ch + 1, cw - 2, ch - 2);
-  }
-  ctx.beginPath();
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    if (!inMask(r, c)) continue;
-    const X = x + c * cw, Y = y + r * ch;
-    if (!inMask(r - 1, c)) { ctx.moveTo(X, Y); ctx.lineTo(X + cw, Y); }
-    if (!inMask(r + 1, c)) { ctx.moveTo(X, Y + ch); ctx.lineTo(X + cw, Y + ch); }
-    if (!inMask(r, c - 1)) { ctx.moveTo(X, Y); ctx.lineTo(X, Y + ch); }
-    if (!inMask(r, c + 1)) { ctx.moveTo(X + cw, Y); ctx.lineTo(X + cw, Y + ch); }
-  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, x, y, w, h);
   ctx.lineWidth = 2; ctx.strokeStyle = "rgba(250,204,21,0.95)"; ctx.shadowColor = "#facc15"; ctx.shadowBlur = 6;
-  ctx.stroke();
+  shapePath(ctx, shape, x, y, w, h); ctx.stroke();
+  ctx.restore();
+}
+/** The hammer's blocks, faintly (where a blow lands). */
+export function drawBlocks(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save(); ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1; ctx.beginPath();
+  for (let c = 0; c <= FORGE_COLS; c++) { const X = x + (c * w) / FORGE_COLS; ctx.moveTo(X, y); ctx.lineTo(X, y + h); }
+  for (let r = 0; r <= FORGE_ROWS; r++) { const Y = y + (r * h) / FORGE_ROWS; ctx.moveTo(x, Y); ctx.lineTo(x + w, Y); }
+  ctx.stroke(); ctx.restore();
+}
+/** The grindstone at work: a spinning wheel where it touches. */
+export function drawWheel(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number) {
+  ctx.save();
+  ctx.translate(x, y - r * 0.85);
+  ctx.globalAlpha = 0.9;
+  const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+  g.addColorStop(0, "#78716c"); g.addColorStop(0.8, "#57534e"); g.addColorStop(1, "#292524");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+  ctx.rotate(t * 30);
+  ctx.strokeStyle = "rgba(255,255,255,0.18)"; ctx.lineWidth = 2;
+  for (let k = 0; k < 8; k++) { ctx.rotate(Math.PI / 4); ctx.beginPath(); ctx.moveTo(r * 0.25, 0); ctx.lineTo(r * 0.95, 0); ctx.stroke(); }
+  ctx.fillStyle = "#1c1917"; ctx.beginPath(); ctx.arc(0, 0, r * 0.18, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
@@ -107,7 +125,7 @@ function layout(parts: Array<{ part: ForgePart }>) {
 }
 
 /** A whole weapon on a dark, glowing backdrop — the finished item's picture. */
-export function weaponPortrait(parts: Array<{ part: ForgePart; color: string }>, size = 320, opts: { failed?: boolean; tierColor?: string } = {}): string {
+export function weaponPortrait(parts: Array<{ part: ForgePart; color: string; /** The part as it was actually hammered and ground. */ metal?: Metal | null }>, size = 320, opts: { failed?: boolean; tierColor?: string } = {}): string {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
@@ -117,10 +135,14 @@ export function weaponPortrait(parts: Array<{ part: ForgePart; color: string }>,
   ctx.rotate(-Math.PI / 4);
   const L = size * 1.12;
   const colorOf = new Map(parts.map((x) => [x.part.key, x.color]));
+  const metalOf = new Map(parts.map((x) => [x.part.key, x.metal ?? null]));
   for (const seg of layout(parts)) {
     const w = seg.w * L, h = seg.part.role === "blade" ? Math.max(size * 0.13, w * 0.24) : seg.part.role === "handle" ? size * 0.09 : seg.part.shape === "guard" ? size * 0.26 : size * 0.12;
     const x = -L / 2 + seg.from * L;
-    drawSolidPart(ctx, seg.part.shape, opts.failed ? "#57534e" : colorOf.get(seg.part.key) ?? "#9ca3af", x, -h / 2, w, h, seg.part.role === "blade" ? 10 : 0);
+    const col = opts.failed ? "#57534e" : colorOf.get(seg.part.key) ?? "#9ca3af";
+    const metal = metalOf.get(seg.part.key);
+    if (metal) drawMetal(ctx, metal, col, 0, x, -h / 2, w, h);
+    else drawSolidPart(ctx, seg.part.shape, col, x, -h / 2, w, h, seg.part.role === "blade" ? 10 : 0);
   }
   ctx.restore();
   if (opts.failed) crack(ctx, size);
@@ -128,7 +150,7 @@ export function weaponPortrait(parts: Array<{ part: ForgePart; color: string }>,
 }
 
 /** One part, as it came off the anvil. */
-export function partPortrait(shape: string, metal: string | null, color: string, size = 256): string {
+export function partPortrait(shape: string, metal: Metal | null, color: string, size = 256): string {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
@@ -224,7 +246,7 @@ export async function runePortrait(base: string | null, name: string, runes: Run
 }
 
 /** Embers and sparks: tiny particles that fly and fade (drawn each frame). */
-export interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number }
+export interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; /** Falls this fast (else the default). */ gravity?: number; /** A falling chip of metal, not a spark. */ square?: boolean }
 export function stepParticles(ctx: CanvasRenderingContext2D, ps: Particle[], dt: number, gravity = 260) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -232,10 +254,17 @@ export function stepParticles(ctx: CanvasRenderingContext2D, ps: Particle[], dt:
     const p = ps[i];
     p.life -= dt;
     if (p.life <= 0) { ps.splice(i, 1); continue; }
-    p.vy += gravity * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += (p.gravity ?? gravity) * dt; p.x += p.vx * dt; p.y += p.vy * dt;
     const a = p.life / p.max;
-    ctx.globalAlpha = a;
     ctx.fillStyle = p.color;
+    if (p.square) {
+      // A chip of metal tumbling off the anvil (solid, not glowing).
+      ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = Math.min(1, a * 1.5);
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      ctx.globalCompositeOperation = "lighter";
+      continue;
+    }
+    ctx.globalAlpha = a;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.5 + a * 0.5), 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();

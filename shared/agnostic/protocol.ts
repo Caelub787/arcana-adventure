@@ -25,7 +25,7 @@ export type AgOp =
    * the inventory, an ability into the abilities, an aspect into an ability).
    * fromNoteId: it was dragged off that sheet — it moves (off that one, onto this one).
    */
-  | { op: "note.attach"; hostNoteId: string; noteId: string; label?: string; reverseLabel?: string; fromNoteId?: string }
+  | { op: "note.attach"; hostNoteId: string; noteId: string; label?: string; reverseLabel?: string; fromNoteId?: string; /** How many (lists that give copies of items with a "qty"). */ qty?: number }
   /** Templates this viewer may add from (players only see ones the GM allowed). */
   | { op: "note.creatableTemplates"; types?: string[] }
   /** Add a ready-made starter kit (templates, and optionally example sheets) to this scope. */
@@ -61,7 +61,7 @@ export type AgOp =
   // Crafting (see shared/agnostic/crafting.ts and server/agnostic/crafting.ts)
   | { op: "craft.session"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; kind: "forge" | "alchemy" | "rune"; fresh?: boolean }
   | { op: "craft.close"; sessionId: string }
-  | { op: "craft.forgePart"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partKey: string; materialId: string; shape: number; heat: number; portrait?: string | null }
+  | { op: "craft.forgePart"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partKey: string; materialId: string; shape: number; heat: number; portrait?: string | null; /** The part as hammered and ground (packed fine cells), for the weapon's picture. */ metal?: string | null }
   | { op: "craft.forgeWeapon"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partIds: Record<string, string>; portrait?: string | null; name?: string }
   | { op: "craft.forgeQuick"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; materials: Record<string, string>; portrait?: string | null; name?: string }
   | { op: "craft.brew"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; recipeId: string; mode: "quick" | "game"; accuracy?: number }

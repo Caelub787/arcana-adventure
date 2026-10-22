@@ -3,17 +3,17 @@
 // glowing stock down to the outline. Parts already made (now or in an earlier
 // session) are used for that blueprint; with every part made, assemble the weapon.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Flame, Hammer, Wind, Droplets, ArrowLeft, Check, Circle } from "lucide-react";
+import { Flame, Hammer, Wind, Droplets, ArrowLeft, Check, Circle, Disc3 } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
-  FORGE_COLS, FORGE_ROWS, startingStock, shapeMask, shapeScore, strikeMetal, metalFits, partStats, numOf, TIER_COLOR, TIER_LABEL,
-  type ForgeConfig, type ForgePart,
+  FORGE_SHAPES, FINE_COLS, FINE_ROWS, startingStock, shapeMask, shapeScore, hammerMetal, grindMetal, breakLoose, packMetal, unpackMetal, partStats, numOf, TIER_COLOR, TIER_LABEL,
+  type ForgeConfig, type ForgePart, type Metal,
 } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, qtyOf, inventoryOf, type CraftState } from "./session";
 import { ItemTile, ResultBanner, QuickCraftButton, useDefs, announceRoll, colorOf, Needs, NoneKnown, NotHere, stationNameOf, ChoiceRow, DefStrip, DefCard, type CraftOutcome, type KnownDef } from "./common";
-import { drawMetal, drawTarget, heatColor, stepParticles, weaponPortrait, partPortrait, type Particle } from "./render";
+import { drawMetal, drawTarget, drawBlocks, drawWheel, heatColor, stepParticles, weaponPortrait, partPortrait, type Particle } from "./render";
 
 interface Props {
   characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean;
@@ -57,6 +57,7 @@ function ForgePlan({ characterId, defs, s, set, start, playing, openNote, statio
   // Parts made for this blueprint (now, or in an earlier session) — the best is used unless another is picked.
   const made = (part: ForgePart) => inventory.filter((n) => valueOn(state, n.id, "blueprint_id") === bp?.defId && valueOn(state, n.id, "part_key") === part.key)
     .sort((a, b) => numOf(valueOn(state, b.id, "quality")) - numOf(valueOn(state, a.id, "quality")));
+  const metalOn = (id: string) => { const v = valueOn(state, id, "part_metal"); return typeof v === "string" ? unpackMetal(v) : null; };
   const pieceFor = (part: ForgePart) => { const m = made(part); return m.find((n) => n.id === picks[part.key]) ?? m[0]; };
   const [busy, setBusy] = useState(false);
   const required = bp ? bp.config.parts.filter((p) => !p.optional) : [];
@@ -64,7 +65,7 @@ function ForgePlan({ characterId, defs, s, set, start, playing, openNote, statio
     if (!bp) return null;
     const parts = bp.config.parts.filter((p) => !p.optional || mats[p.key] || pieceFor(p)).map((p) => {
       const piece = pieceFor(p);
-      return { part: p, color: piece ? colorOf(state, piece.id, "metal_color", "#9ca3af") : mats[p.key] ? colorOf(state, mats[p.key]!, "metal_color", "#9ca3af") : "#57534e" };
+      return { part: p, color: piece ? colorOf(state, piece.id, "metal_color", "#9ca3af") : mats[p.key] ? colorOf(state, mats[p.key]!, "metal_color", "#9ca3af") : "#57534e", metal: piece ? metalOn(piece.id) : null };
     });
     try { return weaponPortrait(parts, 240); } catch { return null; }
   }, [bp, JSON.stringify(mats), JSON.stringify(picks), state]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -76,7 +77,8 @@ function ForgePlan({ characterId, defs, s, set, start, playing, openNote, statio
       const pieces: Record<string, string> = {};
       for (const p of bp.config.parts) { const piece = pieceFor(p); if (piece) pieces[p.key] = piece.id; }
       const chosen = op === "craft.forgeQuick" ? mats : pieces;
-      const parts = bp.config.parts.filter((p) => chosen[p.key]).map((p) => ({ part: p, color: colorOf(state, chosen[p.key]!, "metal_color", "#9ca3af") }));
+      // The weapon's picture is the parts as they were actually made.
+      const parts = bp.config.parts.filter((p) => chosen[p.key]).map((p) => ({ part: p, color: colorOf(state, chosen[p.key]!, "metal_color", "#9ca3af"), metal: op === "craft.forgeWeapon" ? metalOn(chosen[p.key]!) : null }));
       const portrait = weaponPortrait(parts, 320);
       const res: CraftOutcome = await request(op === "craft.forgeQuick"
         ? { op, characterId, stationId, blueprintId: bp.id, materials: Object.fromEntries(Object.entries(mats).filter(([, v]) => !!v)) as Record<string, string>, portrait }
@@ -149,7 +151,7 @@ function ForgePlan({ characterId, defs, s, set, start, playing, openNote, statio
                     </div>
                     {playing && (
                       <button type="button" disabled={!mat || qtyOf(state, mat) < 1} title={!mat ? `Pick a material for the ${part.label.toLowerCase()}` : undefined}
-                        onClick={() => start({ stage: "anvil", part: part.key, metal: startingStock(part.shape), heat: 20, good: 0, bad: 0, strikes: 0, result: undefined })}
+                        onClick={() => start({ stage: "anvil", part: part.key, metal: packMetal(startingStock(part.shape)), tool: "hammer", heat: 20, good: 0, bad: 0, strikes: 0, result: undefined })}
                         className="shrink-0 h-8 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid={`forge-start-${part.key}`}>
                         <Hammer className="h-3.5 w-3.5" /> Forge
                       </button>
@@ -185,22 +187,18 @@ function BlueprintSketch({ config }: { config: ForgeConfig }) {
   const src = useMemo(() => { try { return weaponPortrait(config.parts.map((p) => ({ part: p, color: p.role === "handle" ? "#7c5a3a" : "#94a3b8" })), 128); } catch { return ""; } }, [config]);
   return src ? <img src={src} alt="" className="h-16 w-16 opacity-90" /> : null;
 }
-/** A part's outline as its cells (what it really looks like hammered). */
+/** A part's outline. */
 function ShapeChip({ shape, color }: { shape: string; color: string }) {
-  const mask = useMemo(() => shapeMask(shape), [shape]);
-  let r0 = FORGE_ROWS, r1 = 0, c0 = FORGE_COLS, c1 = 0;
-  mask.forEach((m, i) => { if (!m) return; const r = Math.floor(i / FORGE_COLS), c = i % FORGE_COLS; r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); });
-  return (
-    <svg viewBox={`${c0} ${r0} ${Math.max(1, c1 - c0 + 1)} ${Math.max(1, r1 - r0 + 1)}`} className="h-5 w-12 shrink-0" preserveAspectRatio="xMidYMid meet" shapeRendering="crispEdges">
-      {mask.map((m, i) => (m ? <rect key={i} x={i % FORGE_COLS} y={Math.floor(i / FORGE_COLS)} width={1} height={1} fill={color} /> : null))}
-    </svg>
-  );
+  const pts = FORGE_SHAPES[shape]?.points ?? [];
+  return <svg viewBox="0 0 100 40" className="h-5 w-12 shrink-0"><polygon points={pts.map(([x, y]) => `${x},${y}`).join(" ")} fill={color} stroke="#0c0a09" strokeWidth={1.5} /></svg>;
 }
 
 // --------------------------------------------------------------------------- the anvil
-// The bar fills the canvas (it's what you hammer); the heat gauge sits below it.
+// The bar fills the canvas (it's what you work); the heat gauge sits below it.
 const W = 760, H = 320;
 const BAR = { x: 20, y: 16, w: 720, h: 288 };
+const SKILL_WORDS = ["Rough: a blow often knocks the blocks beside it off too.", "Steadier: a blow sometimes takes a neighbour.", "Careful: now and then a neighbour goes too.", "Precise: each blow lands exactly where you strike.", "Master: drag to cut along a line, like a saw."];
+const wheelRadius = (skill: number) => [3.2, 2.8, 2.4, 2, 1.6][Math.max(0, Math.min(4, skill))];
 
 function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: string; bp: KnownDef<ForgeConfig>; s: CraftState; set: Props["set"]; playing: boolean; stationId?: string }) {
   const { state, request, openNote } = useAg();
@@ -208,16 +206,19 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const part = bp.config.parts.find((p) => p.key === s.part) ?? bp.config.parts[0];
   const matId: string | undefined = (s.mats ?? {})[part.key];
   const mat = materialOf(state, matId) ?? { heatMin: 0, heatMax: 100, hasHeat: false, hardness: 3, color: "#9ca3af", weight: 1, value: 1 };
+  const skill = Math.max(0, Math.min(4, Math.floor(numOf(valueOn(state, characterId, "blacksmithing")))));
   const mask = useMemo(() => shapeMask(part.shape), [part.shape]);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ heat: Number(s.heat ?? 20), bellows: false, metal: metalFits(s.metal) ? s.metal : startingStock(part.shape), lastSync: 0 });
+  const fromState = () => (typeof s.metal === "string" ? unpackMetal(s.metal) : null) ?? startingStock(part.shape);
+  const live = useRef({ heat: Number(s.heat ?? 20), bellows: false, metal: fromState(), lastSync: 0, lastMetalSync: 0, dirty: false, pointer: null as null | { x: number; y: number }, lastBlock: -1, lastGrind: 0 });
   const particles = useRef<Particle[]>([]);
   const shake = useRef(0);
   const [busy, setBusy] = useState(false);
-  const [fine, setFine] = useState(false);
+  const tool: "hammer" | "grind" = s.tool === "grind" ? "grind" : "hammer";
+  const [miss, setMiss] = useState(0);
   // Watchers follow the crafter's heat and metal; the crafter runs the furnace.
   useEffect(() => { if (!playing) live.current.heat = Number(s.heat ?? 20); }, [s.heat, playing]);
-  useEffect(() => { if (!playing && metalFits(s.metal)) live.current.metal = s.metal; }, [s.metal, playing]);
+  useEffect(() => { if (!playing || !live.current.dirty) live.current.metal = fromState(); }, [s.metal, playing]); // eslint-disable-line react-hooks/exhaustive-deps
   const inRange = (h: number) => !mat.hasHeat || (h >= mat.heatMin && h <= mat.heatMax);
 
   useEffect(() => {
@@ -231,6 +232,9 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
         // The furnace: the bellows push heat in; otherwise the metal cools toward the air.
         if (mat.hasHeat) L.heat = Math.max(8, Math.min(100, L.heat + (L.bellows ? 32 : -7) * dt));
         if (now - L.lastSync > 140) { L.lastSync = now; set({ heat: Math.round(L.heat * 10) / 10, bellows: L.bellows }); }
+        // The grindstone works while it's held on the metal.
+        if (tool === "grind" && L.pointer && now - L.lastGrind > 35) { L.lastGrind = now; grindAt(L.pointer.x, L.pointer.y); }
+        if (L.dirty && now - L.lastMetalSync > 150) syncMetal(now);
       }
       draw(ctx, t, dt);
       raf = requestAnimationFrame(frame);
@@ -244,56 +248,109 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
     const heat01 = mat.hasHeat ? L.heat / 100 : 0.08;
     ctx.save();
     if (shake.current > 0) { ctx.translate((Math.random() - 0.5) * shake.current, (Math.random() - 0.5) * shake.current); shake.current = Math.max(0, shake.current - dt * 30); }
-    // The anvil's face under the bar, the furnace glow breathing from below.
     const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#1a1614"); bg.addColorStop(1, "#0a0807");
     ctx.fillStyle = bg; ctx.fillRect(-10, -10, W + 20, H + 20);
     const flick = 0.75 + 0.25 * Math.sin(t * 7) * Math.sin(t * 3.3) + (s.bellows ? 0.35 : 0);
     const fg = ctx.createRadialGradient(W / 2, H + 40, 10, W / 2, H + 40, 420 * flick);
     fg.addColorStop(0, `rgba(255,140,40,${0.35 * flick})`); fg.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = fg; ctx.fillRect(0, 0, W, H);
-    // A faint grid: the cells the metal moves in.
-    ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.lineWidth = 1; ctx.beginPath();
-    for (let c = 0; c <= FORGE_COLS; c++) { const x = BAR.x + (c * BAR.w) / FORGE_COLS; ctx.moveTo(x, BAR.y); ctx.lineTo(x, BAR.y + BAR.h); }
-    for (let r = 0; r <= FORGE_ROWS; r++) { const y = BAR.y + (r * BAR.h) / FORGE_ROWS; ctx.moveTo(BAR.x, y); ctx.lineTo(BAR.x + BAR.w, y); }
-    ctx.stroke();
+    if (tool === "hammer") drawBlocks(ctx, BAR.x, BAR.y, BAR.w, BAR.h);
     drawMetal(ctx, L.metal, mat.color, heat01, BAR.x, BAR.y, BAR.w, BAR.h);
-    drawTarget(ctx, mask, L.metal, BAR.x, BAR.y, BAR.w, BAR.h, t);
+    drawTarget(ctx, part.shape, mask, L.metal, BAR.x, BAR.y, BAR.w, BAR.h, t);
     if (Math.random() < (s.bellows ? 0.6 : 0.15)) particles.current.push({ x: Math.random() * W, y: H, vx: (Math.random() - 0.5) * 30, vy: -50 - Math.random() * 60, life: 1.4, max: 1.4, color: "#ff8a3d", size: 1.4 });
     stepParticles(ctx, particles.current, dt);
+    const wheel = playing ? (tool === "grind" ? L.pointer : null) : s.wheel && Date.now() - s.wheel.at < 400 ? s.wheel : null;
+    if (wheel) drawWheel(ctx, wheel.x, wheel.y, 34, t);
     ctx.restore();
   };
 
-  const strike = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!playing || busy) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * W, y = ((e.clientY - rect.top) / rect.height) * H;
-    if (x < BAR.x - 10 || x > BAR.x + BAR.w + 10 || y < BAR.y - 10 || y > BAR.y + BAR.h + 10) return;
+  const cellW = BAR.w / FINE_COLS, cellH = BAR.h / FINE_ROWS;
+  const toFine = (x: number, y: number) => [(x - BAR.x) / cellW, (y - BAR.y) / cellH] as const;
+  const pointOf = (e: React.PointerEvent<HTMLCanvasElement>) => { const r = e.currentTarget.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H }; };
+  /** Pieces no longer joined to the rest fall off the anvil. */
+  const drop = (metal: Metal, color: string) => {
+    const { metal: kept, fell } = breakLoose(metal);
+    for (const i of fell.slice(0, 400)) {
+      const x = BAR.x + ((i % FINE_COLS) + 0.5) * cellW, y = BAR.y + (Math.floor(i / FINE_COLS) + 0.5) * cellH;
+      particles.current.push({ x, y, vx: (Math.random() - 0.5) * 60, vy: -20 - Math.random() * 40, life: 1.4, max: 1.4, color, size: Math.max(cellW, cellH) * 1.1, gravity: 900, square: true } as Particle);
+    }
+    return { metal: kept, fell };
+  };
+  const syncMetal = (now = performance.now(), extra: CraftState = {}) => {
     const L = live.current;
+    L.dirty = false; L.lastMetalSync = now;
+    set({ metal: packMetal(L.metal), ...extra });
+  };
+  const sparks = (x: number, y: number, col: string, n: number) => { for (let k = 0; k < n; k++) { const a = -Math.PI * Math.random(); const v = 120 + Math.random() * 240; particles.current.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.5, max: 1, color: col, size: 1.4 + Math.random() * 1.6 }); } };
+
+  const blow = (x: number, y: number, saw: boolean) => {
+    const L = live.current;
+    const [fx, fy] = toFine(x, y);
+    const block = Math.floor(fy / 4) * 1000 + Math.floor(fx / 4);
+    if (saw && block === L.lastBlock) return;
     const good = inRange(L.heat);
     const cold = mat.hasHeat && L.heat < mat.heatMin;
-    // The fine hammer moves one spot; the heavy one more (less on hard or cold metal, more when it's too hot).
-    const radius = fine ? 0.75 : Math.max(1, Math.min(2.6, (2.6 - mat.hardness * 0.12) * (cold ? 0.55 : good ? 1 : 1.25)));
-    const cx = ((x - BAR.x) / BAR.w) * FORGE_COLS, cy = ((y - BAR.y) / BAR.h) * FORGE_ROWS;
-    const { metal, hit } = strikeMetal(L.metal, cx, cy, radius);
-    if (mat.hasHeat) L.heat = Math.max(8, L.heat - (fine ? 0.8 : 1.6));
-    shake.current = fine ? 2 : 6;
-    const sparkCol = good ? "#ffcc55" : cold ? "#93c5fd" : "#ff5533";
-    for (let k = 0; k < (hit.length ? (good ? 22 : 10) : 4); k++) { const a = -Math.PI * Math.random(); const v = 120 + Math.random() * 240; particles.current.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.5, max: 1, color: sparkCol, size: 1.4 + Math.random() * 1.6 }); }
+    // Off the metal: the hammer rings on the anvil and nothing moves.
+    const onMetal = fx >= 0 && fy >= 0 && fx < FINE_COLS && fy < FINE_ROWS && L.metal[Math.floor(fy) * FINE_COLS + Math.floor(fx)] === 1;
+    if (!onMetal) { if (!saw) { sparks(x, y, "#78716c", 4); setMiss((m) => m + 1); } return; }
+    L.lastBlock = block;
+    // Cold metal often won't move; too hot, it smears into its neighbours.
+    if (cold && Math.random() < 0.5) { sparks(x, y, "#93c5fd", 8); shake.current = 3; set({ strikes: Number(s.strikes ?? 0) + 1, bad: Number(s.bad ?? 0) + 1, lastHit: { x, y, good: false, at: Date.now() } }); return; }
+    const hot = mat.hasHeat && L.heat > mat.heatMax;
+    const { metal: struck, hit } = hammerMetal(L.metal, fx, fy, saw ? 4 : Math.max(0, skill - (hot ? 1 : 0)));
     if (!hit.length) return;
+    const { metal, fell } = drop(struck, heatColor(mat.hasHeat ? L.heat / 100 : 0.08, mat.color));
     L.metal = metal;
-    set({ metal, strikes: Number(s.strikes ?? 0) + 1, good: Number(s.good ?? 0) + (good ? 1 : 0), bad: Number(s.bad ?? 0) + (good ? 0 : 1), lastHit: { x, y, good, at: Date.now() } });
+    if (mat.hasHeat) L.heat = Math.max(8, L.heat - (saw ? 0.4 : 1.6));
+    shake.current = saw ? 1.5 : 6;
+    sparks(x, y, good ? "#ffcc55" : "#ff5533", good ? 20 : 10);
+    syncMetal(performance.now(), { strikes: Number(s.strikes ?? 0) + 1, good: Number(s.good ?? 0) + (good ? 1 : 0), bad: Number(s.bad ?? 0) + (good ? 0 : 1), lastHit: { x, y, good, at: Date.now() }, ...(fell.length ? { lastFall: { cells: fell.slice(0, 300), at: Date.now() } } : {}) });
+  };
+  const grindAt = (x: number, y: number) => {
+    const L = live.current;
+    const [fx, fy] = toFine(x, y);
+    const { metal: ground, hit } = grindMetal(L.metal, fx, fy, wheelRadius(skill));
+    if (!hit.length) return;
+    const { metal, fell } = drop(ground, mat.color);
+    L.metal = metal; L.dirty = true;
+    sparks(x, y, "#fde68a", 3);
+    if (fell.length) set({ lastFall: { cells: fell.slice(0, 300), at: Date.now() } });
   };
 
-  // Watchers see the crafter's sparks too.
+  const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!playing || busy) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const p = pointOf(e);
+    live.current.lastBlock = -1;
+    if (tool === "grind") { live.current.pointer = p; set({ wheel: { ...p, at: Date.now() } }); return; }
+    live.current.pointer = skill >= 4 ? p : null;
+    blow(p.x, p.y, false);
+  };
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const L = live.current;
+    if (!playing || !L.pointer) return;
+    const p = pointOf(e);
+    // A master's hammer cuts along the drag, block by block, like a saw.
+    if (tool === "hammer" && skill >= 4) { const steps = Math.ceil(Math.hypot(p.x - L.pointer.x, p.y - L.pointer.y) / (cellW * 2)); for (let k = 1; k <= steps; k++) blow(L.pointer.x + ((p.x - L.pointer.x) * k) / steps, L.pointer.y + ((p.y - L.pointer.y) * k) / steps, true); }
+    L.pointer = p;
+    if (tool === "grind" && Date.now() - (s.wheel?.at ?? 0) > 120) set({ wheel: { ...p, at: Date.now() } });
+  };
+  const up = () => { const L = live.current; L.pointer = null; if (L.dirty) syncMetal(); };
+
+  // Watchers see the crafter's sparks and the bits that fall.
   useEffect(() => {
     if (playing || !s.lastHit) return;
     const { x, y, good } = s.lastHit;
     shake.current = 5;
-    for (let k = 0; k < 18; k++) { const a = -Math.PI * Math.random(); const v = 120 + Math.random() * 240; particles.current.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6, max: 0.6, color: good ? "#ffcc55" : "#ff5533", size: 1.8 }); }
+    sparks(x, y, good ? "#ffcc55" : "#ff5533", 18);
   }, [s.lastHit?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (playing || !s.lastFall?.cells) return;
+    for (const i of s.lastFall.cells as number[]) particles.current.push({ x: BAR.x + ((i % FINE_COLS) + 0.5) * cellW, y: BAR.y + (Math.floor(i / FINE_COLS) + 0.5) * cellH, vx: (Math.random() - 0.5) * 60, vy: -20, life: 1.4, max: 1.4, color: mat.color, size: Math.max(cellW, cellH) * 1.1, gravity: 900, square: true } as Particle);
+  }, [s.lastFall?.at]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const metalNow = metalFits(s.metal) ? s.metal : live.current.metal;
-  const shapePct = shapeScore(part.shape, metalNow);
+  const metalNow = (typeof s.metal === "string" ? unpackMetal(s.metal) : null) ?? live.current.metal;
+  const shapePct = shapeScore(part.shape, playing ? live.current.metal : metalNow);
   const strikes = Number(s.strikes ?? 0);
   const heatPct = strikes ? Math.round((100 * Number(s.good ?? 0)) / strikes) : mat.hasHeat ? 0 : 100;
   const preview = partStats(part.role, shapePct, mat.hasHeat ? heatPct : 100, mat);
@@ -303,13 +360,15 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
     if (!matId) return;
     setBusy(true);
     try {
-      const portrait = partPortrait(part.shape, metalNow, mat.color);
-      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, stationId, blueprintId: bp.id, partKey: part.key, materialId: matId, shape: shapePct, heat: mat.hasHeat ? heatPct : 100, portrait });
-      set({ stage: "plan", metal: undefined, result: res, picks: { ...(s.picks ?? {}), [part.key]: res.noteId }, mats: { ...(s.mats ?? {}), [part.key]: undefined } });
+      const metal = live.current.metal;
+      const portrait = partPortrait(part.shape, metal, mat.color);
+      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, stationId, blueprintId: bp.id, partKey: part.key, materialId: matId, shape: shapeScore(part.shape, metal), heat: mat.hasHeat ? heatPct : 100, portrait, metal: packMetal(metal) });
+      set({ stage: "plan", metal: undefined, tool: undefined, result: res, picks: { ...(s.picks ?? {}), [part.key]: res.noteId }, mats: { ...(s.mats ?? {}), [part.key]: undefined } });
     } catch (e: any) { toast({ title: "Couldn't save the part", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
   };
   const pctColor = (v: number) => (v >= 80 ? "#4ade80" : v >= 55 ? "#fbbf24" : "#f87171");
+  const toolBtn = (on: boolean) => `h-10 px-3 inline-flex items-center gap-1.5 ${on ? "bg-stone-700 text-stone-100" : "bg-stone-900 text-stone-400"}`;
 
   return (
     <div className="space-y-2" data-testid="forge-anvil">
@@ -317,38 +376,45 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
         {playing && <button type="button" onClick={() => set({ stage: "plan" })} className="h-8 w-8 shrink-0 rounded-md border border-stone-700 text-stone-300 grid place-items-center hover:border-stone-500" title="Back to the plan (this part isn't saved)" data-testid="forge-back"><ArrowLeft className="h-4 w-4" /></button>}
         <div className="min-w-0">
           <div className="text-sm font-semibold text-stone-100 truncate">{bp.name} — {part.label}</div>
-          <div className="text-[11px] text-stone-400 truncate">{matId ? state.notes.get(matId)?.name : "no material"}{mat.hasHeat ? ` · keep it at ${mat.heatMin}–${mat.heatMax}°` : " · no heat needed"}</div>
+          <div className="text-[11px] text-stone-400 truncate">{matId ? state.notes.get(matId)?.name : "no material"}{mat.hasHeat ? ` · hammer it at ${mat.heatMin}–${mat.heatMax}°` : " · no heat needed"}</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
           <Stat icon={<Hammer className="h-3.5 w-3.5" />} value={`${shapePct}%`} color={pctColor(shapePct)} title="Shape: how close it is to the outline" testId="forge-shape" />
           {mat.hasHeat && <Stat icon={<Flame className="h-3.5 w-3.5" />} value={strikes ? `${heatPct}%` : "—"} color={pctColor(heatPct)} title="Heat control: blows struck in the green band" />}
         </div>
       </div>
-      <canvas ref={canvas} width={W} height={H} onPointerDown={strike} className={`w-full block rounded-lg border border-stone-700 touch-none ${playing ? "cursor-crosshair" : ""}`} data-testid="forge-canvas" />
+      <canvas ref={canvas} width={W} height={H} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up}
+        className={`w-full block rounded-lg border border-stone-700 touch-none select-none ${playing ? "cursor-crosshair" : ""}`} data-testid="forge-canvas" />
       {mat.hasHeat && <HeatGauge heat={heatNow} min={mat.heatMin} max={mat.heatMax} />}
       <div className="flex flex-wrap items-center gap-2">
-        {playing && mat.hasHeat && (
+        {playing && (
+          <div className="inline-flex rounded-md border border-stone-700 overflow-hidden text-xs" data-testid="forge-tool">
+            <button type="button" onClick={() => { up(); set({ tool: "hammer" }); }} className={toolBtn(tool === "hammer")} data-testid="forge-tool-hammer"><Hammer className="h-4 w-4" />Hammer</button>
+            <button type="button" onClick={() => { up(); set({ tool: "grind" }); }} className={toolBtn(tool === "grind")} data-testid="forge-tool-grind"><Disc3 className="h-4 w-4" />Grindstone</button>
+          </div>
+        )}
+        {playing && mat.hasHeat && tool === "hammer" && (
           <button type="button"
             onPointerDown={(e) => { e.preventDefault(); live.current.bellows = true; }} onPointerUp={() => { live.current.bellows = false; }} onPointerLeave={() => { live.current.bellows = false; }} onPointerCancel={() => { live.current.bellows = false; }}
             className={`h-10 px-4 rounded-md border text-sm font-medium inline-flex items-center gap-2 select-none touch-none ${s.bellows ? "border-orange-400 bg-orange-600/30 text-orange-100" : "border-stone-600 bg-stone-800 text-stone-100"}`} data-testid="forge-bellows">
             <Wind className="h-4 w-4" /> Bellows <span className="text-[10px] text-stone-400">hold</span>
           </button>
         )}
-        {playing && (
-          <div className="inline-flex rounded-md border border-stone-700 overflow-hidden text-xs" data-testid="forge-hammer">
-            <button type="button" onClick={() => setFine(false)} className={`h-10 px-3 ${!fine ? "bg-stone-700 text-stone-100" : "bg-stone-900 text-stone-400"}`}>Heavy</button>
-            <button type="button" onClick={() => setFine(true)} className={`h-10 px-3 ${fine ? "bg-stone-700 text-stone-100" : "bg-stone-900 text-stone-400"}`} data-testid="forge-fine">Fine</button>
-          </div>
-        )}
         <span className="text-[11px] text-stone-400">Durability <b className="text-stone-200">{preview.durability}</b> · {part.role === "blade" ? <>Damage <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.damageBonus >= 0 ? "+" : ""}{preview.damageBonus}</b></> : part.role === "handle" ? <>Accuracy <b style={{ color: TIER_COLOR[preview.tier] }}>{preview.accuracy >= 0 ? "+" : ""}{preview.accuracy}</b></> : <b style={{ color: TIER_COLOR[preview.tier] }}>{TIER_LABEL[preview.tier]}</b>}</span>
         {playing && (
-          <button type="button" disabled={busy || strikes === 0} onClick={quench}
+          <button type="button" disabled={busy || (strikes === 0 && shapePct === 0)} onClick={quench}
             className="ml-auto h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40" data-testid="forge-quench">
             <Droplets className="h-4 w-4" /> Quench & save
           </button>
         )}
       </div>
-      {playing && <div className="text-[11px] text-stone-500">Tap the red stock to hammer it away, down to the gold line — each blow moves the surface it reaches. Strike while the heat is in the green band; the fine hammer for the last bits.</div>}
+      {playing && (
+        <div className="text-[11px] text-stone-500" data-testid="forge-hint">
+          {tool === "hammer"
+            ? <>Strike the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Strike the metal itself.</span>}</>
+            : <>Hold the grindstone on the edge and move along it to shape the points and curves the hammer can't. It takes the surface off a little at a time — don't linger.</>}
+        </div>
+      )}
       <ResultBanner result={s.result} onOpen={openNote} />
     </div>
   );

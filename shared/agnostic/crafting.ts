@@ -216,64 +216,153 @@ export function pointInPolygon(x: number, y: number, poly: number[][]): boolean 
   return inside;
 }
 
-/** The forge's metal: a grid over the 100 × 40 box; "1" = metal still there. */
-// Coarse enough to hammer with a fingertip on a phone; the outline follows the cells, so it can be matched exactly.
-export const FORGE_COLS = 40, FORGE_ROWS = 16;
-/** Which cells are inside the outline (to keep) — the rest are stock to hammer away. */
-export function shapeMask(shape: string): boolean[] {
+/**
+ * The forge's metal: a fine grid over the 100 × 40 box (FINE_COLS × FINE_ROWS), fine enough for the outlines'
+ * points and curves. The hammer works in blocks (FORGE_COLS × FORGE_ROWS, FINE × FINE fine cells each) — a
+ * fingertip on a phone; the grindstone takes off fine cells to shape the curves and points.
+ */
+export const FORGE_COLS = 40, FORGE_ROWS = 16, FINE = 4;
+export const FINE_COLS = FORGE_COLS * FINE, FINE_ROWS = FORGE_ROWS * FINE;
+const N = FINE_COLS * FINE_ROWS;
+/** Metal as bits: 1 = still there. */
+export type Metal = Uint8Array;
+
+/** Which fine cells are inside the outline (to keep) — the rest are stock to remove. */
+const maskCache = new Map<string, Metal>();
+export function shapeMask(shape: string): Metal {
+  const hit = maskCache.get(shape);
+  if (hit) return hit;
   const pts = FORGE_SHAPES[shape]?.points ?? FORGE_SHAPES.long_blade.points;
-  const out: boolean[] = [];
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) {
-    out.push(pointInPolygon(((c + 0.5) * 100) / FORGE_COLS, ((r + 0.5) * 40) / FORGE_ROWS, pts));
+  const out = new Uint8Array(N);
+  for (let r = 0; r < FINE_ROWS; r++) for (let c = 0; c < FINE_COLS; c++) out[r * FINE_COLS + c] = pointInPolygon(((c + 0.5) * 100) / FINE_COLS, ((r + 0.5) * 40) / FINE_ROWS, pts) ? 1 : 0;
+  maskCache.set(shape, out);
+  return out;
+}
+/** The starting bar: whole hammer blocks round the outline, with stock all round to work away. */
+export function startingStock(shape: string): Metal {
+  const mask = shapeMask(shape);
+  let r0 = FORGE_ROWS, r1 = -1, c0 = FORGE_COLS, c1 = -1;
+  for (let i = 0; i < N; i++) if (mask[i]) { const R = Math.floor(Math.floor(i / FINE_COLS) / FINE), C = Math.floor((i % FINE_COLS) / FINE); r0 = Math.min(r0, R); r1 = Math.max(r1, R); c0 = Math.min(c0, C); c1 = Math.max(c1, C); }
+  r0 = Math.max(0, r0 - 2); r1 = Math.min(FORGE_ROWS - 1, r1 + 2); c0 = Math.max(0, c0 - 1); c1 = Math.min(FORGE_COLS - 1, c1 + 1);
+  const out = new Uint8Array(N);
+  for (let r = r0 * FINE; r < (r1 + 1) * FINE; r++) for (let c = c0 * FINE; c < (c1 + 1) * FINE; c++) out[r * FINE_COLS + c] = 1;
+  return out;
+}
+
+// Packed for sharing live (and keeping on a part): base64 of the bits.
+const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+export function packMetal(m: Metal): string {
+  const bytes = new Uint8Array(Math.ceil(N / 8));
+  for (let i = 0; i < N; i++) if (m[i]) bytes[i >> 3] |= 1 << (i & 7);
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const n = (bytes[i] << 16) | ((bytes[i + 1] ?? 0) << 8) | (bytes[i + 2] ?? 0);
+    out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63] + (i + 1 < bytes.length ? B64[(n >> 6) & 63] : "=") + (i + 2 < bytes.length ? B64[n & 63] : "=");
   }
   return out;
 }
-/** The starting bar: the outline's bounding box, with stock all round to hammer away. */
-export function startingStock(shape: string): string {
-  const mask = shapeMask(shape);
-  let r0 = FORGE_ROWS, r1 = -1, c0 = FORGE_COLS, c1 = -1;
-  mask.forEach((m, i) => { if (!m) return; const r = Math.floor(i / FORGE_COLS), c = i % FORGE_COLS; r0 = Math.min(r0, r); r1 = Math.max(r1, r); c0 = Math.min(c0, c); c1 = Math.max(c1, c); });
-  r0 = Math.max(0, r0 - 3); r1 = Math.min(FORGE_ROWS - 1, r1 + 3); c0 = Math.max(0, c0 - 2); c1 = Math.min(FORGE_COLS - 1, c1 + 2);
-  let s = "";
-  for (let r = 0; r < FORGE_ROWS; r++) for (let c = 0; c < FORGE_COLS; c++) s += r >= r0 && r <= r1 && c >= c0 && c <= c1 ? "1" : "0";
-  return s;
-}
-/**
- * A hammer blow at (cx, cy) (in cells): it moves the metal's surface — the cells within reach that touch open air —
- * one layer at a time, so working down to the outline takes care, not pixel-perfect aim (and over-working a spot
- * eats into the outline). Returns the new metal and the cells moved.
- */
-export function strikeMetal(metal: string, cx: number, cy: number, radius: number): { metal: string; hit: number[] } {
-  const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FORGE_ROWS && c < FORGE_COLS && metal[r * FORGE_COLS + c] === "1";
-  const arr = metal.split("");
-  const hit: number[] = [];
-  for (let r = Math.floor(cy - radius); r <= Math.ceil(cy + radius); r++) for (let c = Math.floor(cx - radius); c <= Math.ceil(cx + radius); c++) {
-    if (!at(r, c) || (c + 0.5 - cx) ** 2 + (r + 0.5 - cy) ** 2 > radius * radius) continue;
-    if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
-    hit.push(r * FORGE_COLS + c);
+export function unpackMetal(s: string): Metal | null {
+  if (typeof s !== "string" || s.length !== Math.ceil(Math.ceil(N / 8) / 3) * 4) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < s.length; i += 4) {
+    const v = [0, 1, 2, 3].map((k) => (s[i + k] === "=" ? 0 : B64.indexOf(s[i + k])));
+    if (v.some((x) => x < 0)) return null;
+    const n = (v[0] << 18) | (v[1] << 12) | (v[2] << 6) | v[3];
+    bytes.push((n >> 16) & 255, (n >> 8) & 255, n & 255);
   }
-  for (const i of hit) arr[i] = "0";
-  return { metal: arr.join(""), hit };
+  const out = new Uint8Array(N);
+  for (let i = 0; i < N; i++) out[i] = (bytes[i >> 3] >> (i & 7)) & 1;
+  return out;
 }
-/** A forge session's metal from before the grid changed size: start that part over. */
-export const metalFits = (metal: unknown): metal is string => typeof metal === "string" && metal.length === FORGE_COLS * FORGE_ROWS;
+/** A forge session's metal from before the grid changed: start that part over. */
+export const metalFits = (metal: unknown): metal is string => typeof metal === "string" && unpackMetal(metal) !== null;
 
-/** How close the metal is to the outline: the stock removed, less the outline hammered into. 0–100. */
-export function shapeScore(shape: string, metal: string): number {
+/** How close the metal is to the outline: the stock removed, less the outline worked into. 0–100. */
+export function shapeScore(shape: string, metal: Metal): number {
   const mask = shapeMask(shape);
   const start = startingStock(shape);
   let stock = 0, removed = 0, keep = 0, kept = 0;
-  for (let i = 0; i < mask.length; i++) {
-    if (start[i] !== "1") continue;
-    if (mask[i]) { keep++; if (metal[i] === "1") kept++; }
-    else { stock++; if (metal[i] !== "1") removed++; }
+  for (let i = 0; i < N; i++) {
+    if (!start[i]) continue;
+    if (mask[i]) { keep++; if (metal[i]) kept++; }
+    else { stock++; if (!metal[i]) removed++; }
   }
   const clean = stock ? removed / stock : 1;
   const intact = keep ? kept / keep : 1;
   return Math.round(100 * clean * Math.pow(intact, 1.6));
 }
 
-// --------------------------------------------------------------------------- forge results
+const blockHas = (m: Metal, R: number, C: number) => {
+  if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS) return false;
+  for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) if (m[r * FINE_COLS + c]) return true;
+  return false;
+};
+const clearBlock = (m: Metal, R: number, C: number, hit: number[]) => {
+  for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) { const i = r * FINE_COLS + c; if (m[i]) { m[i] = 0; hit.push(i); } }
+};
+/** How sure a smith's hammer is, by Blacksmithing (0–4): blocks knocked off beside the one aimed at, at most. */
+export const hammerSlop = (skill: number) => Math.max(0, 3 - Math.max(0, Math.min(4, Math.floor(skill))));
+/**
+ * A hammer blow at fine cell (fx, fy). It has to land on metal; it knocks that block away — and a less skilled smith
+ * knocks some of the blocks touching it off too (random, up to hammerSlop). Returns the new metal and the cells moved.
+ */
+export function hammerMetal(metal: Metal, fx: number, fy: number, skill: number, rand: () => number = Math.random): { metal: Metal; hit: number[] } {
+  const c = Math.floor(fx), r = Math.floor(fy);
+  if (c < 0 || r < 0 || c >= FINE_COLS || r >= FINE_ROWS || !metal[r * FINE_COLS + c]) return { metal, hit: [] };
+  const m = metal.slice();
+  const hit: number[] = [];
+  const R = Math.floor(r / FINE), C = Math.floor(c / FINE);
+  clearBlock(m, R, C, hit);
+  const slop = hammerSlop(skill);
+  if (slop) {
+    const around = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [-1, 1], [1, -1], [1, 1]].map(([dr, dc]) => [R + dr, C + dc]).filter(([rr, cc]) => blockHas(m, rr, cc));
+    let extra = Math.floor(rand() * (slop + 1));
+    while (extra-- > 0 && around.length) { const [rr, cc] = around.splice(Math.floor(rand() * around.length), 1)[0]; clearBlock(m, rr, cc, hit); }
+  }
+  return { metal: m, hit };
+}
+/** The grindstone: the wheel takes the surface it touches (fine cells next to air) off within its reach. */
+export function grindMetal(metal: Metal, fx: number, fy: number, radius: number): { metal: Metal; hit: number[] } {
+  const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
+  const hit: number[] = [];
+  for (let r = Math.floor(fy - radius); r <= Math.ceil(fy + radius); r++) for (let c = Math.floor(fx - radius); c <= Math.ceil(fx + radius); c++) {
+    if (!at(r, c) || (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 > radius * radius) continue;
+    if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
+    hit.push(r * FINE_COLS + c);
+  }
+  if (!hit.length) return { metal, hit };
+  const m = metal.slice();
+  for (const i of hit) m[i] = 0;
+  return { metal: m, hit };
+}
+/** Bits of metal no longer joined to the rest break off (all but the biggest piece). Returns the metal and what fell. */
+export function breakLoose(metal: Metal): { metal: Metal; fell: number[] } {
+  const seen = new Int32Array(N).fill(-1);
+  const sizes: number[] = [];
+  const stack: number[] = [];
+  for (let i = 0; i < N; i++) {
+    if (!metal[i] || seen[i] >= 0) continue;
+    const id = sizes.length; let size = 0;
+    stack.push(i); seen[i] = id;
+    while (stack.length) {
+      const k = stack.pop()!; size++;
+      const r = Math.floor(k / FINE_COLS), c = k % FINE_COLS;
+      for (const [rr, cc] of [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]]) {
+        if (rr < 0 || cc < 0 || rr >= FINE_ROWS || cc >= FINE_COLS) continue;
+        const j = rr * FINE_COLS + cc;
+        if (metal[j] && seen[j] < 0) { seen[j] = id; stack.push(j); }
+      }
+    }
+    sizes.push(size);
+  }
+  if (sizes.length < 2) return { metal, fell: [] };
+  const main = sizes.indexOf(Math.max(...sizes));
+  const m = metal.slice();
+  const fell: number[] = [];
+  for (let i = 0; i < N; i++) if (m[i] && seen[i] !== main) { m[i] = 0; fell.push(i); }
+  return { metal: m, fell };
+}
+
 /** A part's numbers from its scores: shape (hammer accuracy) and heat (time in the material's range). */
 export function partStats(role: ForgeRole, shape: number, heat: number, material: { hardness: number; value: number; weight: number }) {
   const quality = Math.round(shape);

@@ -381,7 +381,7 @@ export function FieldInput({ field, className = "" }: { field: AgField; classNam
       return (
         <span className={`${wide ? "flex" : "inline-flex"} items-center gap-0.5 ${className}`}>
           <button type="button" onClick={() => w.adjust(field, -(field.options.step ?? 1))} className={btn} aria-label={`Lower ${field.label}`}><Minus className="h-3 w-3" /></button>
-          <CommitInput value={field.value as number} type="number" step={field.options.step} className={wide ? "h-9 flex-1 min-w-0 text-center text-base" : "h-7 sm:h-6 text-center"} style={wide ? undefined : { width: `calc(${Math.max(3, digits + 1)}ch + 1.25rem)` }} onCommit={(s) => w.set(field, s === "" ? null : Number(s))} aria-label={field.label} />
+          <CommitInput value={field.value as number} type="number" step={field.options.step} className={`${wide ? "h-9 flex-1 min-w-0 text-center text-base" : "h-7 sm:h-6 text-center font-mono"} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`} style={wide ? undefined : { width: `calc(${Math.max(5, digits + 2)}ch + 0.75rem)` }} onCommit={(s) => w.set(field, s === "" ? null : Number(s))} aria-label={field.label} />
           <button type="button" onClick={() => w.adjust(field, field.options.step ?? 1)} className={btn} aria-label={`Raise ${field.label}`}><Plus className="h-3 w-3" /></button>
           {/* Items, wounds and other modifiers change the value in play; the box edits the base. */}
           {typeof v === "number" && typeof field.value === "number" && v !== field.value && (

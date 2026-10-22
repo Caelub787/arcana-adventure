@@ -13,7 +13,7 @@ import { useAg, follow, followWithParents, isLinkPath, resolveRef, effOf, usePer
 import { Portrait, FieldInput, ResourceBar, useFieldWriter, EditOnDoubleClick, CommitInput, ActionButton } from "./widgets";
 import { RollsList } from "./rolls";
 import { EffectsList } from "./effects";
-import { AgSelector, agConfirm, type SelItem } from "./float";
+import { AgSelector, QtyPicker, agConfirm, type SelItem } from "./float";
 import { TipIcon, useAnchoredPopup } from "./tips";
 // A list can show its sheets' pages, and pages contain lists: the editor is loaded when first needed.
 const AgEditor = React.lazy(() => import("./editor/AgEditor").then((m) => ({ default: m.AgEditor })));
@@ -67,6 +67,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const [sort, setSort] = useState(config.sortBy ?? "name");
   const [desc, setDesc] = useState(false);
   const [adding, setAdding] = useState<null | SelItem[]>(null);
+  const [howMany, setHowMany] = useState<SelItem | null>(null);
   // Adding to a path list: first which sheet it goes on (e.g. which ability), then what.
   const [addHost, setAddHost] = useState<string>(noteId);
   const [pickingHost, setPickingHost] = useState<null | SelItem[]>(null);
@@ -142,16 +143,25 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       setAdding(items);
     } catch (e: any) { toast({ title: "Couldn't load", description: e.message, variant: "destructive" }); }
   };
-  const pick = async (id: string) => {
+  const pick = async (id: string, qty?: number) => {
     const reverse = config.add?.reverse || "owner";
     const host = viaPath ? addHost : noteId;
+    const name = adding?.find((i) => i.id === id)?.name ?? "";
     try {
-      if (id.startsWith("n:")) await request({ op: "note.attach", hostNoteId: host, noteId: id.slice(2), label: lastLabel, reverseLabel: reverse });
-      else if (id.startsWith("t:")) await request({ op: "note.createLinked", hostNoteId: host, templateId: id.slice(2), label: lastLabel, reverseLabel: reverse });
-      else if (id.startsWith("b:")) await request({ op: "note.createLinked", hostNoteId: host, type: id.slice(2), name: `New ${agTypeLabel(id.slice(2))}`, label: lastLabel, reverseLabel: reverse });
-      toast({ title: "Added" });
+      let made: { noteId?: string; how?: string; qty?: number } = {};
+      if (id.startsWith("n:")) made = await request({ op: "note.attach", hostNoteId: host, noteId: id.slice(2), label: lastLabel, reverseLabel: reverse, qty });
+      else if (id.startsWith("t:")) made = await request({ op: "note.createLinked", hostNoteId: host, templateId: id.slice(2), label: lastLabel, reverseLabel: reverse });
+      else if (id.startsWith("b:")) made = await request({ op: "note.createLinked", hostNoteId: host, type: id.slice(2), name: `New ${agTypeLabel(id.slice(2))}`, label: lastLabel, reverseLabel: reverse });
+      // A new sheet made from a template: set how many on it too.
+      if (qty && qty !== 1 && !id.startsWith("n:") && made.noteId) {
+        const q = Array.from(state.fields.values()).find((f) => f.noteId === made.noteId && f.key === "qty");
+        if (q) await request({ op: "field.set", id: q.id, value: qty });
+      }
+      toast({ title: made.how === "stacked" ? `${name} ×${qty ?? 1} added — now ×${made.qty}` : `Added${qty && qty !== 1 ? ` ${qty} ×` : ""} ${name}` });
     } catch (e: any) { toast({ title: "Couldn't add it", description: e.message, variant: "destructive" }); }
   };
+  const holdHint = config.add?.copy ? "Click to add one — hold (or right-click) to choose how many. This window stays open so you can add several." : "Click to add; this window stays open so you can add several.";
+  const qtyUi = howMany && <QtyPicker title={`How many ${howMany.name}?`} onPick={(n) => void pick(howMany.id, n)} onClose={() => setHowMany(null)} />;
   const remove = (id: string) => {
     const n = state.notes.get(id);
     const del = removeMode === "delete";
@@ -246,7 +256,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       <div className="space-y-1.5" style={fontStyle} data-testid="ag-links">
         <IconsList noteId={noteId} label={label} rows={rows} columns={columns} config={config} look={look} cell={cell} fieldOf={fieldOf} accentOf={accentOf}
           dragRow={dragRow} removeBtn={removeBtn} mayAdd={mayAdd} onAdd={() => (viaPath ? openAddPath() : openAdd())} search={config.search ? { q, setQ } : null} empty={!rows.length ? empty : null} />
-        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={(id) => void pick(id)} onHold={config.add?.copy ? (id) => setHowMany(adding.find((i) => i.id === id) ?? null) : undefined} onClose={() => setAdding(null)} keepOpen hint={holdHint} emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {qtyUi}
         {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
       </div>
     );
@@ -295,7 +306,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           );
         })}
         {!rows.length && empty}
-        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={(id) => void pick(id)} onHold={config.add?.copy ? (id) => setHowMany(adding.find((i) => i.id === id) ?? null) : undefined} onClose={() => setAdding(null)} keepOpen hint={holdHint} emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {qtyUi}
         {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
       </div>
     );
@@ -328,7 +340,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           </tbody>
         </table>
       </div>
-      {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={pick} onClose={() => setAdding(null)} keepOpen hint="Click to add; this window stays open so you can add several." emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+      {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={(id) => void pick(id)} onHold={config.add?.copy ? (id) => setHowMany(adding.find((i) => i.id === id) ?? null) : undefined} onClose={() => setAdding(null)} keepOpen hint={holdHint} emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
+        {qtyUi}
       {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
     </div>
   );

@@ -3,7 +3,7 @@
 // hidden — harder to follow, so bonuses come easier. The rune shows on the
 // item (and its picture) in the ink's colour and glow, carved or drawn by the tool.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft } from "lucide-react";
+import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import { traceAccuracy, runeTier, itemMatches, numOf, TIER_COLOR, TIER_LABEL, type RuneConfig } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
@@ -29,10 +29,16 @@ export function runeLookOf(state: ScopeState, rune: AgNote): RuneLook {
     placement: parse(valueOn(state, rune.id, "placement"), { x: 50, y: 50, s: 30, r: 0 }),
   };
 }
+/** An item's rune sockets (its "rune_sockets" value, if it has one) and how many are used. */
+export function socketsOn(state: ScopeState, itemId: string): { used: number; max: number | null; full: boolean; label: string } {
+  const used = runesOn(state, itemId).length;
+  if (!hasValue(state, itemId, "rune_sockets")) return { used, max: null, full: false, label: `${used} rune${used === 1 ? "" : "s"}` };
+  const max = Math.max(0, Math.floor(numOf(valueOn(state, itemId, "rune_sockets"))));
+  return { used, max, full: used >= max, label: max === 0 ? "no sockets" : `${used}/${max} sockets` };
+}
 const baseOf = (state: ScopeState, item: AgNote | undefined) => { if (!item) return null; const b = valueOn(state, item.id, "base_portrait"); return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null; };
 
 export function RuneTool({ characterId, state: s, set, start, playing, stationId }: Props) {
-  const [placing, setPlacing] = useState(false);
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
   const defs = useDefs<RuneConfig>("rune", characterId, stationId);
@@ -56,12 +62,15 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => n.id !== s.target && itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const toolOk = !rune?.config.tools.length || (!!tool && rune.config.tools.some((t) => itemMatches(tool, t)));
+  const sockets = target ? socketsOn(state, target.id) : null;
+  const socketMsg: string | false = !!target && !!sockets?.full && (sockets.max === 0 ? `${target.name} has no rune sockets — its rank is too low` : `${target.name}'s rune sockets are full (${sockets.used} of ${sockets.max})`);
   const missing = rune ? [
     !target && "Pick the item to inscribe",
+    socketMsg,
     !toolOk && `Needs a tool: ${rune.config.tools.map((t) => t.name).join(" or ")}`,
     rune.config.needsInk && !ink && "Needs a liquid or ink",
     ...rune.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`),
-  ] : freehand ? [!target && "Pick the item to inscribe"] : [];
+  ] : freehand ? [!target && "Pick the item to inscribe", socketMsg] : [];
   const ready = (!!rune || freehand) && !missing.some(Boolean);
 
   const inscribe = async (mode: "quick" | "game" | "freehand") => {
@@ -119,7 +128,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
         <>
           <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2 space-y-1.5">
             <ChoiceRow label="On" empty="Nothing to inscribe in the inventory." testId="rune-targets">
-              {targets.map((n) => <ItemTile key={n.id} compact note={n} selected={s.target === n.id} disabled={!playing} onClick={() => set({ target: n.id })} sub={`${runesOn(state, n.id).length} rune${runesOn(state, n.id).length === 1 ? "" : "s"}`} testId={`rune-target-${n.name}`} />)}
+              {targets.map((n) => { const k = socketsOn(state, n.id); return <ItemTile key={n.id} compact note={n} selected={s.target === n.id} disabled={!playing || k.full} onClick={() => set({ target: n.id })} sub={k.label} testId={`rune-target-${n.name}`} />; })}
             </ChoiceRow>
             <ChoiceRow label="Tool" empty="No carving tools or pens.">
               {tools.map((n) => <ItemTile key={n.id} compact note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={String(valueOn(state, n.id, "mark_style") ?? "Carved")} testId={`rune-tool-${n.name}`} />)}
@@ -137,20 +146,10 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
           {target && (
             <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2 space-y-2">
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setPlacing((v) => !v)} className="h-7 px-2 rounded-md border border-stone-700 text-[11px] text-stone-300 hover:border-stone-500" data-testid="rune-placement">{placing ? "Hide placement" : "Placement"}</button>
-                {!freehand && <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-stone-300"><input type="checkbox" checked={guide} disabled={!playing} onChange={(e) => set({ guide: e.target.checked })} data-testid="rune-guide" />{guide ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />} Guide <span className="text-stone-500">(off: harder, bonuses come easier)</span></label>}
+                <span className="text-[10px] uppercase tracking-wide text-stone-500">Where it goes</span>
+                {!freehand && <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-stone-300"><input type="checkbox" checked={guide} disabled={!playing} onChange={(e) => set({ guide: e.target.checked })} data-testid="rune-guide" />{guide ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />} Guide <span className="text-stone-500 hidden sm:inline">(off: harder, bonuses come easier)</span></label>}
               </div>
-              {placing && (
-                <div className="grid sm:grid-cols-[180px_1fr] gap-3 items-start">
-                  <div className="max-w-[180px]"><PlacementPreview base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} /></div>
-                  <div className="space-y-1.5 text-xs">
-                    {(["x", "y", "s", "r"] as const).map((k) => (
-                      <label key={k} className="flex items-center gap-2"><span className="w-14 text-stone-400">{k === "x" ? "Across" : k === "y" ? "Down" : k === "s" ? "Size" : "Turn"}</span>
-                        <input type="range" min={k === "s" ? 12 : k === "r" ? -180 : 10} max={k === "s" ? 80 : k === "r" ? 180 : 90} value={placement[k]} disabled={!playing} onChange={(e) => set({ placement: { ...placement, [k]: Number(e.target.value) } })} className="flex-1 accent-amber-500" /></label>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <PlacementEditor base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} playing={playing} onChange={(p) => set({ placement: p })} />
             </div>
           )}
           {playing && (<>
@@ -189,19 +188,73 @@ function placeSigil(ctx: CanvasRenderingContext2D, size: number, r: RuneLook, al
   ctx.restore();
 }
 
-function PlacementPreview({ base, name, existing, sigil, placement, look }: { base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement"> }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const img = useImage(base);
-  useEffect(() => {
-    const ctx = ref.current?.getContext("2d"); if (!ctx) return;
-    paintItem(ctx, 220, img, name);
-    for (const r of existing) placeSigil(ctx, 220, r);
-    placeSigil(ctx, 220, { strokes: sigil, ...look, color: look.color || "#c4b5fd", style: "Drawn", glow: 30, placement }, 0.55);
-  }, [img, name, existing, sigil, placement, look]);
-  return <canvas ref={ref} width={220} height={220} className="w-full rounded-lg border border-stone-700" />;
+/** Looking at part of the item: how far in (z) and where (cx, cy, in the canvas's own pixels at 1×). */
+type View = { z: number; cx: number; cy: number };
+/** Into the view's coordinates (draw the item, its runes and the strokes after this). */
+function applyView(ctx: CanvasRenderingContext2D, size: number, v: View) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.translate(size / 2, size / 2); ctx.scale(v.z, v.z); ctx.translate(-v.cx, -v.cy); }
+/** A point on the canvas (on screen) to the item's own pixels. */
+function unview(e: React.PointerEvent<HTMLCanvasElement>, size: number, v: View) { const r = e.currentTarget.getBoundingClientRect(); const sx = ((e.clientX - r.left) / r.width) * size, sy = ((e.clientY - r.top) / r.height) * size; return [(sx - size / 2) / v.z + v.cx, (sy - size / 2) / v.z + v.cy] as const; }
+/** Close enough in that the rune's circle fills most of the view, wherever it sits on the item. */
+const fitZoom = (p: RuneLook["placement"]) => Math.max(1, Math.min(10, 0.68 / Math.max(0.04, p.s / 100)));
+function ZoomButtons({ zoom, setZoom, testId }: { zoom: number; setZoom: (z: number) => void; testId: string }) {
+  const btn = "h-9 w-9 rounded-md border border-stone-700 bg-stone-900/90 text-stone-200 grid place-items-center active:bg-stone-700";
+  return (
+    <div className="absolute top-2 right-2 flex flex-col gap-1" data-testid={testId}>
+      <button type="button" className={btn} onClick={() => setZoom(Math.min(10, zoom * 1.5))} aria-label="Zoom in"><ZoomIn className="h-4 w-4" /></button>
+      <button type="button" className={btn} onClick={() => setZoom(Math.max(1, zoom / 1.5))} aria-label="Zoom out"><ZoomOut className="h-4 w-4" /></button>
+    </div>
+  );
 }
 
-/** The tracing surface: the item, the runes already on it, the guide, and the player's strokes, live. */
+/** Where the rune goes: drag it about on the item's picture (zoom in for small items); size and turn below. */
+function PlacementEditor({ base, name, existing, sigil, placement, look, playing, onChange }: { base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">; playing: boolean; onChange: (p: RuneLook["placement"]) => void }) {
+  const S = 360;
+  const ref = useRef<HTMLCanvasElement>(null);
+  const img = useImage(base);
+  const [zoom, setZoom] = useState(1);
+  const [local, setLocal] = useState<RuneLook["placement"] | null>(null);
+  const pl = local ?? placement;
+  const view: View = zoom <= 1 ? { z: 1, cx: S / 2, cy: S / 2 } : { z: zoom, cx: (pl.x / 100) * S, cy: (pl.y / 100) * S };
+  const dragging = useRef(false), lastSend = useRef(0);
+  useEffect(() => {
+    const ctx = ref.current?.getContext("2d"); if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#09080a"; ctx.fillRect(0, 0, S, S);
+    applyView(ctx, S, view);
+    paintItem(ctx, S, img, name);
+    for (const r of existing) placeSigil(ctx, S, r);
+    placeSigil(ctx, S, { strokes: sigil, ...look, color: look.color || "#c4b5fd", style: "Drawn", glow: 30, placement: pl }, 0.7);
+    ctx.strokeStyle = "rgba(251,191,36,0.8)"; ctx.setLineDash([4 / view.z, 4 / view.z]); ctx.lineWidth = 1.5 / view.z;
+    ctx.beginPath(); ctx.arc((pl.x / 100) * S, (pl.y / 100) * S, (pl.s / 100) * S * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  });
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!dragging.current) return;
+    const [x, y] = unview(e, S, { ...view, cx: zoom <= 1 ? S / 2 : view.cx, cy: zoom <= 1 ? S / 2 : view.cy });
+    const next = { ...pl, x: Math.round(Math.max(2, Math.min(98, (x / S) * 100)) * 10) / 10, y: Math.round(Math.max(2, Math.min(98, (y / S) * 100)) * 10) / 10 };
+    setLocal(next);
+    const now = performance.now(); if (now - lastSend.current > 90) { lastSend.current = now; onChange(next); }
+  };
+  const end = () => { if (!dragging.current) return; dragging.current = false; if (local) onChange(local); setLocal(null); };
+  return (
+    <div className="space-y-2" data-testid="rune-placement-editor">
+      <div className="relative mx-auto max-w-[360px]">
+        <canvas ref={ref} width={S} height={S} className={`w-full block rounded-lg border border-stone-700 touch-none select-none ${playing ? "cursor-move" : ""}`} data-testid="rune-placement-canvas"
+          onPointerDown={(e) => { if (!playing) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); dragging.current = true; move(e); }}
+          onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} />
+        <ZoomButtons zoom={zoom} setZoom={setZoom} testId="rune-placement-zoom" />
+        {playing && <div className="absolute bottom-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-stone-200">Drag to place it{zoom > 1 ? ` · ${zoom.toFixed(1)}×` : ""}</div>}
+      </div>
+      <div className="space-y-1.5 text-xs max-w-[360px] mx-auto">
+        {(["s", "r"] as const).map((k) => (
+          <label key={k} className="flex items-center gap-2"><span className="w-10 text-stone-400">{k === "s" ? "Size" : "Turn"}</span>
+            <input type="range" min={k === "s" ? 4 : -180} max={k === "s" ? 80 : 180} value={pl[k]} disabled={!playing} onChange={(e) => onChange({ ...pl, [k]: Number(e.target.value) })} className="flex-1 accent-amber-500 h-6" data-testid={`rune-placement-${k}`} /></label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The tracing surface: zoomed in on where the rune goes (it fills the view, however small it is on the item) — the
+ *  item, its runes, the guide and the strokes, live. Zoom in or out with the buttons. */
 function TraceCanvas({ base, name, existing, sigil, guide, placement, look, strokes, playing, onStrokes }: {
   base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; guide: boolean; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">;
   strokes: number[][][]; playing: boolean; onStrokes: (s: number[][][]) => void;
@@ -213,21 +266,27 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
   const lastSync = useRef(0);
   const [, force] = useState(0);
   const local = useRef(strokes);
+  const [zoomMul, setZoomMul] = useState(1);
+  const zoom = Math.max(1, Math.min(14, fitZoom(placement) * zoomMul));
+  const view: View = { z: zoom, cx: (placement.x / 100) * S, cy: (placement.y / 100) * S };
+  const viewRef = useRef(view); viewRef.current = view;
   useEffect(() => { if (!current.current) local.current = strokes; }, [strokes]);
   useEffect(() => {
     let raf = 0;
     const f = (t: number) => {
       const ctx = ref.current?.getContext("2d");
       if (ctx) {
+        const v = viewRef.current;
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "#09080a"; ctx.fillRect(0, 0, S, S);
+        applyView(ctx, S, v);
         paintItem(ctx, S, img, name);
         for (const r of existing) placeSigil(ctx, S, r);
-        // The sigil's box, softly lit.
         const cx = (placement.x / 100) * S, cy = (placement.y / 100) * S, sz = (placement.s / 100) * S;
-        ctx.save(); ctx.strokeStyle = "rgba(167,139,250,0.25)"; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(cx, cy, sz * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.strokeStyle = "rgba(167,139,250,0.35)"; ctx.lineWidth = 1.5 / v.z; ctx.setLineDash([4 / v.z, 6 / v.z]); ctx.beginPath(); ctx.arc(cx, cy, sz * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
         if (guide) {
           const pulse = 0.35 + 0.15 * Math.sin(t / 400);
           ctx.save(); ctx.translate(cx, cy); ctx.rotate(((placement.r ?? 0) * Math.PI) / 180);
-          drawSigil(ctx, sigil, 0, 0, sz, { color: "#e9d5ff", glow: 30, style: "Drawn", alpha: pulse, width: Math.max(2, sz / 30) });
+          drawSigil(ctx, sigil, 0, 0, sz, { color: "#e9d5ff", glow: 30, style: "Drawn", alpha: pulse, width: Math.max(2 / v.z, sz / 30) });
           ctx.restore();
         }
         const all = current.current ? [...local.current, current.current] : local.current;
@@ -239,10 +298,9 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
     return () => cancelAnimationFrame(raf);
   }, [img, name, existing, sigil, guide, placement, look]);
 
-  /** A pointer position in the sigil's own 0–100 coordinates (undoing its placement). */
+  /** A pointer position in the sigil's own 0–100 coordinates (undoing the zoom and its placement). */
   const toSigil = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const px = ((e.clientX - r.left) / r.width) * S, py = ((e.clientY - r.top) / r.height) * S;
+    const [px, py] = unview(e, S, viewRef.current);
     const cx = (placement.x / 100) * S, cy = (placement.y / 100) * S, sz = (placement.s / 100) * S;
     const a = (-(placement.r ?? 0) * Math.PI) / 180;
     const dx = px - cx, dy = py - cy;
@@ -250,9 +308,9 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
     return [Math.round((50 + (rx / sz) * 100) * 10) / 10, Math.round((50 + (ry / sz) * 100) * 10) / 10];
   };
   return (
-    <div className="relative rounded-xl overflow-hidden border border-violet-900/70 mx-auto max-w-[520px]">
-      <canvas ref={ref} width={S} height={S} className={`w-full block touch-none ${playing ? "cursor-crosshair" : ""}`} data-testid="rune-canvas"
-        onPointerDown={(e) => { if (!playing) return; e.currentTarget.setPointerCapture(e.pointerId); current.current = [toSigil(e)]; force((x) => x + 1); }}
+    <div className="relative rounded-xl overflow-hidden border border-stone-700 mx-auto max-w-[520px]">
+      <canvas ref={ref} width={S} height={S} className={`w-full block touch-none select-none ${playing ? "cursor-crosshair" : ""}`} data-testid="rune-canvas"
+        onPointerDown={(e) => { if (!playing) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); current.current = [toSigil(e)]; force((x) => x + 1); }}
         onPointerMove={(e) => {
           if (!playing || !current.current) return;
           current.current.push(toSigil(e));
@@ -261,6 +319,8 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
         }}
         onPointerUp={() => { if (!current.current) return; const st = current.current; current.current = null; if (st.length > 1) { local.current = [...local.current, st]; onStrokes(local.current); } }}
       />
+      <ZoomButtons zoom={zoomMul} setZoom={(z) => setZoomMul(Math.max(1 / fitZoom(placement), Math.min(3, z)))} testId="rune-trace-zoom" />
+      <div className="absolute bottom-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-stone-200">{zoom.toFixed(1)}×</div>
       <div className="absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 border border-violet-700/50" style={{ color: "#ddd6fe" }}>{strokes.length ? `${strokes.length} stroke${strokes.length === 1 ? "" : "s"}` : "Draw"}</div>
     </div>
   );

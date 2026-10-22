@@ -28,14 +28,14 @@ import {
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
-  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
+  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 21;
+export const CA_KIT_LEVEL = 22;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -69,6 +69,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 19) await upgrade19(store, characterTemplates);
   if (level < 20) await upgrade20(store);
   if (level < 21) await upgrade21(store, characterTemplates);
+  if (level < 22) await upgrade22(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1367,5 +1368,59 @@ async function upgrade21(store: ScopeStore, characterTemplates: AgNote[]) {
   // Scrolls (the template and those just made) show what they teach.
   for (const n of Array.from(store.notes.values()).filter((x) => x.type === "item" && store.fieldsByNote.get(x.id)?.get("teaches"))) {
     await editPage(n, (_doc, frag) => { if (!hasType(frag, "agCraftDef") && !hasType(frag, "agCraftBench")) appendNodes(frag, scrollNodes()); });
+  }
+}
+
+// --------------------------------------------------------------------------- level 22
+// An item's rank is its rarity: Rarity goes; Rank (whole ranks, no stars) colours
+// the item's card and gives its rune sockets (none at the lowest rank, one more
+// each rank up). Gear shows its sockets and the runes set into them.
+async function upgrade22(store: ScopeStore, characterTemplates: AgNote[]) {
+  const runeable = new Set<string>();
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      const rank = fields?.get("rank_tag");
+      if (!fields || !rank || n.type !== "item") continue;
+      if (rank.type === "select") await store.putField({ ...rank, value: itemRankOf(rank.value), options: { ...rank.options, choices: [...ITEM_RANKS], choiceColors: { ...ITEM_RANK_COLORS } } }, cs);
+      const rarity = fields.get("rarity");
+      if (rarity) await store.removeField(rarity.id, cs);
+      const kind = String(fields.get("item_type")?.value ?? "");
+      if (RUNEABLE_KINDS.includes(kind) || fields.get("handedness")) {
+        runeable.add(n.id);
+        if (!fields.get("rune_sockets")) {
+          const order = Math.max(0, ...Array.from(fields.values()).map((f) => f.sortOrder)) + 1;
+          await store.putField({ id: randomUUID(), noteId: n.id, key: "rune_sockets", label: "Rune sockets", type: "formula", value: null, formula: RUNE_SOCKETS_FORMULA, options: { resultType: "number", tooltip: RUNE_SOCKETS_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+        }
+      }
+    }
+  });
+  // Pages: no Rarity badge; gear gets its sockets line by its runes (or the whole Runes section).
+  for (const n of Array.from(store.notes.values()).filter((x) => x.type === "item" && store.fieldsByNote.get(x.id)?.get("rank_tag"))) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "rarity")) {
+        const parent = el.parent as Y.XmlElement | null;
+        const idx = parent ? parent.toArray().indexOf(el) : -1;
+        if (parent && idx >= 0) parent.delete(idx, 1);
+      }
+      if (!runeable.has(n.id) || findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "rune_sockets").length) return;
+      const list = findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "runes")[0];
+      if (!list) { appendNodes(frag, runeSlotNodes()); return; }
+      const parent = list.parent as Y.XmlElement | Y.XmlFragment;
+      const idx = parent.toArray().indexOf(list);
+      insertNodes(parent, idx, [p(muted("SOCKETS "), val("rune_sockets", { look: { bold: true } }), muted(" (from its rank)"))]);
+    });
+  }
+  // Inventories: cards coloured by rank, no Rarity badge.
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  for (const n of Array.from(store.notes.values()).filter((x) => charIds.has(x.id) || (x.templateId && charIds.has(x.templateId)))) {
+    await editPage(n, (_doc, frag) => {
+      for (const el of findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "items")) {
+        const cols = (el.getAttribute("columns") ?? []) as any[];
+        if (Array.isArray(cols) && cols.some((c) => c?.ref === "rarity")) el.setAttribute("columns", cols.filter((c) => c?.ref !== "rarity") as any);
+        const cfg = (el.getAttribute("config") ?? {}) as any;
+        if (cfg.accentBy === "rarity") el.setAttribute("config", { ...cfg, accentBy: "rank_tag" } as any);
+      }
+    });
   }
 }

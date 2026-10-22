@@ -293,6 +293,22 @@ export interface OpContext {
   host: HostHooks;
 }
 
+/** A copy no one has changed: the same values as its original (how many, and whether it's equipped, aside), the same
+ *  picture, and nothing attached to it (no runes) — so more of it can simply join its stack. */
+const STACK_NEUTRAL = new Set(["qty", "equipped"]);
+function sameAsOriginal(store: ScopeStore, copy: AgNote, original: AgNote, holderId: string): boolean {
+  if (copy.name !== original.name || (copy.portrait ?? null) !== (original.portrait ?? null)) return false;
+  if (store.linksOf(copy.id).some((l) => !(l.fromNoteId === copy.id && l.toNoteId === holderId))) return false;
+  const a = store.fieldsByNote.get(copy.id) ?? new Map(), b = store.fieldsByNote.get(original.id) ?? new Map();
+  const keys = new Set([...Array.from(a.keys()), ...Array.from(b.keys())]);
+  for (const k of Array.from(keys)) {
+    if (STACK_NEUTRAL.has(k)) continue;
+    const x = a.get(k), y = b.get(k);
+    if (!x || !y || JSON.stringify(x.value ?? null) !== JSON.stringify(y.value ?? null) || (x.formula ?? null) !== (y.formula ?? null)) return false;
+  }
+  return true;
+}
+
 export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   const { store, viewer } = ctx;
   switch (body.op) {
@@ -500,9 +516,21 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           for (const l of from) await store.removeLink(l.id, cs);
           how = from.length ? "moved" : "linked";
         } else if (copies) {
+          const qty = body.qty !== undefined ? Math.max(1, Math.min(1_000_000, Math.round(Number(body.qty) || 1))) : 1;
+          // Already holding an unchanged copy of it: that stack just grows.
+          const stack = store.linksOf(host.id).filter((l) => l.toNoteId === host.id && l.label === reverse).map((l) => store.notes.get(l.fromNoteId))
+            .find((x): x is AgNote => !!x && x.copyOf === n.id && sameAsOriginal(store, x, n, host.id));
+          const qf = stack ? store.fieldsByNote.get(stack.id)?.get("qty") : undefined;
+          if (stack && qf) {
+            const now = (typeof qf.value === "number" ? qf.value : 1) + qty;
+            await store.putField({ ...qf, value: now }, cs);
+            return { ok: true as const, label, how: "stacked" as const, noteId: stack.id, qty: now };
+          }
           // An original: this sheet gets its own copy; the original stays as it was.
           item = await copySheet(store, n.id, cs, { folder: copyFolderOf(list!.config), ownerIds: [] });
           how = "copied";
+          const q = store.fieldsByNote.get(item.id)?.get("qty");
+          if (q && body.qty !== undefined) await store.putField({ ...q, value: qty }, cs);
         }
         await store.putLink({ id: randomUUID(), fromNoteId: item.id, toNoteId: host.id, label: reverse, reverseLabel: label, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
         await syncCopyOwners(store, item.id, cs);

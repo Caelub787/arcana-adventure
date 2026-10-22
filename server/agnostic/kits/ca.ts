@@ -90,6 +90,16 @@ const HP_LADDER = LADDER.hp;
 export const LADDER_LABELS = LADDER.labels;
 /** An item's Rank: most items have a rank but no star ("Gold"); some have a star ("Gold 3"). */
 export const ITEM_RANK_CHOICES = ["Unranked", ...RANK_NAMES.flatMap((r) => [r, ...LADDER_LABELS.filter((l) => l.startsWith(`${r} `))])];
+/** An item's rank is its rarity: whole ranks only (no stars). It colours the item and sets its rune sockets. */
+export const ITEM_RANKS = [...RANK_NAMES];
+export const ITEM_RANK_COLORS: Record<string, string> = Object.fromEntries(RANK_NAMES.map((r, i) => [r, ["#c2783e", "#cbd5e1", "#facc15", "#a78bfa", "#34d399", "#f472b6", "#38bdf8", "#f87171"][i % 8]]));
+/** Rune sockets by rank: none at the lowest, one more each rank up. */
+export const RUNE_SOCKETS_FORMULA = RANK_NAMES.slice(1).reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
+export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.";
+/** The item rank a character rank or an old item rank comes down to ("Gold 3" → "Gold", "Unranked" → the lowest). */
+export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : RANK_NAMES[0]; };
+/** Item kinds that can carry runes (gear, not supplies). */
+export const RUNEABLE_KINDS = ["Weapon", "Armor", "Container", "Miscellaneous"];
 const RANK_LIFESPAN = LADDER.lifespan;
 const RANK_ABSORB = LADDER.absorb;
 export const RANK_FORMULAS = LADDER.formulas;
@@ -139,8 +149,6 @@ const ABILITY_COLORS: Record<string, string> = { Attack: "#f87171", Defense: "#6
 
 export const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Ingredient", "Ink", "Material", "Miscellaneous", "Part", "Rune", "Scroll", "Station", "Tool", "Weapon"];
 export const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e", Material: "#d6d3d1", Ingredient: "#86efac", Ink: "#f0abfc", Tool: "#fdba74", Part: "#cbd5e1", Station: "#fb923c", Scroll: "#fcd34d" };
-const RARITIES = ["Common", "Uncommon", "Rare", "Epic", "Legendary"];
-const RARITY_COLORS: Record<string, string> = { Common: "#a8a29e", Uncommon: "#22c55e", Rare: "#3b82f6", Epic: "#a855f7", Legendary: "#f59e0b" };
 const SEVERITIES = ["Minor", "Moderate", "Severe"];
 const SEVERITY_COLORS: Record<string, string> = { Minor: "#a8a29e", Moderate: "#ea580c", Severe: "#dc2626" };
 const LOCATIONS = ["Body", "Arm", "Leg", "Head"];
@@ -324,11 +332,11 @@ function characterTemplate(): AgSnapshot {
     ], { ...SECTION_LOOK, gap: 12 }),
     itemsHeading(),
     links("items", [
-      { ref: "item_type", display: "badge" }, { ref: "rarity", display: "badge" }, { ref: "rank_tag", display: "badge" },
+      { ref: "item_type", display: "badge" }, { ref: "rank_tag", display: "badge" },
       { ref: "qty", display: "input", label: "Qty" }, { ref: "weight", display: "value", label: "Wt", suffix: "lbs" },
       { ref: "durability", display: "bar", label: "Dur", maxRef: "durability_max", color: "#22c55e" }, { ref: "value", display: "value", label: "Value" },
       { ref: "equipped", display: "toggle", label: "Equip" }, { ref: "", display: "rolls" },
-    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rarity", add: { types: ["item"], reverse: "owner", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
+    ], { layout: "cards", search: true, sortBy: "name", filterBy: "item_type", accentBy: "rank_tag", add: { types: ["item"], reverse: "owner", existing: true, ...ADD_ONLY }, remove: "disconnect", emptyText: "No items yet — press Add, or drag one here from the sidebar." }),
   ];
 
   const page: DocNode[] = [
@@ -370,6 +378,15 @@ export const SCROLL_HELP = "Whoever carries this scroll knows what it teaches. *
 /** A scroll's page: what it teaches (read from the recipe it was made from). */
 export function scrollNodes(): DocNode[] {
   return [h(3, icon("ScrollText", "#fcd34d", 16), " Scroll ", tip(SCROLL_HELP)), p(muted("TEACHES "), val("teaches_name", { look: { bold: true } })), { type: "agCraftDef" }];
+}
+
+/** An item's rune slots: how many its rank gives, and the runes set into them. */
+export function runeSlotNodes(): DocNode[] {
+  return [
+    h(3, icon("Gem", "#c084fc", 16), " Runes ", tip(RUNE_SOCKETS_HELP)),
+    p(muted("SOCKETS "), val("rune_sockets", { look: { bold: true } }), muted(" (from its rank)")),
+    links("runes", [{ ref: "boosts", display: "value", label: "" }, { ref: "rune_tier", display: "badge" }], { layout: "cards", add: { types: ["item"], reverse: "socket", existing: true }, remove: "disconnect", emptyText: "No runes yet — a rune maker inscribes them." }),
+  ];
 }
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
@@ -653,8 +670,7 @@ const RAISABLE = [...ATTRS.map((a) => ({ name: a.name, key: a.key, kind: "attrib
 export function itemTemplate(kind: ItemKind): AgSnapshot {
   const s = new Sheet();
   s.choice("item_type", "Type", ITEM_TYPES, kind === "Training" ? "Consumable" : kind, ITEM_TYPE_COLORS)
-    .choice("rarity", "Rarity", RARITIES, "Common", RARITY_COLORS)
-    .choice("rank_tag", "Rank", ITEM_RANK_CHOICES, "Unranked")
+    .choice("rank_tag", "Rank", ITEM_RANKS, ITEM_RANKS[0], ITEM_RANK_COLORS)
     .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" || kind === "Ink" || kind === "Ingredient" || kind === "Scroll" ? 0 : kind === "Material" ? 2 : 1, { min: 0, step: 0.1 })
     .calc("total_weight", "Total weight", "weight * qty").num("value", "Value", kind === "Currency" ? 1 : 10, { min: 0 })
     .calc("coin_total", "Coins", `if(item_type == "Currency", qty * value, 0)`)
@@ -784,16 +800,14 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   }
   // Every item can have rolls (a weapon starts with Strike and Damage) and effects on its owner.
   body.push(...itemRollsNodes(), ...effectsNodes("owner", "equipped", ITEM_EFFECTS_HELP));
-  if (kind === "Weapon" || kind === "Armor") {
-    body.push(
-      h(3, icon("Gem", "#c084fc", 16), " Runes"),
-      links("runes", [{ ref: "boosts", display: "value", label: "" }], { layout: "cards", add: { types: ["item"], reverse: "socket", existing: true }, remove: "disconnect", emptyText: "No runes attached." }),
-    );
+  if (RUNEABLE_KINDS.includes(kind)) {
+    s.calc("rune_sockets", "Rune sockets", RUNE_SOCKETS_FORMULA).tip("rune_sockets", RUNE_SOCKETS_HELP);
+    body.push(...runeSlotNodes());
   }
 
   s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this item only the GM sees."))], { view: "gm", edit: "gm" });
   const page: DocNode[] = [
-    p(val("item_type", { display: "badge" }), " ", val("rarity", { display: "badge" }), " ", val("rank_tag", { display: "badge" })),
+    p(val("item_type", { display: "badge" }), " ", val("rank_tag", { display: "badge" })),
     p(i("Describe the item here — what it looks like, where it came from.")),
     section("r_gm", { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 }),
     stats,
@@ -915,7 +929,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,
       cultivation: "Ember", weight_capacity: 50,
     }, cs);
-    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Bronze 3", weight: 3, value: 400, durability: 40, durability_max: 40, equipped: true, damage_bonus: 6 }, cs);
+    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Silver", weight: 3, value: 400, durability: 40, durability_max: 40, equipped: true, damage_bonus: 6 }, cs);
     await setRoll(store, sword, "Strike", { add: "might" }, cs);
     const shield = await createFrom(store, made.Armor, "Bulwark of Veridun", { rarity: "Uncommon", weight: 6, value: 180, armor_dc: 2, equipped: true }, cs);
     const potion = await createFrom(store, made.Consumable, "Minor Health Potion", { rarity: "Uncommon", qty: 2, weight: 0.2, value: 50 }, cs);
