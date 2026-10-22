@@ -2,7 +2,7 @@
 // the scope store and writes back through ops — the same HP shows (and
 // changes) identically on a sheet, the player tracker and a battlemap token.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus, Dices, Image as ImageIcon, Loader2, User as UserIcon, Skull as SkullIcon, Package as PackageIcon, Sparkles as SparklesIcon, Swords as SwordsIcon, Star as StarIcon, HeartPulse as HeartPulseIcon, MapPin as MapPinIcon, Dna as DnaIcon, StickyNote as StickyNoteIcon } from "lucide-react";
+import { Minus, Plus, Dices, Image as ImageIcon, Loader2, User as UserIcon, Skull as SkullIcon, Package as PackageIcon, Sparkles as SparklesIcon, Swords as SwordsIcon, Star as StarIcon, HeartPulse as HeartPulseIcon, MapPin as MapPinIcon, Dna as DnaIcon, StickyNote as StickyNoteIcon, Hammer as HammerIcon, FlaskConical as FlaskIcon, PenTool as PenToolIcon, Anvil as AnvilIcon, Wand2 as WandIcon } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
 import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience, AgRollMods } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
@@ -726,6 +726,7 @@ export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll:
 /** The icon a kind of sheet shows until (or instead of) its picture. */
 const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   character: UserIcon, npc: SkullIcon, item: PackageIcon, ability: SparklesIcon, aspect: SwordsIcon, trait: StarIcon,
+  blueprint: HammerIcon, recipe: FlaskIcon, rune_recipe: PenToolIcon, craft: AnvilIcon, experiment: WandIcon,
   wound: HeartPulseIcon, location: MapPinIcon, species: DnaIcon, note: StickyNoteIcon,
 };
 /** A stored picture's small version (lists, cards, tokens), when it has one. */

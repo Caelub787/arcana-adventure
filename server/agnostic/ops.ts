@@ -19,6 +19,7 @@ import * as snap from "./snapshot";
 import * as docs from "./docs";
 import { copySheet, markAsCopy, syncCopyOwners, syncCopiesOn } from "./copies";
 import { applyCAKit } from "./kits/ca";
+import { runCraftOp, CraftError } from "./crafting";
 import { systemOfScope } from "./systemSeed";
 import * as repo from "./repo";
 
@@ -31,6 +32,8 @@ export interface HostHooks {
   refreshNoteTokens?(campaignId: string, noteId: string, portrait: string | null): Promise<void>;
   /** Put a sheet into the campaign's initiative order (or update its place). */
   joinInitiative?(campaignId: string, sheet: { noteId: string; name: string; portrait: string | null }, value: number): Promise<void>;
+  /** A line in the campaign's chat — for everyone, or only the GMs (who can act on it there). */
+  postChat?(campaignId: string, msg: { sender: string; text: string; audience: "everyone" | "gm" }): Promise<void>;
 }
 
 export class OpError extends Error {}
@@ -880,6 +883,11 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         }
         return { templates, components };
       });
+    }
+    case "craft.session": case "craft.close": case "craft.forgePart": case "craft.forgeWeapon": case "craft.forgeQuick":
+    case "craft.brew": case "craft.experiment": case "craft.resolveExperiment": case "craft.rune": {
+      try { return await runCraftOp(ctx, body); }
+      catch (e) { if (e instanceof CraftError) fail(e.message); throw e; }
     }
     case "eval": {
       requireGM(viewer);

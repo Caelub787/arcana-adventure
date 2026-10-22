@@ -23,6 +23,8 @@ import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, TooltipEditor, type LookKind } from "../look";
 import { TipIcon, TipContent } from "../tips";
+import { CraftStation, ExperimentControls } from "../craft/CraftHost";
+import { CraftDefBlock } from "../craft/CraftDefEditor";
 import { mergeLook } from "../lookUtil";
 // Circular by design: regions contain editors that contain regions.
 import { AgEditor } from "./AgEditor";
@@ -689,6 +691,53 @@ export const AgIconNode = Node.create({
   addNodeView: () => ReactNodeViewRenderer(IconView, { stopEvent: () => true, as: "span" }),
 });
 
+// --------------------------------------------------------------------------- crafting
+// A character's crafting (Blacksmithing, Alchemy, Rune Making — opening each
+// craft's live tool), a recipe's setup, and an experiment's GM controls.
+function CraftStationView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  const kinds = Array.isArray(p.node.attrs.kinds) && p.node.attrs.kinds.length ? p.node.attrs.kinds : undefined;
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="crafting" tools={<ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>}>
+      <div contentEditable={false}><CraftStation noteId={ctx.noteId} kinds={kinds} /></div>
+    </Shell>
+  );
+}
+export const AgCraftStation = Node.create({
+  name: "agCraftStation", group: "block", atom: true, selectable: true, draggable: true,
+  addAttributes: () => ({ kinds: { default: [] } }),
+  parseHTML: () => [{ tag: "div[data-ag-craft-station]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-station": "" })],
+  addNodeView: () => ReactNodeViewRenderer(CraftStationView, { stopEvent: stopInside }),
+});
+function CraftDefView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="recipe setup" tools={<ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>}>
+      <div contentEditable={false}><CraftDefBlock noteId={ctx.noteId} /></div>
+    </Shell>
+  );
+}
+export const AgCraftDef = Node.create({
+  name: "agCraftDef", group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "div[data-ag-craft-def]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-def": "" })],
+  addNodeView: () => ReactNodeViewRenderer(CraftDefView, { stopEvent: stopInside }),
+});
+function CraftExperimentView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  return <NodeViewWrapper className="my-2"><div contentEditable={false}><ExperimentControls experimentId={ctx.noteId} compact /></div></NodeViewWrapper>;
+}
+export const AgCraftExperiment = Node.create({
+  name: "agCraftExperiment", group: "block", atom: true, selectable: true,
+  parseHTML: () => [{ tag: "div[data-ag-craft-experiment]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-experiment": "" })],
+  addNodeView: () => ReactNodeViewRenderer(CraftExperimentView, { stopEvent: stopInside }),
+});
+
 // --------------------------------------------------------------------------- tooltip (inline)
 // A "?" placed in the text — after a title, say — that explains it on hover
 // (or a tap on phones), so help text doesn't have to sit on the page.
@@ -873,5 +922,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftDef, AgCraftExperiment, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

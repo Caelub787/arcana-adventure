@@ -20,7 +20,7 @@ import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote,
   AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Plus, Hash, Gauge, Dices, EyeOff, Lock, Columns2, Columns3, LayoutGrid,
   Image as ImageIcon, Table as TableIcon, BarChart3, Link2, Puzzle, Minus, Highlighter, Palette, Loader2, FileText, Code, Sparkles, PanelsTopLeft, Backpack,
-  Activity, HelpCircle,
+  Activity, HelpCircle, Hammer, FlaskConical,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAg, useDoc } from "../hooks";
@@ -271,6 +271,8 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Link to a sheet", hint: "A chip that opens another sheet", icon: <FileText className="h-4 w-4" />, run: () => { setOpen(false); setPicker("note"); } },
     { label: "Component", hint: "One of your reusable designs", icon: <Puzzle className="h-4 w-4" />, run: () => configure("agComponent", { componentId: "", bindings: {} }, "Component") },
     { label: "Icon", hint: "A small picture in the text (heart, sword, coins…)", icon: <Sparkles className="h-4 w-4" />, run: () => insert({ type: "agIcon", attrs: { name: "Star", color: "#d4a24c", size: 16 } }) },
+    { label: "Crafting", hint: "Blacksmithing, Alchemy and Rune Making — on a character", icon: <Hammer className="h-4 w-4" />, gm: true, run: () => insert({ type: "agCraftStation", attrs: { kinds: [] } }) },
+    { label: "Recipe setup", hint: "Make this sheet a blueprint, alchemy recipe or rune recipe", icon: <FlaskConical className="h-4 w-4" />, gm: true, run: () => insert({ type: "agCraftDef" }) },
     { label: "Tooltip (?)", hint: "A ? that explains something on hover — e.g. after a title", icon: <HelpCircle className="h-4 w-4" />, run: () => insert({ type: "agTip", attrs: { text: "", size: 14 } }) },
     { label: "Divider", hint: "A horizontal line", icon: <Minus className="h-4 w-4" />, run: () => { editor?.chain().focus().setHorizontalRule().run(); setOpen(false); } },
   ];

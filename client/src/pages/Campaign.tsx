@@ -30,6 +30,7 @@ import { V3SpeciesDefaultsEditor } from "@/components/game/V3SpeciesDefaultsEdit
 import { V3SpellAuthoringListener, V3SpellLiveSync, V3GmSpellManager } from "@/components/game/V3SpellCrafter";
 import { V3FreeHotbar } from "@/components/game/V3FreeHotbar";
 import { SoundscapePanel } from "@/components/game/SoundscapePanel";
+import { CraftChatCard, parseCraftChat } from "@/agnostic/craft/CraftHost";
 import { AgRoot } from "@/agnostic/AgRoot";
 import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
 import { AgTracker } from "@/agnostic/AgTracker";
@@ -1179,6 +1180,15 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
             const isMe = msg.userId === user?.id;
             const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+            // Crafting experiments: the GM decides what they made, right here.
+            if (msg.type === 'gm-audit' && parseCraftChat(msg.text)) {
+              return (
+                <div key={msg.id || i} data-testid="chat-craft-experiment">
+                  <CraftChatCard text={msg.text} />
+                  <div className="text-[10px] text-stone-600 text-right mt-0.5">{time} · only GMs see this</div>
+                </div>
+              );
+            }
             if (isEvent) {
               return (
                 <div key={msg.id || i} className="text-center text-[11px] text-stone-500 italic py-1">

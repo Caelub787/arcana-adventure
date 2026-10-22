@@ -12,6 +12,8 @@ import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
+import { applyCACrafting } from "./caCrafting";
+import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
   // Levels 1–7 built the single-use abilities that level 8 turns into techniques.
@@ -26,13 +28,14 @@ import {
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
+  craftingSkillNodes, craftingTabContent, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 18;
+export const CA_KIT_LEVEL = 19;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -63,6 +66,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 16) await upgrade16(store, characterTemplates);
   if (level < 17) await upgrade17(store, characterTemplates);
   if (level < 18) await upgrade17(store, characterTemplates);
+  if (level < 19) await upgrade19(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1201,6 +1205,92 @@ async function upgrade17(store: ScopeStore, characterTemplates: AgNote[]) {
           const els = findAll(c, () => true);
           if (els.length === 1 && els[0].nodeName === "agButton" && els[0].getAttribute("actionId") === initiative.id) frag.delete(frag.toArray().indexOf(c), 1);
         }
+      }
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 19
+// Crafting: Blacksmithing, Alchemy and Rune Making. The crafting item kinds and
+// the Blueprint / Recipe / Rune Recipe templates (and the starter set) arrive;
+// characters get their crafting skills (on the Skills tab) and a Crafting tab;
+// potions get potency (how well they were brewed); weapons get Damage bonus and
+// Accuracy, which their rolls add (runes and forging raise them).
+async function upgrade19(store: ScopeStore, characterTemplates: AgNote[]) {
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  const characters = Array.from(store.notes.values()).filter((n) => charIds.has(n.id) || (n.templateId && charIds.has(n.templateId)));
+  const addField = async (note: AgNote, key: string, label: string, value: number | boolean, tooltip: string | undefined, cs: any) => {
+    const have = store.fieldsByNote.get(note.id);
+    if (have?.get(key)) return false;
+    const order = Math.max(0, ...Array.from(have?.values() ?? []).map((f) => f.sortOrder)) + 1;
+    const f: AgField = { id: randomUUID(), noteId: note.id, key, label, type: typeof value === "boolean" ? "boolean" : "number", value, formula: null, options: tooltip ? { tooltip } : {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null };
+    await store.putField(f, cs);
+    return true;
+  };
+  await store.run(async (cs) => {
+    await applyCACrafting(store, cs, { starter: true });
+    // The new item types (the GM's own stay, after the kit's).
+    for (const fields of Array.from(store.fieldsByNote.values())) {
+      const f = fields.get("item_type");
+      if (!f || f.type !== "select") continue;
+      const have = f.options.choices ?? [];
+      const choices = [...ITEM_TYPES, ...have.filter((c) => !ITEM_TYPES.includes(c))];
+      const colors = { ...ITEM_TYPE_COLORS, ...(f.options.choiceColors ?? {}) };
+      if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices, choiceColors: colors } }, cs);
+    }
+    for (const n of characters) {
+      await addField(n, "blacksmithing", "Blacksmithing", 0, CRAFT_SKILL_HELP.blacksmithing, cs);
+      await addField(n, "alchemy", "Alchemy", 0, CRAFT_SKILL_HELP.alchemy, cs);
+      await addField(n, "rune_making", "Rune Making", 0, CRAFT_SKILL_HELP.rune_making, cs);
+    }
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (n.type !== "item" || !fields) continue;
+      // Potions: potency and inert, and Heal HP adds the potency (unless the GM changed it).
+      if (fields.get("heal_dice")) {
+        await addField(n, "potency", "Potency", 0, POTENCY_HELP, cs);
+        await addField(n, "inert", "Inert", false, undefined, cs);
+        for (const a of store.actionsOf(n.id)) {
+          if (a.name !== "Heal HP") continue;
+          const steps = a.steps.map((st: any) => (st.type === "modify" && st.target === "@owner.hp" && st.op === "add" && st.value === "$heal" ? { ...st, value: HEAL_VALUE } : st));
+          if (JSON.stringify(steps) !== JSON.stringify(a.steps)) await store.putAction({ ...a, steps }, cs);
+        }
+      }
+      // Weapons: Damage bonus and Accuracy, which Damage and Strike add.
+      if (fields.get("handedness") || String(fields.get("item_type")?.value ?? "") === "Weapon") {
+        const newDamage = await addField(n, "damage_bonus", "Damage bonus", 0, "Added to the Damage roll. Forging and runes raise it.", cs);
+        await addField(n, "accuracy", "Accuracy", 0, "Added to the Strike roll. A well-forged handle raises it.", cs);
+        for (const a of store.actionsOf(n.id)) {
+          const r = a.options?.roll;
+          if (!r) continue;
+          if (/damage/i.test(a.name) && /^-?\d+$/.test(r.bonus.trim())) {
+            // A plain number moves into Damage bonus, where runes add to it.
+            const fb = store.fieldsByNote.get(n.id)?.get("damage_bonus");
+            if (fb && newDamage) await store.putField({ ...fb, value: Number(r.bonus) }, cs);
+            await store.putAction({ ...a, options: { ...a.options, roll: { ...r, bonus: Number(r.bonus) && !newDamage ? `${r.bonus} + damage_bonus` : "damage_bonus" } } }, cs);
+          } else if (/strike|attack/i.test(a.name) && r.bonus.trim() === "0") {
+            await store.putAction({ ...a, options: { ...a.options, roll: { ...r, bonus: "accuracy" } } }, cs);
+          }
+        }
+      }
+    }
+  });
+  // Weapon pages show the two; characters get the crafting box and the Crafting tab.
+  for (const n of Array.from(store.notes.values()).filter((x) => x.type === "item" && store.fieldsByNote.get(x.id)?.get("handedness"))) {
+    await editPage(n, (_doc, frag) => {
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).trim().startsWith("HANDEDNESS") && !textOf(e).includes("DAMAGE"))) {
+        appendNodes(para, [{ text: "    " } as any, ...[muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), { text: "    " } as any, muted("ACCURACY "), val("accuracy", { look: { bold: true } })] as any]);
+      }
+    });
+  }
+  for (const n of characters) {
+    await editPage(n, (_doc, frag) => {
+      const tabsEl = findAll(frag, (e) => e.nodeName === "agTabs")[0];
+      if (!tabsEl) return;
+      const skills = findAll(tabsEl, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (skills && !findAll(skills, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "blacksmithing").length) appendNodes(skills, craftingSkillNodes());
+      if (!findAll(tabsEl, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Crafting").length) {
+        appendNodes(tabsEl, [{ type: "agTab", attrs: { title: "Crafting", icon: "Hammer", color: "" }, content: craftingTabContent() }]);
       }
     });
   }

@@ -85,6 +85,12 @@ export const AG_BUILTIN_TYPES: AgNoteTypeDef[] = [
   { id: "species", label: "Species", plural: "Species", icon: "Dna", library: true },
   { id: "location", label: "Location", plural: "Locations", icon: "MapPin", library: false },
   { id: "note", label: "Note", plural: "Notes", icon: "StickyNote", library: false },
+  // Crafting (see crafting.ts): what can be made, and work in progress.
+  { id: "blueprint", label: "Blueprint", plural: "Blueprints", icon: "Hammer", library: true },
+  { id: "recipe", label: "Recipe", plural: "Recipes", icon: "FlaskConical", library: true },
+  { id: "rune_recipe", label: "Rune Recipe", plural: "Rune Recipes", icon: "PenTool", library: true },
+  { id: "craft", label: "Crafting", plural: "Crafting", icon: "Anvil", library: false },
+  { id: "experiment", label: "Experiment", plural: "Experiments", icon: "Wand2", library: false },
 ];
 export const agTypeLabel = (type: string) =>
   AG_BUILTIN_TYPES.find((t) => t.id === type)?.label ?? (type ? type.charAt(0).toUpperCase() + type.slice(1) : "Note");

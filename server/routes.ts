@@ -508,6 +508,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // A whole image from the image library (or pasted) becomes a saved file.
     // Kept in the database: the server's disk doesn't survive a redeploy.
     saveImage: (dataUrl) => saveAgImageDataUrl(dataUrl),
+    // Crafting results for everyone; experiment prompts for the GMs only (as GM-only lines).
+    postChat: async (campaignId, msg) => {
+      const chat = await storage.createChatMessage({ campaignId, userId: null, sender: msg.sender, text: msg.text.slice(0, 4000), type: msg.audience === "gm" ? "gm-audit" : "system" } as any);
+      if (msg.audience !== "gm") { broadcastToCampaign(campaignId, { type: "chat_message", message: chat }); return; }
+      const room = campaignRooms.get(campaignId);
+      if (!room) return;
+      const campaign = await storage.getCampaign(campaignId);
+      const gmUserIds = new Set<string>();
+      if ((campaign as any)?.gmUserId) gmUserIds.add((campaign as any).gmUserId);
+      for (const m of await storage.getCampaignMembers(campaignId)) if (m.role === "gm" || m.role === "assistant_gm") gmUserIds.add(m.userId);
+      const payload = JSON.stringify({ type: "chat_message", message: chat });
+      room.forEach((client: any) => { if (client.readyState === 1 && gmUserIds.has(client.userId)) client.send(payload); });
+    },
     // An Agnostic sheet's "join initiative" step: one row per sheet, re-rolling replaces it.
     joinInitiative: async (campaignId, sheet, value) => {
       const existing = await db.select({ id: initiativeEntries.id }).from(initiativeEntries)
