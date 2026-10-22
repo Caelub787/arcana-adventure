@@ -1,7 +1,7 @@
 // Pieces the crafting tools share: who's crafting, what they carry, item
 // tiles, the result banner, and the Quick Craft button.
 import React from "react";
-import { Dices, Loader2, Sparkles, Leaf, PenTool, Droplet } from "lucide-react";
+import { Dices, Loader2, Sparkles, Leaf, PenTool, Droplet, FlaskRound, Anvil } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import { TIER_COLOR, TIER_LABEL, parseCraftConfig, CRAFT_DEF_TYPE, type CraftKind, type CraftTier, type CraftConfig } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
@@ -66,6 +66,11 @@ export function SupplyFace({ note, size }: { note: AgNote; size: number }) {
     const c = colorOf(state, note.id, "ink_color", "#a78bfa");
     const g = Number(valueOn(state, note.id, "ink_glow") ?? 0) || 0;
     return <span className={box} style={{ width: size, height: size, borderColor: `${c}99`, background: `radial-gradient(circle, color-mix(in srgb, ${c} ${15 + g / 4}%, transparent), #0c0a09 70%)` }}><Droplet style={{ width: size * 0.6, height: size * 0.6, color: c, fill: c, filter: g ? `drop-shadow(0 0 ${2 + g / 12}px ${c})` : undefined }} /></span>;
+  }
+  if (has("station_for")) {
+    const k = String(valueOn(state, note.id, "station_for") ?? "");
+    const [c, I] = k === "Alchemy" ? ["#34d399", FlaskRound] as const : k === "Rune Making" ? ["#a78bfa", PenTool] as const : ["#f97316", Anvil] as const;
+    return <span className={box} style={{ width: size, height: size, borderColor: `${c}99`, background: `radial-gradient(circle at 50% 80%, color-mix(in srgb, ${c} 40%, transparent), #0c0a09 70%)` }}><I style={{ width: size * 0.6, height: size * 0.6, color: c, filter: `drop-shadow(0 0 6px ${c})` }} /></span>;
   }
   if (has("mark_style")) return <span className={box} style={{ width: size, height: size, borderColor: "#fdba7466", background: "radial-gradient(circle, #2b1d12, #0c0a09 70%)" }}><PenTool style={{ width: size * 0.55, height: size * 0.55, color: "#fdba74" }} /></span>;
   if (valueOn(state, note.id, "item_type") === "Ingredient") return <span className={box} style={{ width: size, height: size, borderColor: "#86efac66", background: "radial-gradient(circle, #10251a, #0c0a09 70%)" }}><Leaf style={{ width: size * 0.58, height: size * 0.58, color: "#86efac", filter: "drop-shadow(0 0 4px #22c55e)" }} /></span>;

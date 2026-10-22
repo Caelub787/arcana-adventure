@@ -35,7 +35,7 @@ import {
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 19;
+export const CA_KIT_LEVEL = 20;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -67,6 +67,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 17) await upgrade17(store, characterTemplates);
   if (level < 18) await upgrade17(store, characterTemplates);
   if (level < 19) await upgrade19(store, characterTemplates);
+  if (level < 20) await upgrade20(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1294,4 +1295,23 @@ async function upgrade19(store: ScopeStore, characterTemplates: AgNote[]) {
       }
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 20
+// Crafting stations: a Forge for Blacksmithing, an Alchemist Pot for Alchemy and
+// a Runemaking Pen for Rune Making — each craft needs its own in the inventory.
+// With them, more to test every craft with: Energy Tonic, Focus Elixir and
+// Wound Salve (and their recipes), the Runes of Frost, Storm and Vigor, and
+// Bitterroot and Storm Shard.
+async function upgrade20(store: ScopeStore) {
+  await store.run(async (cs) => {
+    await applyCACrafting(store, cs, { starter: true });
+    for (const fields of Array.from(store.fieldsByNote.values())) {
+      const f = fields.get("item_type");
+      if (!f || f.type !== "select") continue;
+      const have = f.options.choices ?? [];
+      const choices = [...ITEM_TYPES, ...have.filter((c) => !ITEM_TYPES.includes(c))];
+      if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices, choiceColors: { ...ITEM_TYPE_COLORS, ...(f.options.choiceColors ?? {}) } } }, cs);
+    }
+  });
 }

@@ -4,7 +4,7 @@
 // weapons, materials, ingredients, inks, tools, a recipe and runes. GMs make
 // more from the templates in campaigns and My Library; admin in Admin.
 import { randomUUID } from "crypto";
-import type { AgNote, AgSnapshot, AgValue } from "@shared/agnostic/types";
+import type { AgField, AgNote, AgSnapshot, AgValue } from "@shared/agnostic/types";
 import { SIGILS, type ForgeConfig, type AlchemyConfig, type RuneConfig, type CraftNeed } from "@shared/agnostic/crafting";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
@@ -15,7 +15,7 @@ import { syncCopyOwners } from "../copies";
 export const CA_CRAFT_FOLDER = "Cultivator's Adventure — Crafting";
 const GILT = "#d4a24c";
 export const CA_DEF_TEMPLATE_NAMES = { forge: "CA Blueprint", alchemy: "CA Recipe", rune: "CA Rune Recipe" } as const;
-export const CA_CRAFT_ITEM_TEMPLATE_NAMES: Record<string, string> = { Material: "CA Material", Ingredient: "CA Ingredient", Ink: "CA Ink", Tool: "CA Tool", Part: "CA Part" };
+export const CA_CRAFT_ITEM_TEMPLATE_NAMES: Record<string, string> = { Material: "CA Material", Ingredient: "CA Ingredient", Ink: "CA Ink", Tool: "CA Tool", Part: "CA Part", Station: "CA Station" };
 
 const DEF_HELP = {
   forge: "A blueprint: the parts a weapon is forged from, each part's shape, and what it makes. Players pick it at the forge, choose a material for each part, then hammer each part to shape (or Quick Craft the lot).",
@@ -63,7 +63,14 @@ export async function applyCACrafting(store: ScopeStore, cs: ChangeSet, opts: { 
     ["rune", { kind: "rune", sigil: SIGILS.flame.strokes, ingredients: [], tools: [], needsInk: false, output: runeTpl?.id ?? null, effect: { key: "damage_bonus", values: { default: 1, slight: 2, huge: 3 } } } satisfies RuneConfig],
   ];
   for (const [kind, config] of defs) tpl[kind] = byName(store, CA_DEF_TEMPLATE_NAMES[kind], true) ?? await snap.createFromSnapshot(store, defTemplate(kind, config), {}, cs);
-  if (!opts.starter || Array.from(store.notes.values()).some((n) => n.folder === CA_CRAFT_FOLDER)) return tpl;
+  if (!opts.starter) return tpl;
+  const base = Array.from(store.notes.values()).some((n) => n.folder === CA_CRAFT_FOLDER) ? {} : await starterSet(store, cs, tpl);
+  // Stations and the rest of the test set: added by name wherever they're missing.
+  return { ...tpl, ...base, ...await starterExtras(store, cs, tpl) };
+}
+
+async function starterSet(store: ScopeStore, cs: ChangeSet, tpl: Record<string, AgNote>): Promise<Record<string, AgNote>> {
+  const weaponTpl = byName(store, "CA Weapon", true), ammoTpl = byName(store, "CA Ammunition", true), runeTpl = byName(store, "CA Rune", true), potionTpl = byName(store, "CA Consumable", true);
 
   // ---- starter set: originals the GM gives copies of (and recipes to share)
   const make = async (template: AgNote | undefined, name: string, values: Record<string, AgValue>, acl?: AgNote["acl"]) => {
@@ -133,12 +140,108 @@ export async function applyCACrafting(store: ScopeStore, cs: ChangeSet, opts: { 
     description: "A warding sigil drawn in luminous ink: armor turns blows more surely.",
     craft: JSON.stringify({ kind: "rune", sigil: SIGILS.ward.strokes, ingredients: [need(ing.moonpetal, 1)], tools: [need(tools.quill, 1, false)], needsInk: true, output: runeOut, effect: { key: "armor_dc", values: { default: 1, slight: 1, huge: 2 } } } satisfies RuneConfig),
   });
-  return { ...tpl, ...Object.fromEntries(Object.entries({ ...mats, ...ing, ...inks, ...tools }).filter(([, v]) => !!v)) as Record<string, AgNote> };
+  return Object.fromEntries(Object.entries({ ...mats, ...ing, ...inks, ...tools }).filter(([, v]) => !!v)) as Record<string, AgNote>;
+}
+
+/** A value on a sheet, added if it doesn't have it. */
+async function ensureField(store: ScopeStore, note: AgNote, key: string, label: string, type: AgField["type"], value: AgValue, cs: ChangeSet, extra: { formula?: string; options?: AgField["options"] } = {}) {
+  const have = store.fieldsByNote.get(note.id);
+  const f = have?.get(key);
+  if (f) { await store.putField({ ...f, value: type === "dice" ? null : value, formula: type === "dice" ? (extra.formula ?? f.formula) : f.formula }, cs); return; }
+  const order = Math.max(0, ...Array.from(have?.values() ?? []).map((x) => x.sortOrder)) + 1;
+  await store.putField({ id: randomUUID(), noteId: note.id, key, label, type, value: type === "dice" ? null : value, formula: extra.formula ?? null, options: extra.options ?? {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+}
+
+/**
+ * The crafting stations (a Forge, an Alchemist Pot, a Runemaking Pen) and more
+ * to test every craft with: ingredients, potions and their recipes, runes.
+ * Only what isn't there yet (by name) is made.
+ */
+async function starterExtras(store: ScopeStore, cs: ChangeSet, tpl: Record<string, AgNote>): Promise<Record<string, AgNote>> {
+  const found = (name: string) => Array.from(store.notes.values()).find((n) => !n.isTemplate && !n.copyOf && n.name === name);
+  const make = async (template: AgNote | undefined, name: string, values: Record<string, AgValue>, acl?: AgNote["acl"]) => {
+    const have = found(name);
+    if (have) return { note: have, fresh: false };
+    if (!template) return null;
+    const n = await snap.createFromSnapshot(store, await snap.takeSnapshot(store, template.id), { name, folder: CA_CRAFT_FOLDER, ownerIds: [], ...(acl ? { acl } : {}) }, cs, { fromTemplateId: template.id });
+    for (const [k, v] of Object.entries(values)) await fieldVal(store, n, k, v, cs);
+    return { note: n, fresh: true };
+  };
+  const out: Record<string, AgNote> = {};
+  const keep = <R extends { note: AgNote } | null>(k: string, r: R): R => { if (r) out[k] = r.note; return r; };
+  // Stations: each craft needs its own in the inventory.
+  keep("forge_station", await make(tpl.Station, "Forge", { station_for: "Blacksmithing", station_bonus: 0, weight: 50, value: 150, rarity: "Common" }));
+  keep("pot_station", await make(tpl.Station, "Alchemist Pot", { station_for: "Alchemy", station_bonus: 0, weight: 8, value: 60, rarity: "Common" }));
+  const pen = keep("pen_station", await make(tpl.Station, "Runemaking Pen", { station_for: "Rune Making", station_bonus: 0, weight: 0.1, value: 40, rarity: "Uncommon" }));
+  // The pen draws runes too.
+  if (pen?.fresh) await ensureField(store, pen.note, "mark_style", "Mark style", "select", "Drawn", cs, { options: { choices: ["Carved", "Drawn"], choiceColors: { Carved: "#d6d3d1", Drawn: "#c4b5fd" } } });
+  // Ingredients.
+  for (const [k, name, rarity, value] of [["bitterroot", "Bitterroot", "Common", 3], ["storm", "Storm Shard", "Rare", 25], ["redleaf", "Redleaf", "Common", 2], ["water", "Spring Water", "Common", 1], ["moss", "Ember Moss", "Uncommon", 6], ["moonpetal", "Moonpetal", "Rare", 15]] as const)
+    keep(k, await make(tpl.Ingredient, name, { rarity, value }));
+  for (const k of ["Carving Knife", "Rune Quill", "Emberglow Ink", "Frostlight Ink", "Iron Gall Ink", "Iron Ingot", "Steel Ingot", "Oak Haft", "Leather Grip"]) { const n = found(k); if (n) out[k] = n; }
+
+  // Potions that restore Energy and Focus (a Drink button on the item), and a wound salve.
+  const itemTpl = byName(store, "CA Item", true), potionTpl = byName(store, "CA Consumable", true);
+  const drink = async (name: string, dice: string, resource: string, cap: string, desc: string) => {
+    const r = await make(itemTpl, name, { item_type: "Consumable", rarity: "Uncommon", weight: 0.2, value: 40 });
+    if (!r?.fresh) return r?.note ?? null;
+    const n = r.note;
+    await ensureField(store, n, "restore_dice", `Restores (${resource})`, "dice", null, cs, { formula: dice });
+    await ensureField(store, n, "potency", "Potency", "number", 0, cs, { options: { tooltip: "How well it was brewed: added to what it restores." } });
+    await ensureField(store, n, "inert", "Inert", "boolean", false, cs);
+    await store.putAction({
+      id: randomUUID(), noteId: n.id, name: "Drink", color: "#0891b2", acl: { view: "inherit", edit: "owners" },
+      steps: [
+        { type: "roll", name: "r", expr: "restore_dice", label: desc },
+        { type: "modify", target: `@owner.${resource}`, op: "add", value: "if(inert, 0, max(0, $r + potency))" },
+        { type: "modify", target: `@owner.${resource}`, op: "set", value: `min(@owner.${resource}, @owner.${cap})` },
+        { type: "modify", target: "qty", op: "subtract", value: "1" },
+        { type: "remove", target: "self", when: "qty <= 0" },
+      ],
+      options: { icon: "fa-solid fa-flask", showName: true, showIcon: true, listed: true, sortOrder: 0 },
+    } as any, cs);
+    return n;
+  };
+  const tonic = await drink("Energy Tonic", "3d6", "energy", "usable_energy", "Energy restored");
+  const elixir = await drink("Focus Elixir", "1d4", "focus", "focus_max", "Focus restored");
+  const salve = (await make(potionTpl, "Wound Salve", { heal_dice: "1d4", heal_wounds: "Moderate", rarity: "Uncommon", value: 45, weight: 0.2 }))?.note ?? null;
+  const need = (n: AgNote | undefined | null, qty = 1, consumed = true): CraftNeed => ({ noteId: n?.id ?? null, name: n?.name ?? "", qty, consumed });
+  const recipe = async (name: string, desc: string, config: AlchemyConfig) => keep(name, await make(tpl.alchemy, name, { description: desc, craft: JSON.stringify(config) }));
+  await recipe("Energy Tonic Recipe", "A fizzing amber tonic that refills the meridians.", {
+    kind: "alchemy", ingredients: [need(out.moss, 1), need(out.water, 1)], output: tonic?.id ?? null, effects: [],
+    steps: [{ id: "s1", type: "grind", ingredient: "Ember Moss", amount: 6 }, { id: "s2", type: "add", ingredient: "Spring Water", amount: 40 }, { id: "s3", type: "heat", amount: 50 }, { id: "s4", type: "mix", amount: 6 }],
+  });
+  await recipe("Focus Elixir Recipe", "A pale, cold elixir that clears the mind.", {
+    kind: "alchemy", ingredients: [need(out.moonpetal, 1), need(out.water, 1)], output: elixir?.id ?? null, effects: [],
+    steps: [{ id: "s1", type: "dice", ingredient: "Moonpetal", amount: 2 }, { id: "s2", type: "mix", amount: 10 }, { id: "s3", type: "rest", amount: 6 }, { id: "s4", type: "strain" }],
+  });
+  await recipe("Wound Salve Recipe", "A thick green salve that closes wounds.", {
+    kind: "alchemy", ingredients: [need(out.redleaf, 1), need(out.moss, 1), need(out.bitterroot, 1)], output: salve?.id ?? null, effects: [],
+    steps: [{ id: "s1", type: "grind", ingredient: "Redleaf", amount: 5 }, { id: "s2", type: "add", ingredient: "Bitterroot", amount: 70 }, { id: "s3", type: "heat", amount: 40 }, { id: "s4", type: "mix", amount: 6 }, { id: "s5", type: "rest", amount: 4 }],
+  });
+  // More runes (and the pen counts as a tool for every rune).
+  const runeOut = byName(store, "CA Rune", true)?.id ?? null;
+  const penTool = need(out.pen_station, 1, false), quill = need(out["Rune Quill"], 1, false), knife = need(out["Carving Knife"], 1, false);
+  const rune = async (name: string, desc: string, config: RuneConfig) => keep(name, await make(tpl.rune, name, { description: desc, craft: JSON.stringify(config) }));
+  await rune("Rune of Frost", "A frost sigil drawn in luminous ink: the cold steadies the wielder's aim.", { kind: "rune", sigil: SIGILS.frost.strokes, ingredients: [need(out.water, 1)], tools: [penTool, quill, knife], needsInk: true, output: runeOut, effect: { key: "accuracy", values: { default: 1, slight: 2, huge: 3 } } });
+  await rune("Rune of Storm", "A lightning sigil charged with a storm shard: the weapon strikes like thunder.", { kind: "rune", sigil: SIGILS.storm.strokes, ingredients: [need(out.storm, 1)], tools: [penTool, knife], needsInk: true, output: runeOut, effect: { key: "damage_bonus", values: { default: 2, slight: 3, huge: 4 } } });
+  await rune("Rune of Vigor", "A ring-and-cross sigil for armor: it shrugs blows aside.", { kind: "rune", sigil: SIGILS.vigor.strokes, ingredients: [need(out.moonpetal, 1)], tools: [penTool, quill], needsInk: false, output: runeOut, effect: { key: "armor_dc", values: { default: 1, slight: 2, huge: 2 } } });
+  // The older runes accept the pen as well.
+  for (const nm of ["Rune of Flame", "Rune of Warding"]) {
+    const n = found(nm);
+    const f = n ? store.fieldsByNote.get(n.id)?.get("craft") : undefined;
+    if (!f || !out.pen_station) continue;
+    try {
+      const c = JSON.parse(String(f.value ?? ""));
+      if (Array.isArray(c.tools) && !c.tools.some((t: any) => t?.noteId === out.pen_station.id)) await store.putField({ ...f, value: JSON.stringify({ ...c, tools: [...c.tools, penTool] }) }, cs);
+    } catch { /* the GM's own text: leave it */ }
+  }
+  return out;
 }
 
 /** Give a character copies of starter supplies (the example character). */
 export async function giveStarterSupplies(store: ScopeStore, hero: AgNote, made: Record<string, AgNote>, cs: ChangeSet) {
-  const give: Array<[string, number]> = [["iron", 3], ["steel", 1], ["oak", 2], ["leather", 1], ["redleaf", 4], ["water", 2], ["moss", 2], ["ember", 2], ["knife", 1], ["quill", 1]];
+  const give: Array<[string, number]> = [["forge_station", 1], ["pot_station", 1], ["pen_station", 1], ["iron", 3], ["steel", 1], ["oak", 2], ["leather", 1], ["redleaf", 4], ["water", 4], ["moss", 3], ["moonpetal", 2], ["bitterroot", 2], ["storm", 1], ["ember", 2], ["frost", 1], ["knife", 1], ["quill", 1]];
   for (const [k, qty] of give) {
     const n = made[k];
     if (!n) continue;

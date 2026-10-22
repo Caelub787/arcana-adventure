@@ -8,14 +8,14 @@ import { CRAFT_KIND_LABEL, type CraftKind } from "@shared/agnostic/crafting";
 import { useAg, useAgMaybe, follow } from "../hooks";
 import { AgPanel, agConfirm } from "../float";
 import { useToast } from "@/hooks/use-toast";
-import { useCraftSession, valueOn } from "./session";
+import { useCraftSession, valueOn, inventoryOf } from "./session";
 import { ForgeTool } from "./Forge";
 import { AlchemyTool } from "./Alchemy";
 import { RuneTool } from "./Runes";
 import { SKILL_KEY } from "./common";
 
 // --------------------------------------------------------------------------- open windows
-interface OpenCraft { sessionId: string; characterId: string; kind: CraftKind }
+interface OpenCraft { sessionId: string; characterId: string; kind: CraftKind; /** Crafts in this system need a station item (a forge, a pot, a pen). */ stations?: boolean }
 let open: OpenCraft[] = [];
 const listeners = new Set<() => void>();
 export function openCraft(c: OpenCraft) { open = [...open.filter((o) => o.sessionId !== c.sessionId), c]; listeners.forEach((l) => l()); }
@@ -32,7 +32,7 @@ export function AgCraftHost() {
   return <>{list.map((o) => <CraftWindow key={o.sessionId} {...o} />)}</>;
 }
 
-function CraftWindow({ sessionId, characterId, kind }: OpenCraft) {
+function CraftWindow({ sessionId, characterId, kind, stations }: OpenCraft) {
   const { state, request, viewer } = useAg();
   const { toast } = useToast();
   const session = useCraftSession(sessionId);
@@ -41,6 +41,9 @@ function CraftWindow({ sessionId, characterId, kind }: OpenCraft) {
   // The crafter plays: a player whose character it is (or the GM, for a character no player has).
   const crafterIsHere = !!character && (character.ownerIds.includes(viewer.userId) || (viewer.isGM && character.ownerIds.length === 0));
   const playing = crafterIsHere && !session.readOnly;
+  // The station they carry for this craft (live: it appears the moment the GM gives one).
+  const station = inventoryOf(state, characterId).find((n) => valueOn(state, n.id, "station_for") === CRAFT_KIND_LABEL[kind]);
+  const missingStation = !!stations && playing && !station;
   const gone = !session.note;
   const end = () => agConfirm("Work in progress here is lost (what you've already made stays in the inventory).", { title: "End this crafting session?", confirm: "End it" })
     .then((ok) => { if (ok) request({ op: "craft.close", sessionId }).then(() => closeCraft(sessionId)).catch((e: any) => { toast({ title: "Couldn't end it", description: e.message, variant: "destructive" }); }); });
@@ -49,13 +52,37 @@ function CraftWindow({ sessionId, characterId, kind }: OpenCraft) {
       onClose={() => closeCraft(sessionId)} width={860} height={820} panelKey={`ag-craft-${sessionId}`} testId={`craft-window-${kind}`}
       footer={playing ? <button type="button" onClick={end} className="h-8 px-3 rounded text-xs text-stone-400 hover:text-red-300">End session</button> : undefined}>
       <div className="relative -m-3 p-3 min-h-full" style={{ background: `radial-gradient(circle at 50% 0%, color-mix(in srgb, ${CRAFT_ACCENT[kind]} 10%, transparent), transparent 60%)` }}>
+        {station && <StationChip note={station} kind={kind} />}
         {gone ? <div className="text-sm text-stone-400 p-4">This crafting session has ended.</div>
+          : missingStation ? <NeedStation kind={kind} />
           : !session.ready ? <div className="text-xs text-stone-400 inline-flex items-center gap-2 p-4"><Loader2 className="h-4 w-4 animate-spin" /> Lighting the fire…</div>
           : kind === "forge" ? <ForgeTool characterId={characterId} state={session.state} set={session.set} playing={playing} />
           : kind === "alchemy" ? <AlchemyTool characterId={characterId} state={session.state} set={session.set} playing={playing} />
           : <RuneTool characterId={characterId} state={session.state} set={session.set} playing={playing} />}
       </div>
     </AgPanel>
+  );
+}
+
+const STATION_WORD: Record<CraftKind, string> = { forge: "a forge", alchemy: "an alchemist's pot", rune: "a rune pen" };
+function StationChip({ note, kind }: { note: AgNote; kind: CraftKind }) {
+  const { state } = useAg();
+  const Icon = CRAFT_ICON[kind];
+  const bonus = Number(valueOn(state, note.id, "station_bonus") ?? 0) || 0;
+  return (
+    <div className="mb-2 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[11px]" style={{ borderColor: `color-mix(in srgb, ${CRAFT_ACCENT[kind]} 55%, transparent)`, color: CRAFT_ACCENT[kind], background: `color-mix(in srgb, ${CRAFT_ACCENT[kind]} 10%, rgba(12,10,9,0.8))` }} data-testid={`craft-station-${kind}`}>
+      <Icon className="h-3.5 w-3.5" /> Using {note.name}{bonus ? <span className="font-mono text-stone-300">{bonus > 0 ? "+" : ""}{bonus} to Quick Craft</span> : null}
+    </div>
+  );
+}
+function NeedStation({ kind }: { kind: CraftKind }) {
+  const Icon = CRAFT_ICON[kind];
+  return (
+    <div className="rounded-2xl border p-6 text-center space-y-2" style={{ borderColor: `color-mix(in srgb, ${CRAFT_ACCENT[kind]} 45%, transparent)`, background: ART[kind] }} data-testid={`craft-need-station-${kind}`}>
+      <Icon className="h-12 w-12 mx-auto" style={{ color: CRAFT_ACCENT[kind], filter: `drop-shadow(0 0 14px ${CRAFT_ACCENT[kind]})` }} />
+      <div className="text-base font-bold text-stone-100">You need {STATION_WORD[kind]}</div>
+      <div className="text-xs text-stone-300 max-w-sm mx-auto">{CRAFT_KIND_LABEL[kind]} needs {STATION_WORD[kind]} in your inventory. Once you have one (the GM can give you one), this opens straight away.</div>
+    </div>
   );
 }
 
@@ -80,8 +107,8 @@ export function CraftStation({ noteId, kinds = ["forge", "alchemy", "rune"] }: {
   const start = async (kind: CraftKind) => {
     setBusy(kind);
     try {
-      const { noteId: sessionId } = await request<{ noteId: string }>({ op: "craft.session", characterId: noteId, kind });
-      openCraft({ sessionId, characterId: noteId, kind });
+      const { noteId: sessionId, stations } = await request<{ noteId: string; stations?: boolean }>({ op: "craft.session", characterId: noteId, kind });
+      openCraft({ sessionId, characterId: noteId, kind, stations });
     } catch (e: any) { toast({ title: "Couldn't open it", description: e.message, variant: "destructive" }); }
     finally { setBusy(null); }
   };

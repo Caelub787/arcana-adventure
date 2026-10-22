@@ -38,7 +38,7 @@ export function RuneTool({ characterId, state: s, set, playing }: Props) {
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state, characterId]);
   const inks = inventory.filter((n) => hasValue(state, n.id, "ink_color"));
   const tools = inventory.filter((n) => hasValue(state, n.id, "mark_style"));
-  const targets = inventory.filter((n) => !hasValue(state, n.id, "ink_color") && !hasValue(state, n.id, "mark_style") && !hasValue(state, n.id, "heat_min"));
+  const targets = inventory.filter((n) => !hasValue(state, n.id, "ink_color") && !hasValue(state, n.id, "mark_style") && !hasValue(state, n.id, "heat_min") && !hasValue(state, n.id, "station_for"));
   const target = s.target ? state.notes.get(s.target) : undefined;
   const ink = s.ink ? state.notes.get(s.ink) : undefined;
   const tool = s.tool ? state.notes.get(s.tool) : undefined;

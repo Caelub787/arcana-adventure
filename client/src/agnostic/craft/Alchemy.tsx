@@ -82,7 +82,7 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
       {s.experiment && (
         <Panel title="Into the cauldron" right={<span className="text-[10px] text-stone-500">Pick what goes in</span>}>
           <div className="flex flex-wrap gap-1.5">
-            {inventory.map((n) => {
+            {inventory.filter((n) => !Array.from(state.fields.values()).some((f) => f.noteId === n.id && f.key === "station_for")).map((n) => {
               const c = chosen.find((x) => x.itemId === n.id);
               return (
                 <span key={n.id} className="inline-flex items-center gap-1">
