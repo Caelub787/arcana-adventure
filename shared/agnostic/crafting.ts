@@ -56,6 +56,17 @@ export const TIER_BONUS: Record<CraftTier, number> = { fail: 0, weak: -2, defaul
 // --------------------------------------------------------------------------- definitions
 export type CraftKind = "forge" | "alchemy" | "rune";
 export const CRAFT_KIND_LABEL: Record<CraftKind, string> = { forge: "Blacksmithing", alchemy: "Alchemy", rune: "Rune Making" };
+/** A station item's craft: its "station_for" value is one of these labels. */
+export const CRAFT_KIND_OF_STATION: Record<string, CraftKind> = { Blacksmithing: "forge", Alchemy: "alchemy", "Rune Making": "rune" };
+/**
+ * Which recipes a station can make: its "station_recipes" value — a JSON list of
+ * recipe (blueprint / recipe / rune recipe) sheet ids, or empty for all of its craft.
+ */
+export function stationRecipes(v: unknown): string[] | null {
+  if (typeof v !== "string" || !v.trim()) return null;
+  try { const a = JSON.parse(v); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : null; } catch { return null; }
+}
+export const stationAllows = (v: unknown, defId: string) => { const l = stationRecipes(v); return !l || l.includes(defId); };
 /** The sheet kind each craft's definitions are. */
 export const CRAFT_DEF_TYPE: Record<CraftKind, string> = { forge: "blueprint", alchemy: "recipe", rune: "rune_recipe" };
 

@@ -366,7 +366,7 @@ export function craftingTabContent(): DocNode[] {
 
 /** On a station item's page: its craft, open right there for whoever holds it. */
 export const craftBenchNode = (): DocNode => ({ type: "agCraftBench" });
-export const SCROLL_HELP = "Whoever carries this scroll knows what it teaches. **Blacksmithing** needs a blueprint's scroll to forge it. **Alchemy** works without one (experiment), but a recipe's scroll guides the brew. **Rune Making** works freehand without one; a rune's scroll lets you trace it over a guide. The GM makes scrolls from a recipe sheet (Make a scroll).";
+export const SCROLL_HELP = "Whoever carries this scroll knows what it teaches. **Blacksmithing** needs a blueprint's scroll to forge it. **Alchemy** works without one (experiment), but a recipe's scroll guides the brew. **Rune Making** works freehand without one; a rune's scroll lets you trace it over a guide. A recipe also has to be one the station allows. The GM makes scrolls from a recipe sheet (Make a scroll).";
 /** A scroll's page: what it teaches (read from the recipe it was made from). */
 export function scrollNodes(): DocNode[] {
   return [h(3, icon("ScrollText", "#fcd34d", 16), " Scroll ", tip(SCROLL_HELP)), p(muted("TEACHES "), val("teaches_name", { look: { bold: true } })), { type: "agCraftDef" }];
@@ -636,7 +636,7 @@ export const MATERIAL_HELP = "For Blacksmithing. **Heat**: the range the metal m
 export const INGREDIENT_HELP = "For Alchemy and Rune Making: recipes ask for it by name (or by this sheet — copies of it count).";
 export const INK_HELP = "A liquid or ink for Rune Making. A rune drawn or carved with it takes its **colour**, and **glows** as brightly as its glow (0 = none, 100 = blazing) — on the item and its picture.";
 export const TOOL_HELP = "A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.";
-export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it. Its Quick Craft bonus adds to Quick Craft rolls.";
+export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; pressing **Craft** puts you at the controls. Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).";
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
 export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
 export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";

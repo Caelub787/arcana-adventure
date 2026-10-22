@@ -8,10 +8,10 @@ import { ALCHEMY_STEP_LABEL, TIER_COLOR, TIER_LABEL, accuracyTier, itemMatches, 
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, NotHere, stationNameOf, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
 import { stepParticles, type Particle } from "./render";
 
-interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean }
+interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** The station item it's worked at. */ stationId?: string }
 
 const STEP_HUE: Record<AlchemyStepType, number> = { mix: 150, dice: 95, heat: 18, add: 280, grind: 45, strain: 200, rest: 245 };
 const STEP_HINT: Record<AlchemyStepType, string> = {
@@ -24,20 +24,20 @@ const STEP_HINT: Record<AlchemyStepType, string> = {
   rest: "Rest: leave it be until it settles.",
 };
 
-export function AlchemyTool({ characterId, state: s, set, playing }: Props) {
-  const defs = useDefs<AlchemyConfig>("alchemy", characterId);
-  const recipe = defs.find((d) => d.defId === s.recipe) ?? null;
-  if (s.stage === "brew" && (recipe || s.experiment)) return <Brewing characterId={characterId} recipe={recipe} s={s} set={set} playing={playing} />;
-  return <Plan characterId={characterId} defs={defs} s={s} set={set} playing={playing} />;
+export function AlchemyTool({ characterId, state: s, set, playing, stationId }: Props) {
+  const defs = useDefs<AlchemyConfig>("alchemy", characterId, stationId);
+  const recipe = defs.find((d) => d.defId === s.recipe && d.here) ?? null;
+  if (s.stage === "brew" && (recipe || s.experiment)) return <Brewing characterId={characterId} recipe={recipe} s={s} set={set} playing={playing} stationId={stationId} />;
+  return <Plan characterId={characterId} defs={defs} s={s} set={set} playing={playing} stationId={stationId} />;
 }
 
-function Plan({ characterId, defs, s, set, playing }: { characterId: string; defs: Array<KnownDef<AlchemyConfig>>; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Plan({ characterId, defs, s, set, playing, stationId }: { characterId: string; defs: Array<KnownDef<AlchemyConfig>>; s: CraftState; set: Props["set"]; playing: boolean; stationId?: string }) {
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
   const character = state.notes.get(characterId);
   const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state, characterId]);
-  const recipe = defs.find((d) => d.defId === s.recipe) ?? null;
+  const recipe = defs.find((d) => d.defId === s.recipe && d.here) ?? null;
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const ready = !!recipe && recipe.config.ingredients.every((i) => have(i) >= i.qty);
@@ -46,7 +46,7 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
     if (!recipe || !character) return;
     setBusy(true);
     try {
-      const res: CraftOutcome = await request({ op: "craft.brew", characterId, recipeId: recipe.id, mode: "quick" });
+      const res: CraftOutcome = await request({ op: "craft.brew", characterId, stationId, recipeId: recipe.id, mode: "quick" });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
       set({ result: res });
     } catch (e: any) { toast({ title: "Couldn't brew it", description: e.message, variant: "destructive" }); }
@@ -59,10 +59,10 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
         {!defs.length && <NoneKnown what="recipes" extra="Recipes aren't needed for alchemy, though — experiment with what you carry and you may discover one." />}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-1.5">
           {defs.map((d) => (
-            <button key={d.defId} type="button" disabled={!playing} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
-              className={`rounded-md border p-2 text-left transition-colors ${s.recipe === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`alchemy-recipe-${d.name}`}>
+            <button key={d.defId} type="button" disabled={!playing || !d.here} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
+              className={`rounded-md border p-2 text-left transition-colors disabled:cursor-default ${!d.here ? "border-stone-800 bg-stone-950 opacity-50" : s.recipe === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`alchemy-recipe-${d.name}`}>
               <div className="flex items-center gap-1.5"><FlaskConical className="h-4 w-4 text-emerald-300" /><span className="text-xs font-semibold text-stone-100 truncate">{d.name}</span></div>
-              <div className="text-[10px] text-stone-400 mt-0.5">{d.config.steps.length} steps · {d.config.ingredients.length} ingredients</div>
+              <div className="text-[10px] text-stone-400 mt-0.5">{d.here ? `${d.config.steps.length} steps · ${d.config.ingredients.length} ingredients` : <NotHere station={stationNameOf(state, stationId)} />}</div>
             </button>
           ))}
         </div>
@@ -122,7 +122,7 @@ const stepText = (st: AlchemyStep) => {
 };
 
 // --------------------------------------------------------------------------- brewing
-function Brewing({ characterId, recipe, s, set, playing }: { characterId: string; recipe: KnownDef<AlchemyConfig> | null; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Brewing({ characterId, recipe, s, set, playing, stationId }: { characterId: string; recipe: KnownDef<AlchemyConfig> | null; s: CraftState; set: Props["set"]; playing: boolean; stationId?: string }) {
   const { request, state, openNote } = useAg();
   const { toast } = useToast();
   const steps = recipe?.config.steps ?? [];
@@ -142,8 +142,8 @@ function Brewing({ characterId, recipe, s, set, playing }: { characterId: string
     setBusy(true);
     try {
       let res: CraftOutcome;
-      if (s.experiment) res = await request({ op: "craft.experiment", characterId, ingredients: s.ingredients ?? [], log: s.log ?? [], steps: s.steps ?? [] });
-      else res = await request({ op: "craft.brew", characterId, recipeId: recipe!.id, mode: "game", accuracy });
+      if (s.experiment) res = await request({ op: "craft.experiment", characterId, stationId, ingredients: s.ingredients ?? [], log: s.log ?? [], steps: s.steps ?? [] });
+      else res = await request({ op: "craft.brew", characterId, stationId, recipeId: recipe!.id, mode: "game", accuracy });
       set({ stage: "plan", result: res, ingredients: [] });
     } catch (e: any) { toast({ title: "Couldn't finish the brew", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }

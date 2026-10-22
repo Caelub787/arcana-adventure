@@ -1,9 +1,9 @@
 // Pieces the crafting tools share: who's crafting, what they carry, item
 // tiles, the result banner, and the Quick Craft button.
 import React from "react";
-import { Dices, Loader2, Sparkles, Leaf, PenTool, Droplet, FlaskRound, Anvil, CircleAlert, ScrollText } from "lucide-react";
+import { Dices, Loader2, Sparkles, Leaf, PenTool, Droplet, FlaskRound, Anvil, CircleAlert, ScrollText, Lock } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
-import { TIER_COLOR, TIER_LABEL, parseCraftConfig, CRAFT_DEF_TYPE, type CraftKind, type CraftTier, type CraftConfig } from "@shared/agnostic/crafting";
+import { TIER_COLOR, TIER_LABEL, parseCraftConfig, stationAllows, CRAFT_DEF_TYPE, type CraftKind, type CraftTier, type CraftConfig } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { Portrait } from "../widgets";
 import { triggerRollNotification } from "@/components/game/RollNotification";
@@ -18,10 +18,11 @@ export function useCrafter(characterId: string) {
   return { character, inventory };
 }
 
-export interface KnownDef<C extends CraftConfig = CraftConfig> { /** The scroll (what ops are sent with). */ id: string; /** The recipe sheet it teaches. */ defId: string; name: string; config: C; scroll: AgNote }
-/** The recipes a character knows: one for each scroll in their inventory that teaches one of this craft. */
-export function useDefs<C extends CraftConfig = CraftConfig>(kind: CraftKind, characterId: string): Array<KnownDef<C>> {
+export interface KnownDef<C extends CraftConfig = CraftConfig> { /** The scroll (what ops are sent with). */ id: string; /** The recipe sheet it teaches. */ defId: string; name: string; config: C; scroll: AgNote; /** This station can make it (a station can be limited to some recipes). */ here: boolean }
+/** The recipes a character knows: one for each scroll in their inventory that teaches one of this craft (and whether the station makes it). */
+export function useDefs<C extends CraftConfig = CraftConfig>(kind: CraftKind, characterId: string, stationId?: string): Array<KnownDef<C>> {
   const { state } = useAg();
+  const allowed = stationId ? valueOn(state, stationId, "station_recipes") : undefined;
   const out = new Map<string, KnownDef<C>>();
   for (const n of inventoryOf(state, characterId)) {
     const defId = String(valueOn(state, n.id, "teaches") ?? "");
@@ -30,7 +31,7 @@ export function useDefs<C extends CraftConfig = CraftConfig>(kind: CraftKind, ch
     // The recipe's own setup when it's visible here, else the copy the scroll carries (kept in step with it).
     const config = parseCraftConfig((def && valueOn(state, defId, "craft")) ?? valueOn(state, n.id, "craft"));
     if (!config || config.kind !== kind || (def && def.type !== CRAFT_DEF_TYPE[kind])) continue;
-    out.set(defId, { id: n.id, defId, name: def?.name ?? String(valueOn(state, n.id, "teaches_name") ?? n.name), config: config as C, scroll: n });
+    out.set(defId, { id: n.id, defId, name: def?.name ?? String(valueOn(state, n.id, "teaches_name") ?? n.name), config: config as C, scroll: n, here: stationAllows(allowed, defId) });
   }
   return Array.from(out.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -45,6 +46,12 @@ export function Needs({ items, className = "" }: { items: Array<string | false |
     </div>
   );
 }
+
+/** A recipe the character knows that this station can't make. */
+export const NotHere = ({ station }: { station?: string }) => (
+  <span className="inline-flex items-center gap-1 text-[10px] text-stone-400" data-testid="craft-not-here"><Lock className="h-3 w-3" />Not at {station ?? "this station"}</span>
+);
+export const stationNameOf = (state: ReturnType<typeof useAg>["state"], id?: string) => (id ? state.notes.get(id)?.name : undefined);
 
 /** Nothing known yet: what to ask the GM for. */
 export function NoneKnown({ what, extra }: { what: string; extra?: React.ReactNode }) {

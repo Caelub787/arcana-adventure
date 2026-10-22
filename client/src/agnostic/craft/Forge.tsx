@@ -11,10 +11,10 @@ import {
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, colorOf, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
 import { drawMetal, heatColor, shapePath, stepParticles, weaponPortrait, partPortrait, type Particle } from "./render";
 
-interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean }
+interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** The station item it's worked at. */ stationId?: string }
 
 /** A material's numbers (an item with heat_min / heat_max / hardness / metal_color). */
 function materialOf(st: ReturnType<typeof useAg>["state"], id: string | undefined) {
@@ -29,22 +29,22 @@ function materialOf(st: ReturnType<typeof useAg>["state"], id: string | undefine
 }
 const isMaterial = (st: ReturnType<typeof useAg>["state"], n: AgNote) => hasValue(st, n.id, "heat_min") || hasValue(st, n.id, "hardness") || valueOn(st, n.id, "item_type") === "Material";
 
-export function ForgeTool({ characterId, state: s, set, playing }: Props) {
+export function ForgeTool({ characterId, state: s, set, playing, stationId }: Props) {
   const ag = useAg();
-  const defs = useDefs<ForgeConfig>("forge", characterId);
-  const bp = defs.find((d) => d.defId === s.bp);
-  if (s.stage === "anvil" && bp) return <Anvil characterId={characterId} bp={bp} s={s} set={set} playing={playing} />;
-  return <ForgePlan characterId={characterId} defs={defs} s={s} set={set} playing={playing} openNote={ag.openNote} />;
+  const defs = useDefs<ForgeConfig>("forge", characterId, stationId);
+  const bp = defs.find((d) => d.defId === s.bp && d.here);
+  if (s.stage === "anvil" && bp) return <Anvil characterId={characterId} bp={bp} s={s} set={set} playing={playing} stationId={stationId} />;
+  return <ForgePlan characterId={characterId} defs={defs} s={s} set={set} playing={playing} openNote={ag.openNote} stationId={stationId} />;
 }
 
 // --------------------------------------------------------------------------- planning
-function ForgePlan({ characterId, defs, s, set, playing, openNote }: { characterId: string; defs: Array<KnownDef<ForgeConfig>>; s: CraftState; set: Props["set"]; playing: boolean; openNote: (id: string) => void }) {
+function ForgePlan({ characterId, defs, s, set, playing, openNote, stationId }: { characterId: string; defs: Array<KnownDef<ForgeConfig>>; s: CraftState; set: Props["set"]; playing: boolean; openNote: (id: string) => void; stationId?: string }) {
   const { state, request, scope } = useAg();
   const { toast } = useToast();
   const character = state.notes.get(characterId);
   const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate), [state, characterId]);
-  const bp = defs.find((d) => d.defId === s.bp) ?? null;
+  const bp = defs.find((d) => d.defId === s.bp && d.here) ?? null;
   const mats: Record<string, string> = s.mats ?? {};
   const picks: Record<string, string> = s.picks ?? {};
   const materials = inventory.filter((n) => isMaterial(state, n));
@@ -65,8 +65,8 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
       const parts = bp.config.parts.filter((p) => chosen[p.key]).map((p) => ({ part: p, color: colorOf(state, chosen[p.key], "metal_color", "#9ca3af") }));
       const portrait = weaponPortrait(parts, 320);
       const res: CraftOutcome = await request(op === "craft.forgeQuick"
-        ? { op, characterId, blueprintId: bp.id, materials: mats, portrait }
-        : { op, characterId, blueprintId: bp.id, partIds: picks, portrait });
+        ? { op, characterId, stationId, blueprintId: bp.id, materials: mats, portrait }
+        : { op, characterId, stationId, blueprintId: bp.id, partIds: picks, portrait });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
       set({ result: res, picks: {}, ...(op === "craft.forgeQuick" ? { mats: {} } : {}) });
     } catch (e: any) { toast({ title: "Couldn't forge it", description: e.message, variant: "destructive" }); }
@@ -80,11 +80,11 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
         {!defs.length && <NoneKnown what="blueprints" />}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-1.5">
           {defs.map((d) => (
-            <button key={d.defId} type="button" disabled={!playing} onClick={() => set({ bp: d.defId, mats: {}, picks: {}, result: undefined })}
-              className={`rounded-md border p-1.5 text-left transition-colors ${s.bp === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`forge-bp-${d.name}`}>
+            <button key={d.defId} type="button" disabled={!playing || !d.here} onClick={() => set({ bp: d.defId, mats: {}, picks: {}, result: undefined })}
+              className={`rounded-md border p-1.5 text-left transition-colors disabled:cursor-default ${!d.here ? "border-stone-800 bg-stone-950 opacity-50" : s.bp === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`forge-bp-${d.name}`}>
               <BlueprintSketch config={d.config} />
               <div className="text-xs font-semibold text-stone-100 truncate mt-1">{d.name}</div>
-              <div className="text-[10px] text-stone-400">{d.config.parts.length} parts · d{d.config.damageDie}</div>
+              <div className="text-[10px] text-stone-400">{d.here ? `${d.config.parts.length} parts · d${d.config.damageDie}` : <NotHere station={stationNameOf(state, stationId)} />}</div>
             </button>
           ))}
         </div>
@@ -172,7 +172,7 @@ function ShapeChip({ shape, color }: { shape: string; color: string }) {
 const W = 760, H = 380;
 const BAR = { x: 100, y: 70, w: 560, h: 224 };
 
-function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: KnownDef<ForgeConfig>; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: string; bp: KnownDef<ForgeConfig>; stationId?: string; s: CraftState; set: Props["set"]; playing: boolean }) {
   const { state, request, openNote } = useAg();
   const { toast } = useToast();
   const part = bp.config.parts.find((p) => p.key === s.part) ?? bp.config.parts[0];
@@ -295,7 +295,7 @@ function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: 
     setBusy(true);
     try {
       const portrait = partPortrait(part.shape, String(s.metal ?? live.current.metal), mat.color);
-      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, blueprintId: bp.id, partKey: part.key, materialId: matId, shape: shapePct, heat: mat.hasHeat ? heatPct : 100, portrait });
+      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, stationId, blueprintId: bp.id, partKey: part.key, materialId: matId, shape: shapePct, heat: mat.hasHeat ? heatPct : 100, portrait });
       set({ stage: "plan", metal: undefined, result: res, picks: { ...(s.picks ?? {}), [part.key]: res.noteId }, mats: { ...(s.mats ?? {}), [part.key]: undefined } });
     } catch (e: any) { toast({ title: "Couldn't save the part", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }

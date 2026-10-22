@@ -59,16 +59,16 @@ export type AgOp =
   | { op: "import"; bundle: AgExportBundle }
   | { op: "eval"; noteId: string; expr: string }
   // Crafting (see shared/agnostic/crafting.ts and server/agnostic/crafting.ts)
-  | { op: "craft.session"; characterId: string; kind: "forge" | "alchemy" | "rune"; fresh?: boolean }
+  | { op: "craft.session"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; kind: "forge" | "alchemy" | "rune"; fresh?: boolean }
   | { op: "craft.close"; sessionId: string }
-  | { op: "craft.forgePart"; characterId: string; blueprintId: string; partKey: string; materialId: string; shape: number; heat: number; portrait?: string | null }
-  | { op: "craft.forgeWeapon"; characterId: string; blueprintId: string; partIds: Record<string, string>; portrait?: string | null; name?: string }
-  | { op: "craft.forgeQuick"; characterId: string; blueprintId: string; materials: Record<string, string>; portrait?: string | null; name?: string }
-  | { op: "craft.brew"; characterId: string; recipeId: string; mode: "quick" | "game"; accuracy?: number }
-  | { op: "craft.experiment"; characterId: string; ingredients: Array<{ itemId: string; qty: number }>; log: string[]; steps: string[] }
+  | { op: "craft.forgePart"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partKey: string; materialId: string; shape: number; heat: number; portrait?: string | null }
+  | { op: "craft.forgeWeapon"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partIds: Record<string, string>; portrait?: string | null; name?: string }
+  | { op: "craft.forgeQuick"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; materials: Record<string, string>; portrait?: string | null; name?: string }
+  | { op: "craft.brew"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; recipeId: string; mode: "quick" | "game"; accuracy?: number }
+  | { op: "craft.experiment"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; ingredients: Array<{ itemId: string; qty: number }>; log: string[]; steps: string[] }
   | { op: "craft.resolveExperiment"; experimentId: string; outputId: string | null }
   | { op: "craft.makeScroll"; defId: string; characterId?: string | null }
-  | { op: "craft.rune"; characterId: string; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: { x: number; y: number; s: number; r: number }; portrait?: string | null };
+  | { op: "craft.rune"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: { x: number; y: number; s: number; r: number }; portrait?: string | null };
 
 export type AgOpResult =
   | { noteId: string }

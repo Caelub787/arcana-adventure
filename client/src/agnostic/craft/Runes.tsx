@@ -9,10 +9,10 @@ import { traceAccuracy, runeTier, itemMatches, numOf, TIER_COLOR, TIER_LABEL, ty
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, runesOn, qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
 import { drawSigil, loadImage, runePortrait, type MarkStyle, type RuneLook } from "./render";
 
-interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean }
+interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** The station item it's worked at. */ stationId?: string }
 type ScopeState = ReturnType<typeof useAg>["state"];
 const FREEHAND = "freehand";
 /** Where a freehand rune will go (a plain ring, since there's no sigil to show). */
@@ -31,13 +31,13 @@ export function runeLookOf(state: ScopeState, rune: AgNote): RuneLook {
 }
 const baseOf = (state: ScopeState, item: AgNote | undefined) => { if (!item) return null; const b = valueOn(state, item.id, "base_portrait"); return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null; };
 
-export function RuneTool({ characterId, state: s, set, playing }: Props) {
+export function RuneTool({ characterId, state: s, set, playing, stationId }: Props) {
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
-  const defs = useDefs<RuneConfig>("rune", characterId);
+  const defs = useDefs<RuneConfig>("rune", characterId, stationId);
   // Freehand: no rune picked and no guide — whatever the marks come closest to (if close enough) is what takes.
   const freehand = s.rune === FREEHAND;
-  const rune = freehand ? null : defs.find((d) => d.defId === s.rune) ?? null;
+  const rune = freehand ? null : defs.find((d) => d.defId === s.rune && d.here) ?? null;
   const character = state.notes.get(characterId);
   const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state, characterId]);
@@ -71,7 +71,7 @@ export function RuneTool({ characterId, state: s, set, playing }: Props) {
       const accuracy = mode === "game" ? traceAccuracy(rune!.config.sigil, strokes) : 0;
       const existing = runesOn(state, target.id).map((r) => runeLookOf(state, r));
       const portrait = await runePortrait(baseOf(state, target), target.name, [...existing, { strokes: drawn, ...look, placement }]);
-      const res: CraftOutcome = await request({ op: "craft.rune", characterId, runeId: rune?.id ?? null, targetId: target.id, inkId: ink?.id ?? null, toolId: tool?.id ?? null, mode, accuracy, guide, strokes: drawn, placement, portrait: portrait || null });
+      const res: CraftOutcome = await request({ op: "craft.rune", characterId, stationId, runeId: rune?.id ?? null, targetId: target.id, inkId: ink?.id ?? null, toolId: tool?.id ?? null, mode, accuracy, guide, strokes: drawn, placement, portrait: portrait || null });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
       set({ stage: "plan", strokes: [], result: { ...res, message: mode === "game" ? `${res.message} (traced ${accuracy}%)` : res.message } });
     } catch (e: any) { toast({ title: "Couldn't inscribe it", description: e.message, variant: "destructive" }); }
@@ -112,10 +112,10 @@ export function RuneTool({ characterId, state: s, set, playing }: Props) {
             <div className="text-[11px] font-semibold text-stone-100 truncate">Freehand</div>
           </button>
           {defs.map((d) => (
-            <button key={d.defId} type="button" disabled={!playing} onClick={() => set({ rune: d.defId, strokes: [], result: undefined })}
-              className={`rounded-md border p-1.5 transition-colors ${s.rune === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`rune-def-${d.name}`}>
+            <button key={d.defId} type="button" disabled={!playing || !d.here} onClick={() => set({ rune: d.defId, strokes: [], result: undefined })}
+              className={`rounded-md border p-1.5 transition-colors disabled:cursor-default ${!d.here ? "border-stone-800 bg-stone-950 opacity-50" : s.rune === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`rune-def-${d.name}`}>
               <SigilThumb strokes={d.config.sigil} />
-              <div className="text-[11px] font-semibold text-stone-100 truncate">{d.name}</div>
+              <div className="text-[11px] font-semibold text-stone-100 truncate">{d.name}</div>{!d.here && <NotHere station={stationNameOf(state, stationId)} />}
             </button>
           ))}
         </div>

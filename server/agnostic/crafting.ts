@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from "@shared/agnostic/types";
 import { noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
-  traceAccuracy, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
+  traceAccuracy, stationAllows, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
 } from "@shared/agnostic/crafting";
@@ -167,10 +167,9 @@ async function setPortrait(ctx: Ctx, noteId: string, dataUrl: string | null | un
 }
 
 /** Quick Craft: d20 + the craft's skill on the character. */
-function quickRoll(store: ScopeStore, character: AgNote, kind: CraftKind, inv: AgNote[]) {
+function quickRoll(store: ScopeStore, character: AgNote, kind: CraftKind, station: AgNote | undefined) {
   const natural = rollDie(20);
   const skill = Math.round(numOf(valueOf(store, character.id, CRAFT_SKILL[kind])));
-  const station = stationIn(store, inv, kind);
   const bonus = station ? Math.round(numOf(valueOf(store, station.id, "station_bonus"))) : 0;
   const total = natural + skill + bonus;
   const tier = quickCraftTier(natural, total);
@@ -196,8 +195,22 @@ function stationName(store: ScopeStore, kind: CraftKind): string {
   for (const n of Array.from(store.notes.values())) if (!n.copyOf && String(valueOf(store, n.id, "station_for") ?? "") === CRAFT_KIND_LABEL[kind] && !n.isTemplate) return n.name;
   return `${CRAFT_KIND_LABEL[kind]} station`;
 }
-function needStation(store: ScopeStore, inv: AgNote[], kind: CraftKind) {
-  if (stationsInUse(store) && !stationIn(store, inv, kind)) fail(`You need a ${stationName(store, kind)} in your inventory for ${CRAFT_KIND_LABEL[kind]}`);
+/** The station it's worked at: the one named (carried, and for this craft), else the first carried. */
+function needStation(store: ScopeStore, inv: AgNote[], kind: CraftKind, stationId?: string | null): AgNote | undefined {
+  if (stationId) {
+    const st = inv.find((n) => n.id === stationId);
+    if (!st) fail("That station isn't in the inventory");
+    if (String(valueOf(store, st!.id, "station_for") ?? "") !== CRAFT_KIND_LABEL[kind]) fail(`${st!.name} isn't for ${CRAFT_KIND_LABEL[kind]}`);
+    return st;
+  }
+  const st = stationIn(store, inv, kind);
+  if (stationsInUse(store) && !st) fail(`You need a ${stationName(store, kind)} in your inventory for ${CRAFT_KIND_LABEL[kind]}`);
+  return st;
+}
+/** Not every station makes everything: its "station_recipes" (if set) lists what it can. */
+const canMakeAt = (store: ScopeStore, station: AgNote | undefined, defId: string) => !station || stationAllows(valueOf(store, station.id, "station_recipes"), defId);
+function needMakeAt(store: ScopeStore, station: AgNote | undefined, defId: string, name: string) {
+  if (!canMakeAt(store, station, defId)) fail(`${name} can't be made at ${station!.name} — it takes a different station`);
 }
 
 // --------------------------------------------------------------------------- knowledge (scrolls)
@@ -284,8 +297,10 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.session": {
       const character = crafter(ctx, body.characterId);
       const kind = (["forge", "alchemy", "rune"] as const).includes(body.kind as any) ? body.kind : fail("Unknown craft");
+      // One session per character, craft and station (two forges are two workbenches).
+      const stationId = body.stationId ? noteOf(store, body.stationId, "That station").id : "";
       const open = store.linksOf(character.id).filter((l) => l.toNoteId === character.id && l.label === "crafter")
-        .map((l) => store.notes.get(l.fromNoteId)).find((n) => n?.type === "craft" && numOf(valueOf(store, n.id, "craft_done")) === 0 && valueOf(store, n.id, "craft_kind") === kind);
+        .map((l) => store.notes.get(l.fromNoteId)).find((n) => n?.type === "craft" && numOf(valueOf(store, n.id, "craft_done")) === 0 && valueOf(store, n.id, "craft_kind") === kind && String(valueOf(store, n.id, "station_id") ?? "") === stationId);
       if (open && !body.fresh) return { noteId: open.id, stations: stationsInUse(store) };
       return store.run(async (cs) => {
         const s: AgSnapshot = {
@@ -297,6 +312,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
           fields: [
             { id: "f_kind", noteId: "SELF", key: "craft_kind", label: "Craft", type: "text", value: kind, formula: null, options: {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: 0, templateFieldId: null },
             { id: "f_done", noteId: "SELF", key: "craft_done", label: "Finished", type: "number", value: 0, formula: null, options: {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: 1, templateFieldId: null },
+            { id: "f_station", noteId: "SELF", key: "station_id", label: "Station", type: "text", value: stationId, formula: null, options: {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: 2, templateFieldId: null },
           ],
           regions: [], actions: [], modifiers: [],
           docs: { note: buildDocState([p(i(`${character.name}'s ${CRAFT_KIND_LABEL[kind].toLowerCase()} — open their crafting station's sheet to watch.`))]) },
@@ -324,8 +340,9 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.forgePart": {
       const character = crafter(ctx, body.characterId);
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
-      needStation(store, inv, "forge");
+      const station = needStation(store, inv, "forge", body.stationId);
       const { defId, name: bpName, config } = knownDef(store, inv, body.blueprintId, "forge", "That blueprint");
+      needMakeAt(store, station, defId, bpName);
       const bp = { id: defId, name: bpName };
       const part = config.parts.find((x) => x.key === body.partKey) ?? fail("That blueprint has no such part");
       const material = inInventory(inv, body.materialId, "That material");
@@ -350,10 +367,11 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.forgeQuick": {
       const character = crafter(ctx, body.characterId);
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
-      needStation(store, inv, "forge");
+      const station = needStation(store, inv, "forge", body.stationId);
       const { defId, name: bpName, config } = knownDef(store, inv, body.blueprintId, "forge", "That blueprint");
+      needMakeAt(store, station, defId, bpName);
       const bp = { id: defId, name: bpName };
-      const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", inv) : null;
+      const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", station) : null;
       const QUICK: Record<CraftTier, number> = { fail: 5, weak: 45, default: 72, slight: 88, huge: 98 };
       const used: AgNote[] = [];
       const parts: Array<{ role: ForgeRole; durability: number; damageBonus: number; accuracy: number; weight: number; value: number; material: string; quality: number }> = [];
@@ -398,11 +416,12 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.brew": {
       const character = crafter(ctx, body.characterId);
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
-      needStation(store, inv, "alchemy");
-      const { name: recipeName, config } = knownDef(store, inv, body.recipeId, "alchemy", "That recipe");
+      const station = needStation(store, inv, "alchemy", body.stationId);
+      const { defId, name: recipeName, config } = knownDef(store, inv, body.recipeId, "alchemy", "That recipe");
+      needMakeAt(store, station, defId, recipeName);
       const recipe = { name: recipeName };
       const use = gather(store, inv, config.ingredients);
-      const quick = body.mode === "quick" ? quickRoll(store, character, "alchemy", inv) : null;
+      const quick = body.mode === "quick" ? quickRoll(store, character, "alchemy", station) : null;
       const tier = quick ? quick.tier : accuracyTier(Math.max(0, Math.min(100, body.accuracy ?? 0)));
       return store.run(async (cs) => {
         for (const u of use) if (u.consumed) await consume(store, u.item, u.qty, cs);
@@ -414,7 +433,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.experiment": {
       const character = crafter(ctx, body.characterId);
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
-      needStation(store, inv, "alchemy");
+      const station = needStation(store, inv, "alchemy", body.stationId);
       const used = (body.ingredients ?? []).slice(0, 20).map((x) => ({ item: inInventory(inv, x.itemId, "An ingredient"), qty: Math.max(1, Math.min(99, Math.round(x.qty || 1))) }));
       if (used.some((u) => valueOf(store, u.item.id, "station_for") !== undefined)) fail("The pot itself can't go in the brew");
       if (!used.length) fail("Put something in the cauldron first");
@@ -422,7 +441,9 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const log = (body.log ?? []).slice(0, 80).map((l) => String(l).slice(0, 160));
       const steps = (body.steps ?? []).slice(0, 60).filter((s) => typeof s === "string" && s in ALCHEMY_STEP_LABEL);
       // A known recipe followed closely enough (from what was put in and done) is discovered.
-      const found = bestRecipe(store, used.map((u) => ({ name: u.item.name, note: u.item, qty: u.qty })), steps);
+      // (Only one this station can make: anything else is the GM's call.)
+      const best = bestRecipe(store, used.map((u) => ({ name: u.item.name, note: u.item, qty: u.qty })), steps);
+      const found = best && canMakeAt(store, station, best.note.id) ? best : null;
       return store.run(async (cs) => {
         for (const u of used) await consume(store, u.item, u.qty, cs);
         if (found) {
@@ -486,17 +507,17 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const character = crafter(ctx, body.characterId);
       const list = await inventoryList(store, character);
       const inv = inventoryOf(store, character.id, list.reverse);
-      needStation(store, inv, "rune");
+      const station = needStation(store, inv, "rune", body.stationId);
       // Freehand: whatever rune the marks come closest to (any rune — none needs to be known), at the guided thresholds.
       let freehand: { score: number } | null = null;
       let def: Def<"rune">;
       if (body.mode === "freehand") {
         const drawn = (body.strokes ?? []).slice(0, 40);
-        const best = allDefs(store, "rune").map((d) => ({ d, score: traceAccuracy(d.config.sigil, drawn) })).sort((a, b) => b.score - a.score)[0];
+        const best = allDefs(store, "rune").filter((d) => canMakeAt(store, station, d.note.id)).map((d) => ({ d, score: traceAccuracy(d.config.sigil, drawn) })).sort((a, b) => b.score - a.score)[0];
         if (!best || best.score < 60) fail(`Those marks don't form any rune${best ? ` (closest: ${best.score}%)` : ""} — nothing took.`);
         def = { defId: best!.d.note.id, name: best!.d.note.name, config: best!.d.config };
         freehand = { score: best!.score };
-      } else def = knownDef(store, inv, body.runeId ?? "", "rune", "That rune");
+      } else { def = knownDef(store, inv, body.runeId ?? "", "rune", "That rune"); needMakeAt(store, station, def.defId, def.name); }
       const { config } = def;
       const rune = { name: def.name };
       const target = inInventory(inv, body.targetId, "The item to inscribe");
@@ -509,7 +530,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const ink = body.inkId ? inInventory(inv, body.inkId, "That ink") : null;
       if (ink && valueOf(store, ink.id, "ink_color") === undefined) fail(`${ink.name} isn't a liquid or ink`);
       if (config.needsInk && !ink) fail("This rune needs a liquid or ink");
-      const quick = body.mode === "quick" ? quickRoll(store, character, "rune", inv) : null;
+      const quick = body.mode === "quick" ? quickRoll(store, character, "rune", station) : null;
       const accuracy = freehand ? freehand.score : Math.max(0, Math.min(100, body.accuracy ?? 0));
       // Freehand counts like tracing with the guide; tracing a known rune without it is easier to excel at.
       const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
