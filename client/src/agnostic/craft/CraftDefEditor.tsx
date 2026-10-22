@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Package, Eraser, ScrollText } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
-  parseCraftConfig, emptyCraftConfig, FORGE_SHAPES, SIGILS, ALCHEMY_STEP_LABEL, CRAFT_TIERS, TIER_LABEL, TIER_COLOR, CRAFT_KIND_LABEL,
+  parseCraftConfig, emptyCraftConfig, FORGE_SHAPES, SIGILS, ALCHEMY_STEP_LABEL, CRAFT_TIERS, TIER_LABEL, TIER_COLOR, CRAFT_KIND_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice,
   type CraftConfig, type CraftKind, type CraftNeed, type CraftTierEffect, type ForgeConfig, type AlchemyConfig, type RuneConfig, type AlchemyStepType, type CraftTier,
 } from "@shared/agnostic/crafting";
 import { useAg, usePerms } from "../hooks";
@@ -63,7 +63,8 @@ export function CraftDefBlock({ noteId }: { noteId: string }) {
       </div>
       {giving && <ScrollGiver defId={noteId} onClose={() => setGiving(false)} />}
       <DefSummary c={config} />
-      {!editable && config.kind !== "rune" && <StatsEditor kind={config.kind} effects={config.effects ?? []} editable={false} onChange={() => {}} note="what the made item gets by how well it's made" />}
+      {!editable && config.kind !== "rune" && <StatsEditor kind={config.kind} outputId={config.output} effects={config.effects ?? []} editable={false} onChange={() => {}} note="what the made item gets by how well it's made" />}
+      {!editable && config.kind === "alchemy" && !(config.effects ?? []).length && <BrewDefaults />}
       {!editable && config.kind === "rune" && config.effect && (
         <div className="space-y-1"><Head>{config.effect.key.replace(/_/g, " ")} by craftsmanship</Head><TierTable values={config.effect.values} editable={false} tiers={["default", "slight", "huge"]} onChange={() => {}} /></div>
       )}
@@ -137,40 +138,77 @@ const STAT_KEYS: Record<CraftKind, Array<[string, string]>> = {
   alchemy: [["potency", "Potency"], ["value", "Worth"], ["qty", "How many"]],
   rune: [],
 };
+const HIDDEN_KEYS = new Set(["craft", "craft_tier", "inert", "qty", "equipped", "teaches", "sell_value", "durability_max", "rune_sockets", "station_for", "station_bonus", "station_recipes", "base_portrait"]);
+/** What a tier's cell holds for a value: a number, dice / words, or one of a choice's options. */
+type Cell = { kind: "num" } | { kind: "text" } | { kind: "choice"; choices: string[] };
+/** The output's own values a recipe can change by tier (its dice, numbers and choices), with a sensible start for each. */
+function useOutputStats(outputId?: string | null) {
+  const { state } = useAg();
+  return useMemo(() => {
+    const out: Array<{ key: string; label: string; cell: Cell; start: CraftTierEffect }> = [];
+    if (!outputId) return out;
+    for (const f of Array.from(state.fields.values())) {
+      if (f.noteId !== outputId || HIDDEN_KEYS.has(f.key)) continue;
+      const label = f.label || f.key;
+      if (f.type === "dice" && f.formula) out.push({ key: f.key, label, cell: { kind: "text" }, start: { key: f.key, mode: "set", values: Object.fromEntries(CRAFT_TIERS.filter((t) => t !== "fail").map((t) => [t, moreDice(f.formula!, TIER_DICE[t])])) } });
+      else if (f.type === "select" && Array.isArray(f.options?.choices) && f.options.choices.length) out.push({ key: f.key, label, cell: { kind: "choice", choices: f.options.choices as string[] }, start: { key: f.key, mode: "set", values: { default: String(f.value ?? f.options.choices[0]) } } });
+      else if (f.type === "number") out.push({ key: f.key, label, cell: { kind: "num" }, start: { key: f.key, mode: "add", values: { fail: 0, weak: 0, default: 0, slight: 0, huge: 0 } } });
+    }
+    return out.sort((a, b) => a.label.localeCompare(b.label));
+  }, [state.fields, outputId]);
+}
 const statLabel = (kind: CraftKind, key: string) => STAT_KEYS[kind].find(([k]) => k === key)?.[1] ?? key.replace(/_/g, " ");
 /**
- * What the made item gets by craftsmanship: for each value, a number per tier — set to it, or added to what the
- * crafting gave (a forged weapon's damage comes from how well its blade was hammered; "add" builds on that).
+ * What the made item gets by craftsmanship: for each value, what each tier gives — a number (set to it, or added to
+ * what the crafting gave: a forged weapon's damage comes from how well its blade was hammered; "add" builds on that),
+ * or dice, a choice or words (set). The made item's own values are offered first, so a Fine potion can roll more dice
+ * or heal a worse wound.
  */
-function StatsEditor({ kind, effects, onChange, editable, note }: { kind: CraftKind; effects: CraftTierEffect[]; onChange: (e: CraftTierEffect[]) => void; editable: boolean; note: string }) {
+function StatsEditor({ kind, effects, onChange, editable, note, outputId }: { kind: CraftKind; effects: CraftTierEffect[]; onChange: (e: CraftTierEffect[]) => void; editable: boolean; note: string; outputId?: string | null }) {
   const [adding, setAdding] = useState("");
-  const unused = STAT_KEYS[kind].filter(([k]) => !effects.some((e) => e.key === k));
+  const own = useOutputStats(outputId);
+  const label = (key: string) => own.find((o) => o.key === key)?.label ?? statLabel(kind, key);
+  const cellOf = (e: CraftTierEffect): Cell => own.find((o) => o.key === e.key)?.cell ?? (Object.values(e.values).some((v) => typeof v === "string") ? { kind: "text" } : { kind: "num" });
+  const offered = [...own.map((o) => ({ key: o.key, label: o.label, start: o.start })), ...STAT_KEYS[kind].filter(([k]) => !own.some((o) => o.key === k)).map(([k, l]) => ({ key: k, label: l, start: { key: k, mode: "add" as const, values: { fail: 0, weak: 0, default: 0, slight: 0, huge: 0 } } }))]
+    .filter((o) => !effects.some((e) => e.key === o.key));
   const add = (key: string) => { const k = key.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"); if (!k || effects.some((e) => e.key === k)) return; onChange([...effects, { key: k, mode: "add", values: { fail: 0, weak: 0, default: 0, slight: 0, huge: 0 } }]); setAdding(""); };
   if (!editable && !effects.length) return null;
   return (
     <div className="space-y-1.5" data-testid="craft-def-stats">
-      <Head>Output stats by craftsmanship <span className="text-[10px] text-stone-500 font-normal">— {note}</span></Head>
-      {effects.map((e, i) => (
-        <div key={e.key} className="rounded-md border border-stone-800 bg-stone-900/60 p-1.5 space-y-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-stone-100 flex-1 truncate">{statLabel(kind, e.key)}</span>
-            {editable ? (
-              <select value={e.mode ?? "add"} onChange={(ev) => onChange(effects.map((x, j) => (j === i ? { ...x, mode: ev.target.value as "set" | "add" } : x)))} className={inputCls} data-testid={`craft-def-stat-mode-${e.key}`}>
-                <option value="add">adds</option><option value="set">sets it to</option>
-              </select>
-            ) : <span className="text-[10px] text-stone-500">{e.mode === "set" ? "set to" : "adds"}</span>}
-            {editable && <Icon title="Remove" onClick={() => onChange(effects.filter((_, j) => j !== i))}><Trash2 className="h-3.5 w-3.5" /></Icon>}
+      <Head>Output by craftsmanship <span className="text-[10px] text-stone-500 font-normal">— {note}</span></Head>
+      {effects.map((e, i) => {
+        const cell = cellOf(e);
+        return (
+          <div key={e.key} className="rounded-md border border-stone-800 bg-stone-900/60 p-1.5 space-y-1" data-testid={`craft-def-stat-${e.key}`}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-stone-100 flex-1 truncate">{label(e.key)}</span>
+              {cell.kind === "num" ? (editable ? (
+                <select value={e.mode ?? "add"} onChange={(ev) => onChange(effects.map((x, j) => (j === i ? { ...x, mode: ev.target.value as "set" | "add" } : x)))} className={inputCls} data-testid={`craft-def-stat-mode-${e.key}`}>
+                  <option value="add">adds</option><option value="set">sets it to</option>
+                </select>
+              ) : <span className="text-[10px] text-stone-500">{e.mode === "set" ? "set to" : "adds"}</span>) : <span className="text-[10px] text-stone-500">{editable ? "becomes (blank: unchanged)" : "becomes"}</span>}
+              {editable && <Icon title="Remove" onClick={() => onChange(effects.filter((_, j) => j !== i))}><Trash2 className="h-3.5 w-3.5" /></Icon>}
+            </div>
+            <TierTable values={e.values} cell={cell} signed={cell.kind === "num" && e.mode !== "set"} editable={editable} onChange={(values) => onChange(effects.map((x, j) => (j === i ? { ...x, mode: cell.kind === "num" ? x.mode : "set", values } : x)))} testPrefix={`craft-def-stat-${e.key}`} />
           </div>
-          <TierTable values={e.values} editable={editable} onChange={(values) => onChange(effects.map((x, j) => (j === i ? { ...x, values } : x)))} testPrefix={`craft-def-stat-${e.key}`} />
-        </div>
-      ))}
+        );
+      })}
       {editable && (
         <div className="flex flex-wrap items-center gap-1">
-          {unused.map(([k, l]) => <button key={k} type="button" onClick={() => add(k)} className="h-7 px-2 rounded-md border border-stone-700 bg-stone-900 text-[11px] text-stone-300 hover:border-amber-700 inline-flex items-center gap-1" data-testid={`craft-def-stat-add-${k}`}><Plus className="h-3 w-3" />{l}</button>)}
+          {offered.map((o) => <button key={o.key} type="button" onClick={() => onChange([...effects, o.start])} className="h-7 px-2 rounded-md border border-stone-700 bg-stone-900 text-[11px] text-stone-300 hover:border-amber-700 inline-flex items-center gap-1" data-testid={`craft-def-stat-add-${o.key}`}><Plus className="h-3 w-3" />{o.label}</button>)}
           <input value={adding} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(adding); e.stopPropagation(); }} placeholder="other value…" className={`${inputCls} w-28 font-mono`} />
           {adding && <button type="button" onClick={() => add(adding)} className="h-7 px-2 rounded-md border border-stone-700 text-[11px] text-stone-200">Add</button>}
         </div>
       )}
+    </div>
+  );
+}
+
+/** What every brew does by grade when its recipe doesn't say. */
+function BrewDefaults() {
+  return (
+    <div className="text-[11px] text-stone-400 rounded-md border border-stone-800 bg-stone-900/60 p-2" data-testid="craft-def-brew-defaults">
+      Unless set above, a better brew is stronger: <span style={{ color: TIER_COLOR.weak }}>Weak</span> rolls one die fewer, <span style={{ color: TIER_COLOR.slight }}>Fine</span> one die more, <span style={{ color: TIER_COLOR.huge }}>Masterwork</span> two more — with potency {TIER_BONUS.weak} / +{TIER_BONUS.slight} / +{TIER_BONUS.huge} and worth ×{TIER_WORTH.weak} / ×{TIER_WORTH.slight} / ×{TIER_WORTH.huge}. A failed brew is inert.
     </div>
   );
 }
@@ -236,14 +274,21 @@ function OutputEditor({ label, id, onChange, editable, hint }: { label: string; 
   );
 }
 
-function TierTable({ values, onChange, editable, tiers = CRAFT_TIERS, testPrefix }: { values: Partial<Record<CraftTier, number>>; onChange: (v: Partial<Record<CraftTier, number>>) => void; editable: boolean; tiers?: CraftTier[]; testPrefix?: string }) {
+function TierTable({ values, onChange, editable, tiers = CRAFT_TIERS, testPrefix, cell = { kind: "num" }, signed = true }: { values: Partial<Record<CraftTier, number | string>>; onChange: (v: Partial<Record<CraftTier, number | string>>) => void; editable: boolean; tiers?: CraftTier[]; testPrefix?: string; cell?: Cell; signed?: boolean }) {
+  const put = (t: CraftTier, v: number | string | undefined) => { const next = { ...values }; if (v === undefined || v === "") delete next[t]; else next[t] = v; onChange(next); };
+  const shown = (v: number | string | undefined) => (v === undefined ? "—" : typeof v === "number" ? `${signed && v > 0 ? "+" : ""}${v}` : v);
   return (
-    <div className="grid grid-cols-5 gap-1 max-w-[22rem]">
+    <div className="grid grid-cols-5 gap-1 max-w-[26rem]">
       {tiers.map((t) => (
         <label key={t} className="flex flex-col items-center gap-0.5 min-w-0">
           <span className="text-[9px] uppercase tracking-wide truncate max-w-full" style={{ color: TIER_COLOR[t] }}>{TIER_LABEL[t]}</span>
-          {editable ? <Num value={values[t]} onChange={(v) => onChange({ ...values, [t]: v })} className="w-full" testId={testPrefix ? `${testPrefix}-${t}` : undefined} />
-            : <span className="h-7 w-full grid place-items-center rounded border border-stone-800 text-xs font-mono text-stone-200">{values[t] === undefined ? "—" : `${values[t]! > 0 ? "+" : ""}${values[t]}`}</span>}
+          {!editable ? <span className="h-7 w-full px-1 grid place-items-center rounded border border-stone-800 text-xs font-mono text-stone-200 truncate" title={String(values[t] ?? "")}>{shown(values[t])}</span>
+            : cell.kind === "num" ? <Num value={typeof values[t] === "number" ? (values[t] as number) : undefined} onChange={(v) => put(t, v)} className="w-full" testId={testPrefix ? `${testPrefix}-${t}` : undefined} />
+            : cell.kind === "choice" ? (
+              <select value={String(values[t] ?? "")} onChange={(e) => put(t, e.target.value)} className={`${inputCls} w-full appearance-none text-center !px-0.5`} data-testid={testPrefix ? `${testPrefix}-${t}` : undefined}>
+                <option value="">—</option>{cell.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : <Text value={values[t] === undefined ? "" : String(values[t])} onChange={(v) => put(t, v.trim())} className="w-full text-center font-mono" placeholder="—" testId={testPrefix ? `${testPrefix}-${t}` : undefined} />}
         </label>
       ))}
     </div>
@@ -290,7 +335,6 @@ function ForgeDef({ c, save, editable }: { c: ForgeConfig; save: (c: ForgeConfig
 function AlchemyDef({ c, save, editable }: { c: AlchemyConfig; save: (c: AlchemyConfig) => void; editable: boolean }) {
   const set = (p: Partial<AlchemyConfig>) => save({ ...c, ...p });
   const amountLabel: Record<AlchemyStepType, string> = { mix: "seconds", dice: "cuts", heat: "°", add: "moment %", grind: "strokes", strain: "", rest: "seconds" };
-  const potency = c.effects?.find((e) => e.key === "potency");
   return (
     <div className="space-y-3">
       <NeedsEditor label="Ingredients" list={c.ingredients} onChange={(ingredients) => set({ ingredients })} editable={editable} consumed />
@@ -313,7 +357,8 @@ function AlchemyDef({ c, save, editable }: { c: AlchemyConfig; save: (c: Alchemy
         ))}
       </div>
       <OutputEditor label="Makes" id={c.output} editable={editable} onChange={(output) => set({ output })} hint="a plain item — choose a potion (its rolls can add “potency”)" />
-      <StatsEditor kind="alchemy" effects={c.effects?.length ? c.effects : [{ key: "potency", mode: "set", values: potency?.values ?? { fail: 0, weak: -2, default: 0, slight: 2, huge: 5 } }]} editable={editable} onChange={(effects) => set({ effects })} note="potency adds to the potion's roll; a failed brew is inert" />
+      <StatsEditor kind="alchemy" outputId={c.output} effects={c.effects ?? []} editable={editable} onChange={(effects) => set({ effects })} note="set what each grade of brew gives; a failed brew is inert" />
+      {!(c.effects ?? []).length && <BrewDefaults />}
     </div>
   );
 }
@@ -338,7 +383,7 @@ function RuneDef({ c, save, editable }: { c: RuneConfig; save: (c: RuneConfig) =
               <Text value={c.effect?.key ?? ""} disabled={!editable} placeholder="damage_bonus" className="w-32 font-mono" onChange={(v) => set({ effect: v.trim() ? { key: v.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"), values: c.effect?.values ?? {} } : null })} />
               <span className="text-[10px] text-stone-500">a value on the item it's set into</span>
             </Row>
-            {c.effect && <TierTable values={c.effect.values} editable={editable} tiers={["default", "slight", "huge"]} testPrefix="craft-def-rune-effect" onChange={(values) => set({ effect: { ...c.effect!, values } })} />}
+            {c.effect && <TierTable values={c.effect.values} editable={editable} tiers={["default", "slight", "huge"]} testPrefix="craft-def-rune-effect" onChange={(values) => set({ effect: { ...c.effect!, values: Object.fromEntries(Object.entries(values).filter(([, v]) => typeof v === "number")) as Partial<Record<CraftTier, number>> } })} />}
           </div>
           <label className="text-xs text-stone-300 inline-flex items-center gap-1.5"><input type="checkbox" checked={!!c.needsInk} disabled={!editable} onChange={(e) => set({ needsInk: e.target.checked })} /> Needs a liquid or ink</label>
         </div>

@@ -12,7 +12,7 @@ import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
-import { applyCACrafting, giveCopies, STARTER_SCROLLS } from "./caCrafting";
+import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS } from "./caCrafting";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -36,7 +36,7 @@ import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 23;
+export const CA_KIT_LEVEL = 25;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -72,6 +72,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 21) await upgrade21(store, characterTemplates);
   if (level < 22) await upgrade22(store, characterTemplates);
   if (level < 23) await upgrade23(store, characterTemplates);
+  if (level < 25) await upgrade24(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1475,4 +1476,26 @@ async function upgrade23(store: ScopeStore, characterTemplates: AgNote[]) {
       }
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 24
+// The starter brews say what each grade gives (a Fine draught heals more dice
+// and a wound), so it's plain a Fine potion is better. Only recipes the GM
+// hasn't given grades of their own.
+async function upgrade24(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const effects = STARTER_BREW_EFFECTS[n.name];
+      if (!effects || n.isTemplate || n.copyOf) continue;
+      const f = store.fieldsByNote.get(n.id)?.get("craft");
+      if (!f) continue;
+      // Kept as JSON text, or (set from the recipe editor) as the object itself.
+      try {
+        const c: any = typeof f.value === "string" ? JSON.parse(f.value) : f.value;
+        if (!c || typeof c !== "object" || c.kind !== "alchemy" || (Array.isArray(c.effects) && c.effects.length)) continue;
+        const next = { ...c, effects };
+        await store.putField({ ...f, value: (typeof f.value === "string" ? JSON.stringify(next) : next) as any }, cs);
+      } catch { /* the GM's own text: leave it */ }
+    }
+  });
 }

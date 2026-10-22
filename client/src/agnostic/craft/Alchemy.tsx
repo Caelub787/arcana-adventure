@@ -7,14 +7,13 @@ import type { AgNote } from "@shared/agnostic/types";
 import { ALCHEMY_STEP_LABEL, TIER_COLOR, TIER_LABEL, accuracyTier, itemMatches, type AlchemyConfig, type AlchemyStep, type AlchemyStepType } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
-import { qtyOf, hasValue, inventoryOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
-import { stepParticles, type Particle } from "./render";
+import { qtyOf, hasValue, inventoryOf, valueOn, type CraftState } from "./session";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, Needs, NoneKnown, SKILL_KEY, type CraftOutcome, type KnownDef } from "./common";
+import { stepParticles, heatColor, type Particle } from "./render";
 import { MixGame, DiceGame, HeatGame, AddGame, GrindGame, StrainGame, RestGame } from "./brew";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 
-const STEP_HUE: Record<AlchemyStepType, number> = { mix: 150, dice: 95, heat: 18, add: 280, grind: 45, strain: 200, rest: 245 };
 
 export function AlchemyTool({ characterId, state: s, set, start, playing, stationId }: Props) {
   const defs = useDefs<AlchemyConfig>("alchemy", characterId, stationId);
@@ -52,7 +51,7 @@ function Plan({ characterId, defs, s, set, start, playing, stationId }: { charac
           art={<Wand2 className="h-8 w-8 text-stone-400" />} name="Experiment" sub="no recipe needed" testId="alchemy-experiment" />
         {defs.map((d) => (
           <DefCard key={d.defId} selected={!s.experiment && s.recipe === d.defId} locked={!d.here} disabled={!playing} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
-            art={<FlaskConical className="h-8 w-8 text-emerald-300" />} name={d.name.replace(/\s*recipe\s*$/i, "") || d.name} testId={`alchemy-recipe-${d.name}`}
+            art={<FlaskConical className="h-8 w-8 text-amber-300/80" />} name={d.name.replace(/\s*recipe\s*$/i, "") || d.name} testId={`alchemy-recipe-${d.name}`}
             sub={d.here ? `${d.config.steps.length} steps` : <NotHere station={stationNameOf(state, stationId)} />} />
         ))}
       </DefStrip>
@@ -125,7 +124,7 @@ function Brewing({ characterId, recipe, s, set, playing, stationId }: { characte
   const done = !s.experiment && idx >= steps.length;
   const accuracy = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const [busy, setBusy] = useState(false);
-  const hue = step ? STEP_HUE[step.type] : done ? 48 : 160;
+  const skill = Math.max(0, Math.min(4, Math.floor(Number(valueOn(state, characterId, SKILL_KEY.alchemy) ?? 0) || 0)));
   const finishStep = (score: number, detail: string) => {
     const sc = Math.max(0, Math.min(100, Math.round(score)));
     if (s.experiment) set({ free: undefined, st: {}, log: [...(s.log ?? []), detail], steps: [...(s.steps ?? []), step!.type] });
@@ -146,14 +145,16 @@ function Brewing({ characterId, recipe, s, set, playing, stationId }: { characte
     <div className="space-y-2" data-testid="alchemy-brew">
       <div className="flex flex-wrap items-center gap-2">
         {playing && <button type="button" onClick={() => set({ stage: "plan", free: undefined, st: {} })} className="h-8 px-2 rounded-md border border-stone-700 text-xs text-stone-300 inline-flex items-center gap-1 hover:border-stone-500" data-testid="alchemy-back"><ArrowLeft className="h-3.5 w-3.5" /> Back</button>}
-        <span className="text-sm font-bold text-emerald-200">{s.experiment ? "Experiment" : recipe?.name}</span>
-        {!s.experiment && <div className="flex gap-1">{steps.map((st, k) => <span key={st.id} title={stepText(st)} className="h-2.5 w-6 rounded-full border" style={{ borderColor: k < idx ? TIER_COLOR[accuracyTier(scores[k] ?? 0)] : k === idx ? "#34d399" : "#44403c", background: k < idx ? TIER_COLOR[accuracyTier(scores[k] ?? 0)] : "transparent", boxShadow: k === idx ? "0 0 8px #34d399" : undefined }} />)}</div>}
-        {!playing && <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-emerald-200 border border-emerald-700/50">Watching live</span>}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-stone-100 truncate">{s.experiment ? "Experiment" : recipe?.name}{step ? ` — ${stepText(step)}` : done ? " — ready to bottle" : ""}</div>
+          {!s.experiment && <div className="flex gap-1 mt-0.5">{steps.map((st, k) => <span key={st.id} title={stepText(st)} className="h-1.5 w-6 rounded-sm" style={{ background: k < idx ? TIER_COLOR[accuracyTier(scores[k] ?? 0)] : k === idx ? "#d97706" : "#292524" }} />)}</div>}
+        </div>
+        {!playing && <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-stone-900 text-stone-300 border border-stone-700">Watching live</span>}
       </div>
-      {!step && <Cauldron hue={hue} heat={0.35} stir={0} sparkle={done} />}
+      {!step && <Cauldron heat={0.35} stir={0} sparkle={done} />}
       {step && (() => {
         const k = `${idx}-${s.free?.k ?? ""}`;
-        const props = { step, s, set, playing, onDone: (sc: number, detail: string) => finishStep(sc, detail) };
+        const props = { step, s, set, playing, skill, onDone: (sc: number, detail: string) => finishStep(sc, detail) };
         switch (step.type) {
           case "mix": return <MixGame key={k} {...props} />;
           case "dice": return <DiceGame key={k} {...props} />;
@@ -169,7 +170,7 @@ function Brewing({ characterId, recipe, s, set, playing, stationId }: { characte
           <div className="flex flex-wrap gap-1.5">
             {(Object.keys(ALCHEMY_STEP_LABEL) as AlchemyStepType[]).map((t) => (
               <button key={t} type="button" onClick={() => set({ free: { type: t, k: Date.now(), amount: t === "heat" ? 60 : t === "mix" ? 6 : t === "rest" ? 5 : t === "dice" ? 3 : t === "grind" ? 5 : 50, ingredient: ingredientNames[0] }, st: {} })}
-                className="h-8 px-3 rounded-lg border text-xs font-semibold" style={{ borderColor: `hsl(${STEP_HUE[t]} 70% 45%)`, color: `hsl(${STEP_HUE[t]} 80% 75%)`, background: `hsl(${STEP_HUE[t]} 60% 12%)` }} data-testid={`alchemy-free-${t}`}>{ALCHEMY_STEP_LABEL[t]}</button>
+                className="h-8 px-3 rounded-md border border-stone-700 bg-stone-900 text-xs text-stone-200 hover:border-amber-600" data-testid={`alchemy-free-${t}`}>{ALCHEMY_STEP_LABEL[t]}</button>
             ))}
           </div>
         </Panel>
@@ -187,57 +188,38 @@ function Brewing({ characterId, recipe, s, set, playing, stationId }: { characte
   );
 }
 
-/** The cauldron: a pot over flames, the brew bubbling in the step's colour, steam rising. */
-function Cauldron({ hue, heat, stir, calm, sparkle }: { hue: number; heat: number; stir: number; calm?: boolean; sparkle?: boolean }) {
+/** The pot between steps: iron over the coals in the dark workshop, the brew simmering, as at the forge. */
+function Cauldron({ heat, stir, calm, sparkle }: { heat: number; stir: number; calm?: boolean; sparkle?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const props = useRef({ hue, heat, stir, calm, sparkle });
-  props.current = { hue, heat, stir, calm, sparkle };
+  const props = useRef({ heat, stir, calm, sparkle });
+  props.current = { heat, stir, calm, sparkle };
   useEffect(() => {
     const ctx = ref.current?.getContext("2d");
     if (!ctx) return;
-    const W = 640, H = 260;
+    const W = 640, H = 240;
     const ps: Particle[] = [];
-    const bubbles: Array<{ x: number; r: number; life: number }> = [];
-    let raf = 0, last = performance.now(), t = 0, shownHue = hue;
+    let raf = 0, last = performance.now(), t = 0;
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
       const P = props.current;
-      shownHue += (P.hue - shownHue) * Math.min(1, dt * 1.5);
-      ctx.clearRect(0, 0, W, H);
-      const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#0b0f10"); bg.addColorStop(1, "#050606"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      const glow = ctx.createRadialGradient(W / 2, 150, 10, W / 2, 150, 260); glow.addColorStop(0, `hsla(${shownHue},90%,55%,${0.18 + P.heat * 0.2})`); glow.addColorStop(1, "transparent"); ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      // Flames under the pot.
-      for (let k = 0; k < 9; k++) {
-        const fx = W / 2 - 110 + k * 27, fh = (18 + P.heat * 46) * (0.7 + 0.3 * Math.sin(t * 9 + k * 1.7));
-        const fg = ctx.createLinearGradient(0, 252, 0, 252 - fh); fg.addColorStop(0, "rgba(255,90,20,0.95)"); fg.addColorStop(0.6, "rgba(255,190,60,0.7)"); fg.addColorStop(1, "rgba(255,240,180,0)");
-        ctx.fillStyle = fg; ctx.beginPath(); ctx.moveTo(fx - 12, 252); ctx.quadraticCurveTo(fx, 252 - fh * 1.3, fx + 12, 252); ctx.fill();
-      }
-      // The pot.
-      ctx.fillStyle = "#1b1c1f"; ctx.beginPath(); ctx.ellipse(W / 2, 150, 150, 92, 0, 0, Math.PI); ctx.fill();
+      const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, "#1a1614"); bg.addColorStop(1, "#0a0807"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      const flick = 0.8 + 0.2 * Math.sin(t * 7) * Math.sin(t * 3.3);
+      const glow = ctx.createRadialGradient(W / 2, H + 40, 10, W / 2, H + 40, 380 * flick); glow.addColorStop(0, `rgba(255,140,40,${0.3 * flick})`); glow.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+      for (let j = 0; j < 14; j++) { ctx.fillStyle = heatColor(Math.min(1, 0.45 + P.heat * 0.5 * (0.75 + 0.25 * Math.sin(t * 5 + j))), "#3f3a36"); ctx.fillRect(170 + j * 22, 212 + (j % 3) * 4, 18, 10); }
+      // The pot, side on, and the brew's surface in it.
+      const px = W / 2, py = 136;
+      ctx.fillStyle = "#1b1c1f"; ctx.beginPath(); ctx.moveTo(px - 140, py - 40); ctx.lineTo(px + 140, py - 40); ctx.quadraticCurveTo(px + 150, py + 70, px, py + 72); ctx.quadraticCurveTo(px - 150, py + 70, px - 140, py - 40); ctx.fill();
       ctx.strokeStyle = "#3a3d44"; ctx.lineWidth = 3; ctx.stroke();
-      // The brew's surface, rippling and bubbling.
-      const rip = P.calm ? 0.3 : 1;
-      const lg = ctx.createRadialGradient(W / 2, 145, 10, W / 2, 150, 150); lg.addColorStop(0, `hsl(${shownHue},85%,${55 + 8 * Math.sin(t * 2)}%)`); lg.addColorStop(1, `hsl(${shownHue},70%,22%)`);
-      ctx.save(); ctx.shadowColor = `hsl(${shownHue},90%,55%)`; ctx.shadowBlur = 24; ctx.fillStyle = lg;
-      ctx.beginPath(); ctx.ellipse(W / 2, 150, 140, 26 + 2 * Math.sin(t * 3) * rip, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      // A swirl showing the spoon's stirring.
-      ctx.save(); ctx.strokeStyle = `hsla(${shownHue},90%,80%,0.45)`; ctx.lineWidth = 2;
-      for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.ellipse(W / 2, 150, 40 + k * 32, 7 + k * 6, 0, P.stir + k, P.stir + k + 2.2); ctx.stroke(); }
-      const sx = W / 2 + Math.cos(P.stir) * 90, sy = 150 + Math.sin(P.stir) * 16;
-      ctx.strokeStyle = "#8b6b46"; ctx.lineWidth = 7; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 30, sy - 120); ctx.stroke(); ctx.restore();
-      ctx.strokeStyle = "#4b4f57"; ctx.lineWidth = 6; ctx.beginPath(); ctx.ellipse(W / 2, 150, 150, 30, 0, 0, Math.PI * 2); ctx.stroke();
-      if (Math.random() < (P.calm ? 0.05 : 0.2 + P.heat * 0.6)) bubbles.push({ x: W / 2 + (Math.random() - 0.5) * 220, r: 3 + Math.random() * 7, life: 0.6 + Math.random() * 0.6 });
-      for (let k = bubbles.length - 1; k >= 0; k--) {
-        const bb = bubbles[k]; bb.life -= dt; if (bb.life <= 0) { bubbles.splice(k, 1); if (Math.random() < 0.5) ps.push({ x: bb.x, y: 140, vx: (Math.random() - 0.5) * 20, vy: -30 - Math.random() * 30, life: 2.2, max: 2.2, color: `hsla(${shownHue},40%,85%,0.35)`, size: 7 + Math.random() * 8 }); continue; }
-        ctx.strokeStyle = `hsla(${shownHue},90%,85%,${bb.life})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(bb.x, 150 - (1 - bb.life) * 6, bb.r * (1.2 - bb.life * 0.4), 0, Math.PI * 2); ctx.stroke();
-      }
-      if (P.sparkle && Math.random() < 0.6) ps.push({ x: W / 2 + (Math.random() - 0.5) * 240, y: 150, vx: 0, vy: -50 - Math.random() * 60, life: 1.2, max: 1.2, color: "#fde68a", size: 2 });
+      ctx.fillStyle = "#557a52"; ctx.beginPath(); ctx.ellipse(px, py - 40, 132, 14, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#2a2c30"; ctx.fillRect(px - 150, py - 48, 300, 8);
+      if (Math.random() < (P.calm ? 0.05 : 0.25 + P.heat * 0.5)) ps.push({ x: px + (Math.random() - 0.5) * 220, y: py - 44, vx: (Math.random() - 0.5) * 10, vy: -25 - Math.random() * 20, life: 1.6, max: 1.6, color: "rgba(214,211,209,0.22)", size: 6 + Math.random() * 6 });
+      if (Math.random() < 0.3) ps.push({ x: 170 + Math.random() * 300, y: 210, vx: (Math.random() - 0.5) * 20, vy: -60 - Math.random() * 40, life: 0.7, max: 0.7, color: "#ff8a3d", size: 1.6 });
+      if (P.sparkle && Math.random() < 0.5) ps.push({ x: px + (Math.random() - 0.5) * 220, y: py - 44, vx: 0, vy: -40 - Math.random() * 40, life: 1.2, max: 1.2, color: "#facc15", size: 2 });
       stepParticles(ctx, ps, dt, -8);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return <canvas ref={ref} width={640} height={260} className="w-full block rounded-xl border border-emerald-900/60" data-testid="alchemy-cauldron" />;
+  return <canvas ref={ref} width={640} height={240} className="w-full block rounded-lg border border-stone-700" data-testid="alchemy-cauldron" />;
 }
-

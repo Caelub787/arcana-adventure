@@ -74,7 +74,23 @@ export const CRAFT_DEF_TYPE: Record<CraftKind, string> = { forge: "blueprint", a
 export interface CraftNeed { noteId?: string | null; name: string; qty: number; /** Used up (default) or only needed (a tool). */ consumed?: boolean }
 
 /** A value set on the output, by tier: { key: "potency", values: { weak: -2, … } }. */
-export interface CraftTierEffect { key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number>> }
+/**
+ * One of the made item's values by craftsmanship: a number per tier (set, or added to what crafting gave), or — set
+ * only — text: dice ("3d6"), a choice ("Moderate") or words, so a Fine potion can heal more dice or more wounds.
+ */
+export interface CraftTierEffect { key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number | string>> }
+
+/** Dice a tier adds to (or takes off) an output's dice when its recipe says nothing about them. */
+export const TIER_DICE: Record<CraftTier, number> = { fail: 0, weak: -1, default: 0, slight: 1, huge: 2 };
+/** How a tier changes an output's worth when its recipe says nothing about it. */
+export const TIER_WORTH: Record<CraftTier, number> = { fail: 0, weak: 0.6, default: 1, slight: 1.6, huge: 3 };
+/** "2d6+1" with `more` dice more (never under one): the default step up or down for a better or worse brew. */
+export function moreDice(formula: string, more: number): string {
+  const m = /^\s*(\d*)d(\d+)(.*)$/i.exec(formula);
+  if (!m || !more) return formula;
+  const n = Math.max(1, (m[1] ? Number(m[1]) : 1) + more);
+  return `${n}d${m[2]}${m[3]}`;
+}
 
 export type ForgeRole = "blade" | "handle" | "extra";
 export interface ForgePart { key: string; label: string; role: ForgeRole; optional?: boolean; shape: string }
@@ -142,7 +158,16 @@ function needs(v: unknown, consumed: boolean): CraftNeed[] {
     .filter((n) => n.name || n.noteId);
 }
 function effects(v: unknown): CraftTierEffect[] {
-  return (Array.isArray(v) ? v : []).slice(0, 12).map((e: any) => ({ key: key(e?.key), mode: e?.mode === "set" ? "set" as const : "add" as const, values: tierValues(e?.values) })).filter((e) => e.key);
+  return (Array.isArray(v) ? v : []).slice(0, 12).map((e: any) => {
+    const o = (e?.values && typeof e.values === "object" ? e.values : {}) as Record<string, unknown>;
+    const values: Partial<Record<CraftTier, number | string>> = {};
+    for (const t of CRAFT_TIERS) {
+      const x = o[t];
+      if (typeof x === "number" && Number.isFinite(x)) values[t] = x;
+      else if (typeof x === "string" && x.trim()) values[t] = x.trim().slice(0, 80);
+    }
+    return { key: key(e?.key), mode: e?.mode === "set" ? "set" as const : "add" as const, values };
+  }).filter((e) => e.key);
 }
 
 /** A definition's setup from its stored text — checked and bounded; null if it isn't one. */

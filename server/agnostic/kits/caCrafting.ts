@@ -5,7 +5,7 @@
 // more from the templates in campaigns and My Library; admin in Admin.
 import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgSnapshot, AgValue } from "@shared/agnostic/types";
-import { SIGILS, CRAFT_DEF_TYPE, parseCraftConfig, type ForgeConfig, type AlchemyConfig, type RuneConfig, type CraftNeed } from "@shared/agnostic/crafting";
+import { SIGILS, CRAFT_DEF_TYPE, parseCraftConfig, type ForgeConfig, type AlchemyConfig, type RuneConfig, type CraftNeed, type CraftTierEffect } from "@shared/agnostic/crafting";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import { p, i, t, h, block, icon, tip, section, type DocNode } from "./doc";
@@ -156,7 +156,7 @@ async function starterSet(store: ScopeStore, cs: ChangeSet, tpl: Record<string, 
   await make(tpl.alchemy, "Healing Draught Recipe", {
     description: "A red, bitter draught that knits flesh.",
     craft: JSON.stringify({
-      kind: "alchemy", ingredients: [need(ing.redleaf, 2), need(ing.water, 1)], output: draught?.id ?? null, effects: [],
+      kind: "alchemy", ingredients: [need(ing.redleaf, 2), need(ing.water, 1)], output: draught?.id ?? null, effects: STARTER_BREW_EFFECTS["Healing Draught Recipe"],
       steps: [{ id: "s1", type: "dice", ingredient: "Redleaf", amount: 3 }, { id: "s2", type: "heat", amount: 62 }, { id: "s3", type: "add", ingredient: "Redleaf", amount: 55 },
         { id: "s4", type: "mix", amount: 8 }, { id: "s5", type: "strain" }, { id: "s6", type: "rest", amount: 5 }],
     } satisfies AlchemyConfig),
@@ -239,15 +239,15 @@ async function starterExtras(store: ScopeStore, cs: ChangeSet, tpl: Record<strin
   const need = (n: AgNote | undefined | null, qty = 1, consumed = true): CraftNeed => ({ noteId: n?.id ?? null, name: n?.name ?? "", qty, consumed });
   const recipe = async (name: string, desc: string, config: AlchemyConfig) => keep(name, await make(tpl.alchemy, name, { description: desc, craft: JSON.stringify(config) }));
   await recipe("Energy Tonic Recipe", "A fizzing amber tonic that refills the meridians.", {
-    kind: "alchemy", ingredients: [need(out.moss, 1), need(out.water, 1)], output: tonic?.id ?? null, effects: [],
+    kind: "alchemy", ingredients: [need(out.moss, 1), need(out.water, 1)], output: tonic?.id ?? null, effects: STARTER_BREW_EFFECTS["Energy Tonic Recipe"],
     steps: [{ id: "s1", type: "grind", ingredient: "Ember Moss", amount: 6 }, { id: "s2", type: "add", ingredient: "Spring Water", amount: 40 }, { id: "s3", type: "heat", amount: 50 }, { id: "s4", type: "mix", amount: 6 }],
   });
   await recipe("Focus Elixir Recipe", "A pale, cold elixir that clears the mind.", {
-    kind: "alchemy", ingredients: [need(out.moonpetal, 1), need(out.water, 1)], output: elixir?.id ?? null, effects: [],
+    kind: "alchemy", ingredients: [need(out.moonpetal, 1), need(out.water, 1)], output: elixir?.id ?? null, effects: STARTER_BREW_EFFECTS["Focus Elixir Recipe"],
     steps: [{ id: "s1", type: "dice", ingredient: "Moonpetal", amount: 2 }, { id: "s2", type: "mix", amount: 10 }, { id: "s3", type: "rest", amount: 6 }, { id: "s4", type: "strain" }],
   });
   await recipe("Wound Salve Recipe", "A thick green salve that closes wounds.", {
-    kind: "alchemy", ingredients: [need(out.redleaf, 1), need(out.moss, 1), need(out.bitterroot, 1)], output: salve?.id ?? null, effects: [],
+    kind: "alchemy", ingredients: [need(out.redleaf, 1), need(out.moss, 1), need(out.bitterroot, 1)], output: salve?.id ?? null, effects: STARTER_BREW_EFFECTS["Wound Salve Recipe"],
     steps: [{ id: "s1", type: "grind", ingredient: "Redleaf", amount: 5 }, { id: "s2", type: "add", ingredient: "Bitterroot", amount: 70 }, { id: "s3", type: "heat", amount: 40 }, { id: "s4", type: "mix", amount: 6 }, { id: "s5", type: "rest", amount: 4 }],
   });
   // More runes (and the pen counts as a tool for every rune).
@@ -271,6 +271,23 @@ async function starterExtras(store: ScopeStore, cs: ChangeSet, tpl: Record<strin
 }
 
 /** Scrolls to start with: a few blueprints, two recipes and two runes (the GM hands out the rest). */
+/**
+ * What each starter brew gives by grade — so a Fine potion plainly does more than a Standard one, and the GM has
+ * examples to copy: more dice, worse wounds healed, stronger at the top.
+ */
+export const STARTER_BREW_EFFECTS: Record<string, CraftTierEffect[]> = {
+  "Healing Draught Recipe": [
+    { key: "heal_dice", mode: "set", values: { weak: "1d6", default: "2d6", slight: "3d6", huge: "4d6+2" } },
+    { key: "heal_wounds", mode: "set", values: { weak: "None", default: "None", slight: "Minor", huge: "Moderate" } },
+  ],
+  "Energy Tonic Recipe": [{ key: "restore_dice", mode: "set", values: { weak: "2d6", default: "3d6", slight: "4d6", huge: "6d6" } }],
+  "Focus Elixir Recipe": [{ key: "restore_dice", mode: "set", values: { weak: "1d2", default: "1d4", slight: "1d6", huge: "2d4" } }],
+  "Wound Salve Recipe": [
+    { key: "heal_wounds", mode: "set", values: { weak: "Minor", default: "Moderate", slight: "Severe", huge: "Severe" } },
+    { key: "heal_dice", mode: "set", values: { weak: "1d2", default: "1d4", slight: "1d6", huge: "2d6" } },
+  ],
+};
+
 export const STARTER_SCROLLS = ["scroll:Longsword", "scroll:Dagger", "scroll:Battle Axe", "scroll:Healing Draught Recipe", "scroll:Energy Tonic Recipe", "scroll:Rune of Flame", "scroll:Rune of Frost"];
 /** Give a character a copy of each of these (by key in `made`). */
 export async function giveCopies(store: ScopeStore, hero: AgNote, made: Record<string, AgNote>, give: Array<[string, number]>, cs: ChangeSet) {

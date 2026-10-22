@@ -9,7 +9,7 @@ import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from
 import { noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
   traceAccuracy, stationAllows, metalFits, sellValue, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
-  TIER_LABEL, TIER_BONUS, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
+  TIER_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
 } from "@shared/agnostic/crafting";
 import { asNumber } from "@shared/agnostic/formula";
@@ -280,11 +280,12 @@ async function announce(ctx: Ctx, text: string) {
   if (ctx.store.scope.kind === "campaign") await ctx.host.postChat?.(ctx.store.scope.id, { sender: "Crafting", text, audience: "everyone" }).catch(() => {});
 }
 
-/** Apply a tier's changes to the output (values set or added). */
-async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number>> }>, tier: CraftTier, cs: ChangeSet) {
+/** Apply a tier's changes to the output (values set or added; text — dice, a choice, words — is always set). */
+async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number | string>> }>, tier: CraftTier, cs: ChangeSet) {
   for (const e of effects) {
     const v = e.values[tier];
     if (v === undefined) continue;
+    if (typeof v === "string") { await setValue(store, noteId, e.key, v, cs); continue; }
     const cur = numOf(fieldsOf(store, noteId).get(e.key)?.value);
     // Durability is a percentage.
     const next = e.key === "durability" ? Math.max(0, Math.min(100, e.mode === "set" ? v : cur + v)) : e.mode === "set" ? v : cur + v;
@@ -440,9 +441,9 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const tier = quick ? quick.tier : accuracyTier(Math.max(0, Math.min(100, body.accuracy ?? 0)));
       return store.run(async (cs) => {
         for (const u of use) if (u.consumed) await consume(store, u.item, u.qty, cs);
-        const out = await brewOutput(ctx, character, recipe, config, tier, cs);
+        const { note: out, does } = await brewOutput(ctx, character, recipe, config, tier, cs);
         await announce(ctx, `⚗ ${character.name} brewed ${out.name} (${TIER_LABEL[tier]}).`);
-        return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, roll: quick?.roll, message: tier === "fail" ? `${out.name} — the brew failed: it has no effect.` : `${out.name} (${TIER_LABEL[tier]})${TIER_BONUS[tier] ? `: ${TIER_BONUS[tier] > 0 ? "+" : ""}${TIER_BONUS[tier]} to its effect` : ""}.` } satisfies CraftResult;
+        return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, roll: quick?.roll, message: tier === "fail" ? `${out.name} — the brew failed: it has no effect.` : `${out.name} (${TIER_LABEL[tier]})${does ? `: ${does}` : ""}.` } satisfies CraftResult;
       });
     }
     case "craft.experiment": {
@@ -463,12 +464,12 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         for (const u of used) await consume(store, u.item, u.qty, cs);
         if (found) {
           const tier = accuracyTier(found.score);
-          const out = await brewOutput(ctx, character, found.note, found.config, tier, cs);
+          const { note: out, does } = await brewOutput(ctx, character, found.note, found.config, tier, cs);
           // Discovered: they write it down — its scroll is theirs (unless they have one already).
           const knew = inv.some((n) => String(valueOf(store, n.id, "teaches") ?? "") === found.note.id);
           if (!knew) await makeScroll(ctx, found.note, cs, character);
           await announce(ctx, `⚗ ${character.name} discovered ${found.note.name} by experimenting!`);
-          return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, message: `You discovered ${found.note.name}! ${out.name} (${TIER_LABEL[tier]})${knew ? "" : " — its recipe scroll is in your inventory"}.` } satisfies CraftResult;
+          return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, message: `You discovered ${found.note.name}! ${out.name} (${TIER_LABEL[tier]})${does ? `: ${does}` : ""}${knew ? "" : " — its recipe scroll is in your inventory"}.` } satisfies CraftResult;
         }
         // Something new: the GM decides what (if anything) it makes.
         const tried = [
@@ -595,18 +596,42 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
   return fail("Unknown crafting step");
 }
 
-/** A brew's output: the recipe's item, with the tier's numbers (a failed brew is inert). */
-async function brewOutput(ctx: Ctx, character: AgNote, recipe: { name: string }, config: AlchemyConfig, tier: CraftTier, cs: ChangeSet): Promise<AgNote> {
+/**
+ * A brew's output: the recipe's item, with the tier's numbers (a failed brew is inert). What a recipe sets by tier wins;
+ * where it says nothing, a better brew rolls more of its dice, is worth more, and is more potent (a worse one, less) —
+ * so a Fine potion always does more than a Standard one. Returns the item and what it does now, in words.
+ */
+async function brewOutput(ctx: Ctx, character: AgNote, recipe: { name: string }, config: AlchemyConfig, tier: CraftTier, cs: ChangeSet): Promise<{ note: AgNote; does: string }> {
   const { store } = ctx;
   const base = recipe.name.replace(/\s*recipe\s*/i, "").trim() || "Potion";
   const name = tier === "fail" ? `Inert ${base}` : tier === "default" ? base : `${TIER_LABEL[tier]} ${base}`;
   const item = await giveItem(ctx, character, config.output, name, cs);
   await setValue(store, item.id, "craft_tier", TIER_LABEL[tier], cs);
   await setValue(store, item.id, "qty", 1, cs);
-  const effects = config.effects?.length ? config.effects : [{ key: "potency", mode: "set" as const, values: { fail: 0, weak: TIER_BONUS.weak, default: 0, slight: TIER_BONUS.slight, huge: TIER_BONUS.huge } }];
-  await applyEffects(store, item.id, effects, tier, cs);
+  const set = new Set((config.effects ?? []).map((e) => e.key));
+  const touched: string[] = [];
+  if (tier !== "fail") {
+    for (const f of Array.from(fieldsOf(store, item.id).values())) {
+      if (f.type === "dice" && f.formula && !set.has(f.key) && TIER_DICE[tier]) { await store.putField({ ...f, formula: moreDice(f.formula, TIER_DICE[tier]) }, cs); touched.push(f.key); }
+    }
+    const worth = fieldsOf(store, item.id).get("value");
+    if (worth && !set.has("value") && TIER_WORTH[tier] !== 1) { await setValue(store, item.id, "value", Math.max(0, Math.round(numOf(worth.value) * TIER_WORTH[tier])), cs); touched.push("value"); }
+  }
+  if (!set.has("potency")) { await setValue(store, item.id, "potency", tier === "fail" ? 0 : TIER_BONUS[tier], cs, "Potency"); if (TIER_BONUS[tier]) touched.push("potency"); }
+  await applyEffects(store, item.id, config.effects ?? [], tier, cs);
+  for (const e of config.effects ?? []) if (e.values[tier] !== undefined) touched.push(e.key);
   await setValue(store, item.id, "inert", tier === "fail", cs);
-  return store.notes.get(item.id)!;
+  // In words, for the result: "Heals (HP) 3d6 · Heals wounds up to Minor · Potency +2 · Worth 48".
+  const fields = fieldsOf(store, item.id);
+  const does = Array.from(new Set(touched)).map((k) => {
+    const f = fields.get(k);
+    if (!f) return null;
+    const v = f.type === "dice" ? f.formula : f.value;
+    if (v === null || v === undefined || v === "") return null;
+    const shown = k === "potency" && typeof v === "number" ? `${v >= 0 ? "+" : ""}${v}` : String(v);
+    return `${f.label || k} ${shown}`;
+  }).filter(Boolean).join(" · ");
+  return { note: store.notes.get(item.id)!, does };
 }
 
 /** The recipe an experiment matches best: the same ingredients, and steps close enough. */
