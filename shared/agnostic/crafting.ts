@@ -241,9 +241,13 @@ export function shapeMask(shape: string): Metal {
 /** The starting bar: whole hammer blocks round the outline, with stock all round to work away. */
 const stockCache = new Map<string, Metal>();
 export function startingStock(shape: string): Metal {
+  return stockOf(shape).slice();
+}
+/** The cached starting bar itself (read only). */
+function stockOf(shape: string): Metal {
   let st = stockCache.get(shape);
   if (!st) { st = makeStock(shape); stockCache.set(shape, st); }
-  return st.slice();
+  return st;
 }
 function makeStock(shape: string): Metal {
   const mask = shapeMask(shape);
@@ -286,7 +290,7 @@ export const metalFits = (metal: unknown): metal is string => typeof metal === "
 /** How close the metal is to the outline: the stock removed, less the outline worked into. 0–100. */
 export function shapeScore(shape: string, metal: Metal): number {
   const mask = shapeMask(shape);
-  const start = startingStock(shape);
+  const start = stockOf(shape);
   let stock = 0, removed = 0, keep = 0, kept = 0;
   for (let i = 0; i < N; i++) {
     if (!start[i]) continue;
@@ -333,16 +337,41 @@ const blockOpened = (metal: Metal, stock: Metal, R: number, C: number) => {
   if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS || !blockHas(stock, R, C)) return false;
   return !blockHas(metal, R, C);
 };
-/** Where the grindstone can work: blocks right beside ones the hammer has cleared (it refines the hammer's work). */
-export function grindable(metal: Metal, shape: string, R: number, C: number): boolean {
-  const stock = startingStock(shape);
-  return blockOpened(metal, stock, R - 1, C) || blockOpened(metal, stock, R + 1, C) || blockOpened(metal, stock, R, C - 1) || blockOpened(metal, stock, R, C + 1);
+/** Blocks the outline runs through: some of the part and some stock (fixed by the shape, whatever's been done since). */
+const edgeCache = new Map<string, Uint8Array>();
+function edgeBlocks(shape: string): Uint8Array {
+  let e = edgeCache.get(shape);
+  if (e) return e;
+  const mask = shapeMask(shape), stock = stockOf(shape);
+  e = new Uint8Array(FORGE_ROWS * FORGE_COLS);
+  for (let R = 0; R < FORGE_ROWS; R++) for (let C = 0; C < FORGE_COLS; C++) {
+    let part = false, extra = false;
+    for (let r = R * FINE; r < (R + 1) * FINE; r++) for (let c = C * FINE; c < (C + 1) * FINE; c++) { const i = r * FINE_COLS + c; if (mask[i]) part = true; else if (stock[i]) extra = true; }
+    e[R * FORGE_COLS + C] = part && extra ? 1 : 0;
+  }
+  edgeCache.set(shape, e);
+  return e;
 }
 /**
- * The grindstone: the wheel takes the surface it touches (fine cells next to air) off within its reach — only beside
- * blocks the hammer has already cleared, and never a block's last bit (taking whole blocks off is the hammer's job).
+ * Where the grindstone can work: a block the outline runs through, right beside one the hammer has cleared. Blocks of
+ * pure stock are the hammer's alone — the stone can't wear them down, however slowly it's worked — so grinding never
+ * opens up more for itself.
  */
-export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, radius: number): { metal: Metal; hit: number[] } {
+export function grindable(metal: Metal, shape: string, R: number, C: number): boolean {
+  if (R < 0 || C < 0 || R >= FORGE_ROWS || C >= FORGE_COLS || !edgeBlocks(shape)[R * FORGE_COLS + C]) return false;
+  const stock = stockOf(shape);
+  return blockOpened(metal, stock, R - 1, C) || blockOpened(metal, stock, R + 1, C) || blockOpened(metal, stock, R, C - 1) || blockOpened(metal, stock, R, C + 1);
+}
+/** How often a smith's wheel bites into the outline itself as it works an edge, by Blacksmithing (0–4), per cell per pass. */
+export const grindNick = (skill: number) => [0.05, 0.03, 0.015, 0.005, 0][Math.max(0, Math.min(4, Math.floor(skill)))];
+/**
+ * The grindstone: the wheel takes the stock it touches (surface cells, next to air) off within its reach — only in
+ * blocks the outline runs through beside blocks the hammer has cleared, and never a block's last bit. Only stock comes
+ * off: a steady hand stops at the line, a less skilled one sometimes bites past it (grindNick).
+ */
+export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, radius: number, skill = 4, rand: () => number = Math.random): { metal: Metal; hit: number[] } {
+  const mask = shapeMask(shape);
+  const nick = grindNick(skill);
   const at = (r: number, c: number) => r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
   const hit: number[] = [];
   const ok = new Map<number, boolean>();
@@ -351,11 +380,13 @@ export function grindMetal(metal: Metal, shape: string, fx: number, fy: number, 
   for (let r = Math.floor(fy - radius); r <= Math.ceil(fy + radius); r++) for (let c = Math.floor(fx - radius); c <= Math.ceil(fx + radius); c++) {
     if (!at(r, c) || (c + 0.5 - fx) ** 2 + (r + 0.5 - fy) ** 2 > radius * radius) continue;
     if (at(r - 1, c) && at(r + 1, c) && at(r, c - 1) && at(r, c + 1)) continue;
+    const i = r * FINE_COLS + c;
+    if (mask[i] && !(nick > 0 && rand() < nick)) continue;
     const R = Math.floor(r / FINE), C = Math.floor(c / FINE), b = R * FORGE_COLS + C;
     if (!ok.has(b)) { ok.set(b, grindable(metal, shape, R, C)); left.set(b, cellsIn(R, C)); }
     if (!ok.get(b) || (left.get(b) ?? 0) <= 1) continue;
     left.set(b, (left.get(b) ?? 0) - 1);
-    hit.push(r * FINE_COLS + c);
+    hit.push(i);
   }
   if (!hit.length) return { metal, hit };
   const m = metal.slice();
@@ -370,7 +401,7 @@ export function metalBounds(metal: Metal): { c0: number; r0: number; c1: number;
 }
 /** How big each part's 100 × 40 box is in a finished weapon (one scale for its whole box, so its shape isn't stretched). */
 export const PART_SCALE: Record<string, number> = {
-  long_blade: 1, short_blade: 0.6, curved_blade: 0.95, axe_head: 0.45, scythe_blade: 0.8, spear_head: 0.45, arrow_tip: 0.25, hammer_head: 0.35,
+  long_blade: 1, short_blade: 0.6, curved_blade: 0.95, axe_head: 0.8, scythe_blade: 0.8, spear_head: 0.45, arrow_tip: 0.25, hammer_head: 0.55,
   bow_stave: 1.4, grip: 0.38, long_haft: 1.3, guard: 0.45, pommel: 0.25, fletching: 0.3,
 };
 /** Bits of metal no longer joined to the rest break off (all but the biggest piece). Returns the metal and what fell. */

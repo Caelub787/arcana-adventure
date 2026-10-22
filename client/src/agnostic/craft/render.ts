@@ -101,10 +101,10 @@ export function drawBlocks(ctx: CanvasRenderingContext2D, x: number, y: number, 
   for (let r = 0; r <= FORGE_ROWS; r++) { const Y = y + (r * h) / FORGE_ROWS; ctx.moveTo(x, Y); ctx.lineTo(x + w, Y); }
   ctx.stroke(); ctx.restore();
 }
-/** The grindstone at work: a spinning wheel where it touches. */
-export function drawWheel(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number) {
+/** The grindstone at work: a spinning wheel touching at (x, y), its body off to the side `angle` points (default above). */
+export function drawWheel(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number, angle = -Math.PI / 2) {
   ctx.save();
-  ctx.translate(x, y - r * 0.85);
+  ctx.translate(x + Math.cos(angle) * r * 0.85, y + Math.sin(angle) * r * 0.85);
   ctx.globalAlpha = 0.9;
   const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
   g.addColorStop(0, "#78716c"); g.addColorStop(0.8, "#57534e"); g.addColorStop(1, "#292524");
@@ -116,14 +116,9 @@ export function drawWheel(ctx: CanvasRenderingContext2D, x: number, y: number, r
   ctx.restore();
 }
 
-/** Where each part of an assembled weapon sits along it (fractions of its length). */
-function layout(parts: Array<{ part: ForgePart }>) {
-  const len = (p: ForgePart) => (p.role === "blade" ? 0.58 : p.role === "handle" ? (p.shape === "long_haft" ? 0.7 : 0.3) : p.shape === "pommel" ? 0.07 : p.shape === "fletching" ? 0.16 : 0.07);
-  const ordered = assemblyOrder(parts.map((x) => x.part));
-  const total = ordered.reduce((s, p) => s + len(p), 0);
-  let at = 0;
-  return ordered.map((p) => { const w = len(p) / total; const r = { part: p, from: at, w }; at += w; return r; });
-}
+type Piece = { p: ForgePart; metal: Metal; b: { c0: number; r0: number; c1: number; r1: number }; color: string; w: number; h: number; unit: number };
+/** Heads that sit across the end of the haft rather than carrying on along it: socket at their base, or their middle. */
+const CROSS: Record<string, "base" | "middle"> = { axe_head: "base", scythe_blade: "base", hammer_head: "middle" };
 
 /**
  * A whole weapon on a dark, glowing backdrop — the finished item's picture. Each part is drawn exactly as it was made
@@ -137,7 +132,7 @@ export function weaponPortrait(parts: Array<{ part: ForgePart; color: string; /*
   backdrop(ctx, size, opts.tierColor ?? "#f59e0b");
   const byKey = new Map(parts.map((x) => [x.part.key, x]));
   // Each piece in "weapon units": its box is PART_SCALE wide (and 0.4 of that tall); its metal's own extent within it.
-  const pieces = assemblyOrder(parts.map((x) => x.part)).map((p) => {
+  const pieces: Piece[] = assemblyOrder(parts.map((x) => x.part)).map((p) => {
     const it = byKey.get(p.key)!;
     const metal = it.metal ?? shapeMask(p.shape);
     const b = metalBounds(metal) ?? { c0: 0, r0: 0, c1: FINE_COLS - 1, r1: FINE_ROWS - 1 };
@@ -145,19 +140,69 @@ export function weaponPortrait(parts: Array<{ part: ForgePart; color: string; /*
     return { p, metal, b, color: opts.failed ? "#57534e" : it.color, w: (b.c1 - b.c0 + 1) * unit, h: (b.r1 - b.r0 + 1) * unit, unit };
   });
   if (!pieces.length) return c.toDataURL("image/png");
-  const overlap = (pc: typeof pieces[number]) => pc.unit * 1.5;
-  const total = pieces.reduce((t, pc, k) => t + pc.w - (k ? overlap(pc) : 0), 0);
-  const tall = Math.max(...pieces.map((pc) => pc.h));
-  const k = Math.min((size * 1.22) / total, (size * 0.42) / tall);
+  const overlap = (pc: Piece) => pc.unit * 1.5;
+  // Pieces join where they meet, not by their boxes: a sabre's blade curves up from its tang, so its box's middle is
+  // far from where the grip goes in. A piece's joint at an end is the middle of its metal in the few columns there.
+  const joint = (pc: Piece, end: "start" | "end") => {
+    let sum = 0, n = 0;
+    for (let k = 0; k < 3; k++) {
+      const col = end === "start" ? pc.b.c0 + k : pc.b.c1 - k;
+      for (let r = pc.b.r0; r <= pc.b.r1; r++) if (pc.metal[r * FINE_COLS + col]) { sum += r + 0.5 - pc.b.r0; n++; }
+    }
+    return (n ? sum / n : (pc.b.r1 - pc.b.r0 + 1) / 2) * pc.unit;
+  };
+  // A head that sits across the haft's end (an axe, a hammer, a scythe's blade), and a bow's grip at its stave's middle.
+  const crossAt = (pc: Piece) => CROSS[pc.p.shape];
+  const last = pieces[pieces.length - 1];
+  const head = pieces.length > 1 && crossAt(last) ? last : null;
+  const stave = pieces.find((pc) => pc.p.shape === "bow_stave");
+  const grip = stave ? pieces.find((pc) => pc.p.role === "handle") : undefined;
+  const line = pieces.filter((pc) => pc !== head && pc !== grip);
+  // Boxes in weapon units (x along the weapon, y across, down positive): the line chained joint to joint.
+  type Box = { pc: Piece; x: number; y: number; w: number; h: number; turn: boolean };
+  const boxes: Box[] = [];
+  let x = 0;
+  line.forEach((pc, n) => {
+    if (n) x -= overlap(pc);
+    const y = n ? boxes[n - 1].y + joint(line[n - 1], "end") - joint(pc, "start") : 0;
+    boxes.push({ pc, x, y, w: pc.w, h: pc.h, turn: false });
+    x += pc.w;
+  });
+  if (head && boxes.length) {
+    // Turned a quarter: its columns run across the weapon, its rows along it. Its socket (first columns, or its
+    // middle for a hammer) takes the haft's end.
+    const end = boxes[boxes.length - 1];
+    const axis = end.y + joint(end.pc, "end");
+    const along = joint(head, "start");
+    const bx = end.x + end.w - along - overlap(head);
+    const by = crossAt(head) === "middle" ? axis - head.w / 2 : axis - head.w + overlap(head) * 1.5;
+    boxes.push({ pc: head, x: bx, y: by, w: head.h, h: head.w, turn: true });
+  }
+  if (grip && stave) {
+    const sb = boxes.find((b) => b.pc === stave)!;
+    // The stave's middle: where its metal is in the middle columns.
+    const mid = Math.floor((stave.b.c0 + stave.b.c1) / 2);
+    let sum = 0, n = 0;
+    for (let r = stave.b.r0; r <= stave.b.r1; r++) if (stave.metal[r * FINE_COLS + mid]) { sum += r + 0.5 - stave.b.r0; n++; }
+    const cy = sb.y + (n ? sum / n : stave.h / 2) * stave.unit;
+    boxes.push({ pc: grip, x: sb.x + sb.w / 2 - grip.w / 2, y: cy - joint(grip, "start"), w: grip.w, h: grip.h, turn: false });
+  }
+  const x0 = Math.min(...boxes.map((b) => b.x)), x1 = Math.max(...boxes.map((b) => b.x + b.w));
+  const y0 = Math.min(...boxes.map((b) => b.y)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
+  const k = Math.min((size * 1.22) / (x1 - x0), (size * 0.42) / (y1 - y0), (size * 0.86) / Math.max(x1 - x0, y1 - y0));
   ctx.save();
   ctx.translate(size / 2, size / 2);
   ctx.rotate(-Math.PI / 4);
-  let x = (-total * k) / 2;
-  pieces.forEach((pc, n) => {
-    if (n) x -= overlap(pc) * k;
-    drawMetal(ctx, pc.metal, pc.color, 0, x, (-pc.h * k) / 2, pc.w * k, pc.h * k, pc.b);
-    x += pc.w * k;
-  });
+  ctx.translate((-(x0 + x1) / 2) * k, (-(y0 + y1) / 2) * k);
+  for (const b of boxes) {
+    if (!b.turn) { drawMetal(ctx, b.pc.metal, b.pc.color, 0, b.x * k, b.y * k, b.w * k, b.h * k, b.pc.b); continue; }
+    // Draw it lying (its own w × h), turned so its first columns face the haft (bottom) and it reaches up.
+    ctx.save();
+    ctx.translate(b.x * k, (b.y + b.h) * k);
+    ctx.rotate(-Math.PI / 2);
+    drawMetal(ctx, b.pc.metal, b.pc.color, 0, 0, 0, b.pc.w * k, b.pc.h * k, b.pc.b);
+    ctx.restore();
+  }
   ctx.restore();
   if (opts.failed) crack(ctx, size);
   return c.toDataURL("image/png");

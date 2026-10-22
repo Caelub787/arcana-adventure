@@ -199,6 +199,20 @@ const W = 760, H = 320;
 const BAR = { x: 20, y: 16, w: 720, h: 288 };
 const SKILL_WORDS = ["Rough: a blow often knocks the blocks beside it off too.", "Steadier: a blow sometimes takes a neighbour.", "Careful: now and then a neighbour goes too.", "Precise: each blow lands exactly where you strike.", "Master: drag to cut along a line, like a saw."];
 const wheelRadius = (skill: number) => [3.2, 2.8, 2.4, 2, 1.6][Math.max(0, Math.min(4, skill))];
+const GRIND_WORDS = ["Rough: the wheel often bites past the line.", "Steadier: it sometimes bites past the line.", "Careful: it rarely bites past the line.", "Precise: it hardly ever bites past the line.", "Master: it stops right at the line."];
+/** Which way is out from the metal at a point (radians): the wheel sits on that side, off the work, so it never hides the edge. */
+function outward(metal: Metal, fx: number, fy: number): number | null {
+  let vx = 0, vy = 0;
+  const R = 9;
+  for (let r = Math.floor(fy - R); r <= Math.ceil(fy + R); r++) for (let c = Math.floor(fx - R); c <= Math.ceil(fx + R); c++) {
+    const dx = c + 0.5 - fx, dy = r + 0.5 - fy, d2 = dx * dx + dy * dy;
+    if (d2 > R * R || d2 < 0.01) continue;
+    const solid = r >= 0 && c >= 0 && r < FINE_ROWS && c < FINE_COLS && metal[r * FINE_COLS + c] === 1;
+    const w = (solid ? -1 : 1) / Math.sqrt(d2);
+    vx += dx * w; vy += dy * w;
+  }
+  return Math.hypot(vx, vy) < 0.5 ? null : Math.atan2(vy, vx);
+}
 
 function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: string; bp: KnownDef<ForgeConfig>; s: CraftState; set: Props["set"]; playing: boolean; stationId?: string }) {
   const { state, request, openNote } = useAg();
@@ -210,7 +224,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const mask = useMemo(() => shapeMask(part.shape), [part.shape]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const fromState = () => (typeof s.metal === "string" ? unpackMetal(s.metal) : null) ?? startingStock(part.shape);
-  const live = useRef({ heat: Number(s.heat ?? 20), bellows: false, metal: fromState(), lastSync: 0, lastMetalSync: 0, dirty: false, pointer: null as null | { x: number; y: number }, lastBlock: -1, lastGrind: 0 });
+  const live = useRef({ heat: Number(s.heat ?? 20), bellows: false, metal: fromState(), lastSync: 0, lastMetalSync: 0, dirty: false, pointer: null as null | { x: number; y: number }, lastBlock: -1, lastGrind: 0, wheelAngle: -Math.PI / 2 });
   const particles = useRef<Particle[]>([]);
   const shake = useRef(0);
   const [busy, setBusy] = useState(false);
@@ -261,7 +275,13 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
     if (Math.random() < (s.bellows ? 0.6 : 0.15)) particles.current.push({ x: Math.random() * W, y: H, vx: (Math.random() - 0.5) * 30, vy: -50 - Math.random() * 60, life: 1.4, max: 1.4, color: "#ff8a3d", size: 1.4 });
     stepParticles(ctx, particles.current, dt);
     const wheel = playing ? (tool === "grind" ? L.pointer : null) : s.wheel && Date.now() - s.wheel.at < 400 ? s.wheel : null;
-    if (wheel) drawWheel(ctx, wheel.x, wheel.y, 34, t);
+    if (wheel) {
+      // Turn the wheel round to the open side of the edge it's on, easing so it doesn't jitter.
+      const [fx, fy] = toFine(wheel.x, wheel.y);
+      const want = outward(L.metal, fx, fy);
+      if (want !== null) { let d = want - L.wheelAngle; d = Math.atan2(Math.sin(d), Math.cos(d)); L.wheelAngle += d * Math.min(1, dt * 12); }
+      drawWheel(ctx, wheel.x, wheel.y, 34, t, L.wheelAngle);
+    }
     ctx.restore();
   };
 
@@ -310,7 +330,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
   const grindAt = (x: number, y: number) => {
     const L = live.current;
     const [fx, fy] = toFine(x, y);
-    const { metal: ground, hit } = grindMetal(L.metal, part.shape, fx, fy, wheelRadius(skill));
+    const { metal: ground, hit } = grindMetal(L.metal, part.shape, fx, fy, wheelRadius(skill), skill);
     if (!hit.length) {
       // On the metal but nowhere the hammer has opened up: the stone just skates.
       const c = Math.floor(fx), r = Math.floor(fy);
@@ -418,7 +438,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
         <div className="text-[11px] text-stone-500" data-testid="forge-hint">
           {tool === "hammer"
             ? <>Strike the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Strike the metal itself.</span>}</>
-            : <>The grindstone refines the hammer's work: hold it on an edge beside blocks you've hammered away, and move along it to shape points and curves (and add depth). It can't take whole blocks off — that's the hammer's job.{skate > 0 && <span className="text-amber-300/90"> Hammer the blocks beside it away first.</span>}</>}
+            : <>The grindstone refines the hammer's work: hold it on the gold line beside blocks you've hammered away, and move along it to bring out points and curves. It only takes the stock the line runs through — the plain stock is the hammer's, however slowly you grind. <span className="text-stone-400">Blacksmithing {skill}: {GRIND_WORDS[skill]}</span>{skate > 0 && <span className="text-amber-300/90"> Only where the gold line runs, beside blocks you've hammered away.</span>}</>}
         </div>
       )}
       <ResultBanner result={s.result} onOpen={openNote} />
