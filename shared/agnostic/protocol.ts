@@ -67,7 +67,8 @@ export type AgOp =
   | { op: "craft.brew"; characterId: string; recipeId: string; mode: "quick" | "game"; accuracy?: number }
   | { op: "craft.experiment"; characterId: string; ingredients: Array<{ itemId: string; qty: number }>; log: string[]; steps: string[] }
   | { op: "craft.resolveExperiment"; experimentId: string; outputId: string | null }
-  | { op: "craft.rune"; characterId: string; runeId: string; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: { x: number; y: number; s: number; r: number }; portrait?: string | null };
+  | { op: "craft.makeScroll"; defId: string; characterId?: string | null }
+  | { op: "craft.rune"; characterId: string; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: { x: number; y: number; s: number; r: number }; portrait?: string | null };
 
 export type AgOpResult =
   | { noteId: string }

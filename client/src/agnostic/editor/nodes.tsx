@@ -23,7 +23,7 @@ import { ActionPicker } from "../ActionEditor";
 import { CANVAS_ORIGIN } from "../client";
 import { BlockFrame, LookEditor, TooltipEditor, type LookKind } from "../look";
 import { TipIcon, TipContent } from "../tips";
-import { CraftStation, ExperimentControls } from "../craft/CraftHost";
+import { CraftStation, CraftBench, ExperimentControls } from "../craft/CraftHost";
 import { CraftDefBlock } from "../craft/CraftDefEditor";
 import { mergeLook } from "../lookUtil";
 // Circular by design: regions contain editors that contain regions.
@@ -711,6 +711,22 @@ export const AgCraftStation = Node.create({
   renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-station": "" })],
   addNodeView: () => ReactNodeViewRenderer(CraftStationView, { stopEvent: stopInside }),
 });
+// A station item's craft, open right on its sheet (a forge's sheet is the forge).
+function CraftBenchView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="crafting bench" tools={<ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>}>
+      <div contentEditable={false}><CraftBench noteId={ctx.noteId} /></div>
+    </Shell>
+  );
+}
+export const AgCraftBench = Node.create({
+  name: "agCraftBench", group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "div[data-ag-craft-bench]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-bench": "" })],
+  addNodeView: () => ReactNodeViewRenderer(CraftBenchView, { stopEvent: stopInside }),
+});
 function CraftDefView(p: NodeViewProps) {
   const ctx = useDocCtx();
   if (!ctx) return <NodeViewWrapper />;
@@ -922,5 +938,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftDef, AgCraftExperiment, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftBench, AgCraftDef, AgCraftExperiment, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

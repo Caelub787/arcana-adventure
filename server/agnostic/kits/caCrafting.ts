@@ -5,7 +5,7 @@
 // more from the templates in campaigns and My Library; admin in Admin.
 import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgSnapshot, AgValue } from "@shared/agnostic/types";
-import { SIGILS, type ForgeConfig, type AlchemyConfig, type RuneConfig, type CraftNeed } from "@shared/agnostic/crafting";
+import { SIGILS, CRAFT_DEF_TYPE, parseCraftConfig, type ForgeConfig, type AlchemyConfig, type RuneConfig, type CraftNeed } from "@shared/agnostic/crafting";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import { p, i, t, h, block, icon, tip, section, type DocNode } from "./doc";
@@ -15,7 +15,7 @@ import { syncCopyOwners } from "../copies";
 export const CA_CRAFT_FOLDER = "Cultivator's Adventure — Crafting";
 const GILT = "#d4a24c";
 export const CA_DEF_TEMPLATE_NAMES = { forge: "CA Blueprint", alchemy: "CA Recipe", rune: "CA Rune Recipe" } as const;
-export const CA_CRAFT_ITEM_TEMPLATE_NAMES: Record<string, string> = { Material: "CA Material", Ingredient: "CA Ingredient", Ink: "CA Ink", Tool: "CA Tool", Part: "CA Part", Station: "CA Station" };
+export const CA_CRAFT_ITEM_TEMPLATE_NAMES: Record<string, string> = { Material: "CA Material", Ingredient: "CA Ingredient", Ink: "CA Ink", Tool: "CA Tool", Part: "CA Part", Station: "CA Station", Scroll: "CA Scroll" };
 
 const DEF_HELP = {
   forge: "A blueprint: the parts a weapon is forged from, each part's shape, and what it makes. Players pick it at the forge, choose a material for each part, then hammer each part to shape (or Quick Craft the lot).",
@@ -66,7 +66,38 @@ export async function applyCACrafting(store: ScopeStore, cs: ChangeSet, opts: { 
   if (!opts.starter) return tpl;
   const base = Array.from(store.notes.values()).some((n) => n.folder === CA_CRAFT_FOLDER) ? {} : await starterSet(store, cs, tpl);
   // Stations and the rest of the test set: added by name wherever they're missing.
-  return { ...tpl, ...base, ...await starterExtras(store, cs, tpl) };
+  const extras = await starterExtras(store, cs, tpl);
+  return { ...tpl, ...base, ...extras, ...await ensureScrolls(store, cs, tpl.Scroll) };
+}
+
+/**
+ * A scroll for every blueprint, recipe and rune that has none yet (kept with it,
+ * for the GM to hand out): whoever carries one knows what it teaches.
+ * Returned as "scroll:<recipe name>".
+ */
+export async function ensureScrolls(store: ScopeStore, cs: ChangeSet, scrollTpl: AgNote | undefined): Promise<Record<string, AgNote>> {
+  const out: Record<string, AgNote> = {};
+  const teaches = new Map<string, AgNote>();
+  for (const n of Array.from(store.notes.values())) {
+    if (n.isTemplate || n.copyOf) continue;
+    const t = store.fieldsByNote.get(n.id)?.get("teaches");
+    if (t && t.value) teaches.set(String(t.value), n);
+  }
+  const defTypes = new Set(Object.values(CRAFT_DEF_TYPE));
+  for (const def of Array.from(store.notes.values())) {
+    if (def.isTemplate || !defTypes.has(def.type)) continue;
+    const craft = store.fieldsByNote.get(def.id)?.get("craft");
+    if (!craft || !parseCraftConfig(craft.value)) continue;
+    let sc = teaches.get(def.id);
+    if (!sc) {
+      const name = `${def.name.replace(/\s*recipe\s*$/i, "").trim() || def.name} Scroll`;
+      if (scrollTpl) sc = await snap.createFromSnapshot(store, await snap.takeSnapshot(store, scrollTpl.id), { name, folder: def.folder, ownerIds: [] }, cs, { fromTemplateId: scrollTpl.id });
+      else continue;
+      for (const [k, v] of Object.entries({ teaches: def.id, teaches_name: def.name, craft: String(craft.value ?? ""), item_type: "Scroll", rarity: def.type === "blueprint" ? "Uncommon" : "Rare", value: 25 } as Record<string, AgValue>)) await fieldVal(store, sc, k, v, cs);
+    }
+    out[`scroll:${def.name}`] = sc;
+  }
+  return out;
 }
 
 async function starterSet(store: ScopeStore, cs: ChangeSet, tpl: Record<string, AgNote>): Promise<Record<string, AgNote>> {
@@ -239,9 +270,10 @@ async function starterExtras(store: ScopeStore, cs: ChangeSet, tpl: Record<strin
   return out;
 }
 
-/** Give a character copies of starter supplies (the example character). */
-export async function giveStarterSupplies(store: ScopeStore, hero: AgNote, made: Record<string, AgNote>, cs: ChangeSet) {
-  const give: Array<[string, number]> = [["forge_station", 1], ["pot_station", 1], ["pen_station", 1], ["iron", 3], ["steel", 1], ["oak", 2], ["leather", 1], ["redleaf", 4], ["water", 4], ["moss", 3], ["moonpetal", 2], ["bitterroot", 2], ["storm", 1], ["ember", 2], ["frost", 1], ["knife", 1], ["quill", 1]];
+/** Scrolls to start with: a few blueprints, two recipes and two runes (the GM hands out the rest). */
+export const STARTER_SCROLLS = ["scroll:Longsword", "scroll:Dagger", "scroll:Battle Axe", "scroll:Healing Draught Recipe", "scroll:Energy Tonic Recipe", "scroll:Rune of Flame", "scroll:Rune of Frost"];
+/** Give a character a copy of each of these (by key in `made`). */
+export async function giveCopies(store: ScopeStore, hero: AgNote, made: Record<string, AgNote>, give: Array<[string, number]>, cs: ChangeSet) {
   for (const [k, qty] of give) {
     const n = made[k];
     if (!n) continue;
@@ -252,5 +284,10 @@ export async function giveStarterSupplies(store: ScopeStore, hero: AgNote, made:
     await store.putLink({ id: randomUUID(), fromNoteId: c.id, toNoteId: hero.id, label: "owner", reverseLabel: "items", acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
     await syncCopyOwners(store, c.id, cs);
   }
+}
+/** Give a character copies of starter supplies (the example character). */
+export async function giveStarterSupplies(store: ScopeStore, hero: AgNote, made: Record<string, AgNote>, cs: ChangeSet) {
+  const give: Array<[string, number]> = [...STARTER_SCROLLS.map((k): [string, number] => [k, 1]), ["forge_station", 1], ["pot_station", 1], ["pen_station", 1], ["iron", 3], ["steel", 1], ["oak", 2], ["leather", 1], ["redleaf", 4], ["water", 4], ["moss", 3], ["moonpetal", 2], ["bitterroot", 2], ["storm", 1], ["ember", 2], ["frost", 1], ["knife", 1], ["quill", 1]];
+  await giveCopies(store, hero, made, give, cs);
   for (const [k, v] of Object.entries({ blacksmithing: 2, alchemy: 1, rune_making: 1 })) await fieldVal(store, hero, k, v, cs);
 }

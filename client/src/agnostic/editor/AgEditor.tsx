@@ -272,6 +272,7 @@ function InsertMenu({ editor, noteId, isGM, disabled }: { editor: Editor | null;
     { label: "Component", hint: "One of your reusable designs", icon: <Puzzle className="h-4 w-4" />, run: () => configure("agComponent", { componentId: "", bindings: {} }, "Component") },
     { label: "Icon", hint: "A small picture in the text (heart, sword, coins…)", icon: <Sparkles className="h-4 w-4" />, run: () => insert({ type: "agIcon", attrs: { name: "Star", color: "#d4a24c", size: 16 } }) },
     { label: "Crafting", hint: "Blacksmithing, Alchemy and Rune Making — on a character", icon: <Hammer className="h-4 w-4" />, gm: true, run: () => insert({ type: "agCraftStation", attrs: { kinds: [] } }) },
+    { label: "Crafting bench", hint: "On a station item (a forge, a pot, a pen): its craft opens right here for whoever holds it", icon: <Hammer className="h-4 w-4" />, gm: true, run: () => insert({ type: "agCraftBench" }) },
     { label: "Recipe setup", hint: "Make this sheet a blueprint, alchemy recipe or rune recipe", icon: <FlaskConical className="h-4 w-4" />, gm: true, run: () => insert({ type: "agCraftDef" }) },
     { label: "Tooltip (?)", hint: "A ? that explains something on hover — e.g. after a title", icon: <HelpCircle className="h-4 w-4" />, run: () => insert({ type: "agTip", attrs: { text: "", size: 14 } }) },
     { label: "Divider", hint: "A horizontal line", icon: <Minus className="h-4 w-4" />, run: () => { editor?.chain().focus().setHorizontalRule().run(); setOpen(false); } },

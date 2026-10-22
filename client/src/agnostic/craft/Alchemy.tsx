@@ -8,7 +8,7 @@ import { ALCHEMY_STEP_LABEL, TIER_COLOR, TIER_LABEL, accuracyTier, itemMatches, 
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { qtyOf, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, type CraftOutcome } from "./common";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
 import { stepParticles, type Particle } from "./render";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean }
@@ -25,19 +25,19 @@ const STEP_HINT: Record<AlchemyStepType, string> = {
 };
 
 export function AlchemyTool({ characterId, state: s, set, playing }: Props) {
-  const defs = useDefs("alchemy") as Array<{ note: AgNote; config: AlchemyConfig }>;
-  const recipe = defs.find((d) => d.note.id === s.recipe) ?? null;
+  const defs = useDefs<AlchemyConfig>("alchemy", characterId);
+  const recipe = defs.find((d) => d.defId === s.recipe) ?? null;
   if (s.stage === "brew" && (recipe || s.experiment)) return <Brewing characterId={characterId} recipe={recipe} s={s} set={set} playing={playing} />;
   return <Plan characterId={characterId} defs={defs} s={s} set={set} playing={playing} />;
 }
 
-function Plan({ characterId, defs, s, set, playing }: { characterId: string; defs: Array<{ note: AgNote; config: AlchemyConfig }>; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Plan({ characterId, defs, s, set, playing }: { characterId: string; defs: Array<KnownDef<AlchemyConfig>>; s: CraftState; set: Props["set"]; playing: boolean }) {
   const { state, request, scope, openNote } = useAg();
   const { toast } = useToast();
   const character = state.notes.get(characterId);
   const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate).sort((a, b) => a.name.localeCompare(b.name)), [state, characterId]);
-  const recipe = defs.find((d) => d.note.id === s.recipe) ?? null;
+  const recipe = defs.find((d) => d.defId === s.recipe) ?? null;
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const ready = !!recipe && recipe.config.ingredients.every((i) => have(i) >= i.qty);
@@ -46,7 +46,7 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
     if (!recipe || !character) return;
     setBusy(true);
     try {
-      const res: CraftOutcome = await request({ op: "craft.brew", characterId, recipeId: recipe.note.id, mode: "quick" });
+      const res: CraftOutcome = await request({ op: "craft.brew", characterId, recipeId: recipe.id, mode: "quick" });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
       set({ result: res });
     } catch (e: any) { toast({ title: "Couldn't brew it", description: e.message, variant: "destructive" }); }
@@ -55,13 +55,13 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
   return (
     <div className="space-y-3">
       <ResultBanner result={s.result} onOpen={openNote} onClose={playing ? () => set({ result: undefined }) : undefined} />
-      <Panel title="Recipe" right={playing && <button type="button" onClick={() => set({ recipe: undefined, experiment: true, ingredients: [], result: undefined })} className={`h-7 px-2 rounded-md border text-[11px] inline-flex items-center gap-1 ${s.experiment ? "border-fuchsia-400 bg-fuchsia-500/15 text-fuchsia-200" : "border-stone-700 text-stone-300 hover:border-fuchsia-600"}`} data-testid="alchemy-experiment"><Wand2 className="h-3.5 w-3.5" /> Experiment</button>}>
-        {!defs.length && <div className="text-xs text-stone-400">No recipes known yet — the GM shares them, or discover one by experimenting.</div>}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+      <Panel title="Recipe" right={playing && <button type="button" onClick={() => set({ recipe: undefined, experiment: true, ingredients: [], result: undefined })} className={`h-7 px-2 rounded-md border text-[11px] inline-flex items-center gap-1 ${s.experiment ? "border-amber-500 bg-amber-500/10 text-amber-200" : "border-stone-700 text-stone-300 hover:border-amber-700"}`} data-testid="alchemy-experiment"><Wand2 className="h-3.5 w-3.5" /> Experiment</button>}>
+        {!defs.length && <NoneKnown what="recipes" extra="Recipes aren't needed for alchemy, though — experiment with what you carry and you may discover one." />}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-1.5">
           {defs.map((d) => (
-            <button key={d.note.id} type="button" disabled={!playing} onClick={() => set({ recipe: d.note.id, experiment: false, result: undefined })}
-              className={`rounded-lg border p-2 text-left transition-all ${s.recipe === d.note.id ? "border-emerald-400 bg-emerald-500/10 shadow-[0_0_16px_rgba(52,211,153,0.3)]" : "border-stone-700 bg-stone-900 hover:border-emerald-700"}`} data-testid={`alchemy-recipe-${d.note.name}`}>
-              <div className="flex items-center gap-1.5"><FlaskConical className="h-4 w-4 text-emerald-300" /><span className="text-xs font-semibold text-stone-100 truncate">{d.note.name}</span></div>
+            <button key={d.defId} type="button" disabled={!playing} onClick={() => set({ recipe: d.defId, experiment: false, result: undefined })}
+              className={`rounded-md border p-2 text-left transition-colors ${s.recipe === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`alchemy-recipe-${d.name}`}>
+              <div className="flex items-center gap-1.5"><FlaskConical className="h-4 w-4 text-emerald-300" /><span className="text-xs font-semibold text-stone-100 truncate">{d.name}</span></div>
               <div className="text-[10px] text-stone-400 mt-0.5">{d.config.steps.length} steps · {d.config.ingredients.length} ingredients</div>
             </button>
           ))}
@@ -71,7 +71,7 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
         <div className="grid sm:grid-cols-2 gap-3">
           <Panel title="Ingredients">
             {recipe.config.ingredients.map((i, k) => { const h = have(i); return (
-              <div key={k} className="flex items-center gap-2 text-xs"><span className={`h-2 w-2 rounded-full ${h >= i.qty ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-red-500"}`} /><span className="text-stone-200 flex-1">{i.qty} × {i.name}</span><span className="text-stone-500">have {h}</span></div>
+              <div key={k} className="flex items-center gap-2 text-xs"><span className={`h-2 w-2 rounded-full ${h >= i.qty ? "bg-emerald-400" : "bg-red-500"}`} /><span className="text-stone-200 flex-1">{i.qty} × {i.name}</span><span className="text-stone-500">have {h}</span></div>
             ); })}
           </Panel>
           <Panel title="Steps">
@@ -98,12 +98,13 @@ function Plan({ characterId, defs, s, set, playing }: { characterId: string; def
         <div className="flex flex-wrap items-center gap-2">
           {recipe && !s.experiment && <QuickCraftButton kind="alchemy" characterId={characterId} busy={busy} disabled={!ready} onClick={quick} />}
           <button type="button" disabled={s.experiment ? !chosen.length : !ready} onClick={() => set({ stage: "brew", step: 0, scores: [], log: [], steps: [], st: {}, result: undefined })}
-            className="h-9 px-3 rounded-lg bg-gradient-to-b from-emerald-500 to-emerald-800 text-white text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40 shadow-[0_0_14px_rgba(52,211,153,0.4)]" data-testid="alchemy-start">
+            className="h-9 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="alchemy-start">
             <Play className="h-4 w-4" /> {s.experiment ? "Start experimenting" : "Start brewing"}
           </button>
-          {recipe && !ready && !s.experiment && <span className="text-[11px] text-red-300">Missing ingredients</span>}
         </div>
       )}
+      {playing && <Needs items={recipe && !s.experiment ? recipe.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`) : s.experiment && !chosen.length ? ["Pick at least one thing from your inventory to put in"] : []} />}
+      {playing && !recipe && !s.experiment && <div className="text-[11px] text-stone-400">Pick a recipe you know for a guided brew, or Experiment to brew freely.</div>}
     </div>
   );
 }
@@ -121,7 +122,7 @@ const stepText = (st: AlchemyStep) => {
 };
 
 // --------------------------------------------------------------------------- brewing
-function Brewing({ characterId, recipe, s, set, playing }: { characterId: string; recipe: { note: AgNote; config: AlchemyConfig } | null; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Brewing({ characterId, recipe, s, set, playing }: { characterId: string; recipe: KnownDef<AlchemyConfig> | null; s: CraftState; set: Props["set"]; playing: boolean }) {
   const { request, state, openNote } = useAg();
   const { toast } = useToast();
   const steps = recipe?.config.steps ?? [];
@@ -142,7 +143,7 @@ function Brewing({ characterId, recipe, s, set, playing }: { characterId: string
     try {
       let res: CraftOutcome;
       if (s.experiment) res = await request({ op: "craft.experiment", characterId, ingredients: s.ingredients ?? [], log: s.log ?? [], steps: s.steps ?? [] });
-      else res = await request({ op: "craft.brew", characterId, recipeId: recipe!.note.id, mode: "game", accuracy });
+      else res = await request({ op: "craft.brew", characterId, recipeId: recipe!.id, mode: "game", accuracy });
       set({ stage: "plan", result: res, ingredients: [] });
     } catch (e: any) { toast({ title: "Couldn't finish the brew", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
@@ -152,7 +153,7 @@ function Brewing({ characterId, recipe, s, set, playing }: { characterId: string
     <div className="space-y-2" data-testid="alchemy-brew">
       <div className="flex flex-wrap items-center gap-2">
         {playing && <button type="button" onClick={() => set({ stage: "plan" })} className="h-8 px-2 rounded-md border border-stone-700 text-xs text-stone-300 inline-flex items-center gap-1 hover:border-stone-500"><ArrowLeft className="h-3.5 w-3.5" /> Back</button>}
-        <span className="text-sm font-bold text-emerald-200">{s.experiment ? "Experiment" : recipe?.note.name}</span>
+        <span className="text-sm font-bold text-emerald-200">{s.experiment ? "Experiment" : recipe?.name}</span>
         {!s.experiment && <div className="flex gap-1">{steps.map((st, k) => <span key={st.id} title={stepText(st)} className="h-2.5 w-6 rounded-full border" style={{ borderColor: k < idx ? TIER_COLOR[accuracyTier(scores[k] ?? 0)] : k === idx ? "#34d399" : "#44403c", background: k < idx ? TIER_COLOR[accuracyTier(scores[k] ?? 0)] : "transparent", boxShadow: k === idx ? "0 0 8px #34d399" : undefined }} />)}</div>}
         {!playing && <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-emerald-200 border border-emerald-700/50">Watching live</span>}
       </div>
@@ -179,7 +180,7 @@ function Brewing({ characterId, recipe, s, set, playing }: { characterId: string
         <ol className="text-[11px] text-stone-300 space-y-0.5 max-h-28 overflow-y-auto">{(s.log ?? []).map((l: string, k: number) => <li key={k}><span className="text-stone-500 font-mono">{k + 1}.</span> {l}</li>)}{!(s.log ?? []).length && <li className="text-stone-500">Nothing yet.</li>}</ol>
       </Panel>
       {playing && (done || (s.experiment && !step && (s.log ?? []).length > 0)) && (
-        <button type="button" disabled={busy} onClick={bottle} className="h-10 px-4 rounded-lg bg-gradient-to-b from-fuchsia-500 to-purple-800 text-white text-sm font-semibold inline-flex items-center gap-2 shadow-[0_0_18px_rgba(217,70,239,0.5)]" data-testid="alchemy-bottle">
+        <button type="button" disabled={busy} onClick={bottle} className="h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2" data-testid="alchemy-bottle">
           <FlaskRound className="h-4 w-4" /> {s.experiment ? "Bottle it and see" : "Bottle it"}
         </button>
       )}
@@ -275,7 +276,7 @@ function MixStep({ step, s, set, playing, onDone }: StepProps & { onDone: (score
       <div ref={pad} onPointerMove={move} onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture?.(e.pointerId); }} className={`relative h-36 rounded-full border-2 border-dashed border-emerald-700/60 mx-auto aspect-square touch-none grid place-items-center ${playing ? "cursor-grab" : ""}`} data-testid="alchemy-mix-pad">
         <span className="text-[11px] text-emerald-300/80 text-center px-6">{playing ? "Drag in circles" : "Stirring…"}</span>
       </div>
-      <div className="relative h-3 rounded-full bg-stone-800 overflow-hidden"><div className="absolute inset-y-0 bg-emerald-600/50" style={{ left: "30%", width: "45%" }} /><div className="absolute top-0 bottom-0 w-1.5 bg-white rounded-full shadow-[0_0_8px_white]" style={{ left: `${pos * 100}%` }} /></div>
+      <div className="relative h-3 rounded-full bg-stone-800 overflow-hidden"><div className="absolute inset-y-0 bg-emerald-600/50" style={{ left: "30%", width: "45%" }} /><div className="absolute top-0 bottom-0 w-1.5 bg-white rounded-full" style={{ left: `${pos * 100}%` }} /></div>
       <Progress v={good / need} label={`${Math.min(need, Math.round(good))} / ${need}s at the right pace`} />
     </Bar>
   );
@@ -301,7 +302,7 @@ function DiceStep({ step, s, set, playing, onDone }: StepProps & { onDone: (scor
     <Bar>
       <div onPointerDown={cut} className={`relative h-16 rounded-xl overflow-hidden touch-none ${playing ? "cursor-crosshair" : ""}`} style={{ background: "linear-gradient(180deg,#86a34a,#4d6b1f)", boxShadow: "inset 0 -6px 12px rgba(0,0,0,0.35), 0 0 18px rgba(132,204,22,0.25)" }} data-testid="alchemy-dice-bar">
         {guides.map((g, k) => <div key={k} className="absolute top-0 bottom-0 w-0 border-l-2 border-dashed border-white/70" style={{ left: `${g * 100}%` }} />)}
-        {cuts.map((c, k) => <div key={k} className="absolute -top-1 -bottom-1 w-1 bg-stone-950 shadow-[0_0_6px_rgba(255,255,255,0.8)] animate-in zoom-in duration-200" style={{ left: `calc(${c * 100}% - 2px)` }} />)}
+        {cuts.map((c, k) => <div key={k} className="absolute -top-1 -bottom-1 w-1 bg-stone-950 animate-in zoom-in duration-200" style={{ left: `calc(${c * 100}% - 2px)` }} />)}
         <span className="absolute left-2 top-1 text-[10px] text-lime-950 font-semibold">{step.ingredient ?? "Ingredient"}</span>
       </div>
       <Progress v={cuts.length / n} label={`${cuts.length} / ${n} cuts`} />
@@ -333,7 +334,7 @@ function HeatStep({ step, s, set, playing, onDone }: StepProps & { onDone: (scor
     <Bar>
       <div className="relative h-5 rounded-full overflow-hidden" style={{ background: "linear-gradient(90deg,#1e3a8a,#15803d 40%,#ca8a04 70%,#dc2626)" }}>
         <div className="absolute top-0 bottom-0 border-x-2 border-white/90 bg-white/15" style={{ left: `${target - 4}%`, width: "8%" }} />
-        <div className="absolute -top-0.5 -bottom-0.5 w-1.5 rounded bg-white shadow-[0_0_10px_white]" style={{ left: `${temp}%` }} />
+        <div className="absolute -top-0.5 -bottom-0.5 w-1.5 rounded bg-white" style={{ left: `${temp}%` }} />
       </div>
       <div className="flex items-center gap-2 text-xs">
         <span className="text-orange-300 w-12">Flame</span>
@@ -361,9 +362,9 @@ function AddStep({ step, s, set, playing, onDone }: StepProps & { onDone: (score
     <Bar>
       <div className="relative h-8 rounded-full bg-stone-900 border border-stone-700 overflow-hidden">
         <div className="absolute top-0 bottom-0 bg-fuchsia-500/30 border-x border-fuchsia-300" style={{ left: `${mark - 5}%`, width: "10%" }} />
-        <div className="absolute top-1 bottom-1 w-3 rounded-full bg-fuchsia-200 shadow-[0_0_14px_#f0abfc]" style={{ left: `calc(${pos}% - 6px)` }} />
+        <div className="absolute top-1 bottom-1 w-3 rounded-full bg-fuchsia-200" style={{ left: `calc(${pos}% - 6px)` }} />
       </div>
-      <button type="button" disabled={!playing} onClick={() => onDone(100 - Math.abs(pos - mark) * 4.5, Math.round(pos))} className="h-10 w-full rounded-lg bg-gradient-to-b from-fuchsia-500 to-purple-800 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-50" data-testid="alchemy-add">
+      <button type="button" disabled={!playing} onClick={() => onDone(100 - Math.abs(pos - mark) * 4.5, Math.round(pos))} className="h-10 w-full rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50" data-testid="alchemy-add">
         <Beaker className="h-4 w-4" /> Add {step.ingredient ?? "it"}
       </button>
     </Bar>
@@ -418,9 +419,9 @@ function StrainStep({ s, set, playing, onDone }: Omit<StepProps, "step"> & { onD
   return (
     <Bar>
       <div className="flex items-center gap-3">
-        <div className="relative h-24 w-6 rounded-full bg-stone-900 border border-stone-700 overflow-hidden"><div className="absolute bottom-0 inset-x-0 bg-sky-400 shadow-[0_0_10px_#38bdf8]" style={{ height: `${rate * 100}%` }} /><div className="absolute inset-x-0 border-t-2 border-red-400" style={{ bottom: "72%" }} /></div>
+        <div className="relative h-24 w-6 rounded-full bg-stone-900 border border-stone-700 overflow-hidden"><div className="absolute bottom-0 inset-x-0 bg-sky-400" style={{ height: `${rate * 100}%` }} /><div className="absolute inset-x-0 border-t-2 border-red-400" style={{ bottom: "72%" }} /></div>
         <button type="button" disabled={!playing} onPointerDown={() => { live.current.pour = true; }} onPointerUp={() => { live.current.pour = false; }} onPointerLeave={() => { live.current.pour = false; }}
-          className="flex-1 h-12 rounded-lg bg-gradient-to-b from-sky-500 to-sky-800 text-white text-sm font-semibold select-none touch-none disabled:opacity-50" data-testid="alchemy-strain">Hold to pour</button>
+          className="flex-1 h-12 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium select-none touch-none disabled:opacity-50" data-testid="alchemy-strain">Hold to pour</button>
       </div>
       <Progress v={done / 100} label={`Strained ${Math.round(done)}%${Number(s.st?.spill ?? 0) > 0.5 ? ` · spilled ${Math.round(Number(s.st?.spill))}` : ""}`} />
     </Bar>
@@ -446,7 +447,7 @@ function Progress({ v, label }: { v: number; label: string }) {
   const p = Math.max(0, Math.min(1, v));
   return (
     <div className="space-y-0.5">
-      <div className="h-2 rounded-full bg-stone-800 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-500 to-lime-300 shadow-[0_0_8px_#4ade80] transition-[width] duration-150" style={{ width: `${p * 100}%` }} /></div>
+      <div className="h-2 rounded-full bg-stone-800 overflow-hidden"><div className="h-full bg-amber-500 transition-[width] duration-150" style={{ width: `${p * 100}%` }} /></div>
       <div className="text-[10px] text-stone-400">{label}</div>
     </div>
   );

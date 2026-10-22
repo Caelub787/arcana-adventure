@@ -10,8 +10,8 @@ import {
 } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
-import { valueOn, hasValue, type CraftState } from "./session";
-import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, colorOf, type CraftOutcome } from "./common";
+import { valueOn, hasValue, qtyOf, type CraftState } from "./session";
+import { ItemTile, ResultBanner, QuickCraftButton, Panel, useDefs, announceRoll, colorOf, Needs, NoneKnown, type CraftOutcome, type KnownDef } from "./common";
 import { drawMetal, heatColor, shapePath, stepParticles, weaponPortrait, partPortrait, type Particle } from "./render";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean }
@@ -31,24 +31,24 @@ const isMaterial = (st: ReturnType<typeof useAg>["state"], n: AgNote) => hasValu
 
 export function ForgeTool({ characterId, state: s, set, playing }: Props) {
   const ag = useAg();
-  const defs = useDefs("forge");
-  const bp = defs.find((d) => d.note.id === s.bp);
-  if (s.stage === "anvil" && bp) return <Anvil characterId={characterId} bp={bp as { note: AgNote; config: ForgeConfig }} s={s} set={set} playing={playing} />;
-  return <ForgePlan characterId={characterId} defs={defs as Array<{ note: AgNote; config: ForgeConfig }>} s={s} set={set} playing={playing} openNote={ag.openNote} />;
+  const defs = useDefs<ForgeConfig>("forge", characterId);
+  const bp = defs.find((d) => d.defId === s.bp);
+  if (s.stage === "anvil" && bp) return <Anvil characterId={characterId} bp={bp} s={s} set={set} playing={playing} />;
+  return <ForgePlan characterId={characterId} defs={defs} s={s} set={set} playing={playing} openNote={ag.openNote} />;
 }
 
 // --------------------------------------------------------------------------- planning
-function ForgePlan({ characterId, defs, s, set, playing, openNote }: { characterId: string; defs: Array<{ note: AgNote; config: ForgeConfig }>; s: CraftState; set: Props["set"]; playing: boolean; openNote: (id: string) => void }) {
+function ForgePlan({ characterId, defs, s, set, playing, openNote }: { characterId: string; defs: Array<KnownDef<ForgeConfig>>; s: CraftState; set: Props["set"]; playing: boolean; openNote: (id: string) => void }) {
   const { state, request, scope } = useAg();
   const { toast } = useToast();
   const character = state.notes.get(characterId);
   const inventory = useMemo(() => Array.from(new Set(Array.from(state.links.values()).filter((l) => l.toNoteId === characterId).map((l) => l.fromNoteId)))
     .map((id) => state.notes.get(id)).filter((n): n is AgNote => !!n && n.type === "item" && !n.isTemplate), [state, characterId]);
-  const bp = defs.find((d) => d.note.id === s.bp) ?? null;
+  const bp = defs.find((d) => d.defId === s.bp) ?? null;
   const mats: Record<string, string> = s.mats ?? {};
   const picks: Record<string, string> = s.picks ?? {};
   const materials = inventory.filter((n) => isMaterial(state, n));
-  const savedParts = (part: ForgePart) => inventory.filter((n) => valueOn(state, n.id, "blueprint_id") === bp?.note.id && valueOn(state, n.id, "part_key") === part.key);
+  const savedParts = (part: ForgePart) => inventory.filter((n) => valueOn(state, n.id, "blueprint_id") === bp?.defId && valueOn(state, n.id, "part_key") === part.key);
   const [busy, setBusy] = useState(false);
   const required = bp ? bp.config.parts.filter((p) => !p.optional) : [];
   const preview = useMemo(() => {
@@ -65,8 +65,8 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
       const parts = bp.config.parts.filter((p) => chosen[p.key]).map((p) => ({ part: p, color: colorOf(state, chosen[p.key], "metal_color", "#9ca3af") }));
       const portrait = weaponPortrait(parts, 320);
       const res: CraftOutcome = await request(op === "craft.forgeQuick"
-        ? { op, characterId, blueprintId: bp.note.id, materials: mats, portrait }
-        : { op, characterId, blueprintId: bp.note.id, partIds: picks, portrait });
+        ? { op, characterId, blueprintId: bp.id, materials: mats, portrait }
+        : { op, characterId, blueprintId: bp.id, partIds: picks, portrait });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
       set({ result: res, picks: {}, ...(op === "craft.forgeQuick" ? { mats: {} } : {}) });
     } catch (e: any) { toast({ title: "Couldn't forge it", description: e.message, variant: "destructive" }); }
@@ -77,13 +77,13 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
     <div className="space-y-3">
       <ResultBanner result={s.result} onOpen={openNote} onClose={playing ? () => set({ result: undefined }) : undefined} />
       <Panel title="Blueprint">
-        {!defs.length && <div className="text-xs text-stone-400">No blueprints yet — the GM makes them (a Blueprint sheet with its parts set up) and shares them.</div>}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        {!defs.length && <NoneKnown what="blueprints" />}
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-1.5">
           {defs.map((d) => (
-            <button key={d.note.id} type="button" disabled={!playing} onClick={() => set({ bp: d.note.id, mats: {}, picks: {}, result: undefined })}
-              className={`rounded-lg border p-1.5 text-left transition-all ${s.bp === d.note.id ? "border-amber-500 bg-amber-500/10 shadow-[0_0_16px_rgba(245,158,11,0.3)]" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`forge-bp-${d.note.name}`}>
+            <button key={d.defId} type="button" disabled={!playing} onClick={() => set({ bp: d.defId, mats: {}, picks: {}, result: undefined })}
+              className={`rounded-md border p-1.5 text-left transition-colors ${s.bp === d.defId ? "border-amber-500 bg-amber-500/10" : "border-stone-700 bg-stone-900 hover:border-amber-700"}`} data-testid={`forge-bp-${d.name}`}>
               <BlueprintSketch config={d.config} />
-              <div className="text-xs font-semibold text-stone-100 truncate mt-1">{d.note.name}</div>
+              <div className="text-xs font-semibold text-stone-100 truncate mt-1">{d.name}</div>
               <div className="text-[10px] text-stone-400">{d.config.parts.length} parts · d{d.config.damageDie}</div>
             </button>
           ))}
@@ -103,17 +103,18 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
                       <span className="text-sm font-semibold text-stone-100">{part.label}</span>
                       <span className="text-[10px] uppercase tracking-wide px-1.5 rounded-full border" style={{ borderColor: part.role === "blade" ? "#f87171" : part.role === "handle" ? "#60a5fa" : "#a8a29e", color: part.role === "blade" ? "#fca5a5" : part.role === "handle" ? "#93c5fd" : "#d6d3d1" }}>{part.role === "blade" ? "damage" : part.role === "handle" ? "accuracy" : "extra"}</span>
                       {part.optional && <span className="text-[10px] text-stone-500">optional</span>}
-                      <button type="button" disabled={!playing || !mat} onClick={() => set({ stage: "anvil", part: part.key, metal: startingStock(part.shape), heat: 20, good: 0, bad: 0, strikes: 0, result: undefined })}
-                        className="ml-auto h-7 px-2.5 rounded-md bg-gradient-to-b from-orange-500 to-red-700 text-white text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40 shadow-[0_0_10px_rgba(249,115,22,0.4)]" data-testid={`forge-start-${part.key}`}>
+                      <button type="button" disabled={!playing || !mat} title={!mat ? `Pick a material for the ${part.label.toLowerCase()} first` : undefined} onClick={() => set({ stage: "anvil", part: part.key, metal: startingStock(part.shape), heat: 20, good: 0, bad: 0, strikes: 0, result: undefined })}
+                        className="ml-auto h-7 px-2.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40" data-testid={`forge-start-${part.key}`}>
                         <Hammer className="h-3.5 w-3.5" /> Forge
                       </button>
                     </div>
+                    <div className="text-[11px] text-stone-400">Needs <span className="text-stone-200">1 material</span> from the inventory — {part.role === "handle" ? "wood, leather or metal" : "a metal (heated at the forge)"}{mat ? <> · using <span className="text-amber-200">{state.notes.get(mat)?.name}</span></> : <span className="text-amber-300/90"> · pick one below to forge it</span>}</div>
                     <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5">
                       {materials.length ? materials.map((m) => {
                         const mm = materialOf(state, m.id)!;
                         return <ItemTile key={m.id} note={m} selected={mat === m.id} disabled={!playing} color={mm.color} onClick={() => set({ mats: { ...mats, [part.key]: mat === m.id ? undefined : m.id } })}
                           sub={mm.hasHeat ? `heat ${mm.heatMin}–${mm.heatMax} · hard ${mm.hardness}` : `hardness ${mm.hardness}`} testId={`forge-mat-${part.key}-${m.name}`} />;
-                      }) : <span className="text-[11px] text-stone-500">No materials in the inventory (metals, woods, leathers…).</span>}
+                      }) : <span className="text-[11px] text-amber-300/90">No materials in the inventory — you need an ingot, wood or leather (the GM can give you some).</span>}
                     </div>
                     {saved.length > 0 && (
                       <div className="flex flex-wrap items-center gap-1">
@@ -127,20 +128,30 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
               })}
             </Panel>
             <Panel title="Preview">
-              {preview && <img src={preview} alt="" className="w-full rounded-lg border border-stone-800" />}
+              {preview && <img src={preview} alt="" className="w-full max-w-[220px] mx-auto rounded-md border border-stone-800" />}
               <div className="text-[10px] text-stone-400 leading-snug">Blades give damage (d{bp.config.damageDie} + their quality), handles give accuracy; durability is the parts' average; worth is materials plus durability.</div>
             </Panel>
           </div>
-          {playing && (
+          {playing && (() => {
+            const missingMats = required.filter((p) => !mats[p.key]).map((p) => p.label.toLowerCase());
+            const missingParts = required.filter((p) => !picks[p.key]).map((p) => p.label.toLowerCase());
+            const short = Object.entries(Object.values(mats).filter(Boolean).reduce<Record<string, number>>((a, id) => ({ ...a, [id as string]: (a[id as string] ?? 0) + 1 }), {}))
+              .filter(([id, n]) => qtyOf(state, id) < n).map(([id, n]) => `${n}× ${state.notes.get(id)?.name ?? "that material"} (you have ${qtyOf(state, id)})`);
+            return (<>
             <div className="flex flex-wrap items-center gap-2">
-              <QuickCraftButton kind="forge" characterId={characterId} busy={busy} disabled={required.some((p) => !mats[p.key])} onClick={() => finish("craft.forgeQuick")} title="Roll d20 + Blacksmithing and forge the whole weapon from the chosen materials" />
+              <QuickCraftButton kind="forge" characterId={characterId} busy={busy} disabled={missingMats.length > 0 || short.length > 0} onClick={() => finish("craft.forgeQuick")} title="Roll d20 + Blacksmithing and forge the whole weapon from the chosen materials" />
               <button type="button" disabled={busy || required.some((p) => !picks[p.key])} onClick={() => finish("craft.forgeWeapon")}
-                className="h-9 px-3 rounded-lg bg-gradient-to-b from-amber-500 to-amber-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-40 shadow-[0_0_14px_rgba(245,158,11,0.4)]" data-testid="forge-assemble">
+                className="h-9 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="forge-assemble">
                 <Check className="h-4 w-4" /> Assemble weapon
               </button>
               <span className="text-[10px] text-stone-500">Quick Craft uses the chosen materials; Assemble uses the parts you've made.</span>
             </div>
-          )}
+            <Needs items={[
+              missingMats.length > 0 && `Quick Craft: pick a material for the ${missingMats.join(", ")}`,
+              ...short.map((t) => `Quick Craft needs ${t}`),
+              missingParts.length > 0 && `Assemble: forge the ${missingParts.join(", ")} first`,
+            ]} />
+          </>); })()}
         </>
       )}
     </div>
@@ -150,7 +161,7 @@ function ForgePlan({ characterId, defs, s, set, playing, openNote }: { character
 /** A blueprint's parts, laid out as the weapon they make. */
 function BlueprintSketch({ config }: { config: ForgeConfig }) {
   const src = useMemo(() => { try { return weaponPortrait(config.parts.map((p) => ({ part: p, color: p.role === "handle" ? "#7c5a3a" : "#94a3b8" })), 160); } catch { return ""; } }, [config]);
-  return src ? <img src={src} alt="" className="w-full aspect-square rounded-md opacity-90" /> : null;
+  return src ? <img src={src} alt="" className="w-full max-w-[140px] mx-auto aspect-square rounded-md opacity-90" /> : null;
 }
 function ShapeChip({ shape, color }: { shape: string; color: string }) {
   const pts = FORGE_SHAPES[shape]?.points ?? [];
@@ -161,7 +172,7 @@ function ShapeChip({ shape, color }: { shape: string; color: string }) {
 const W = 760, H = 380;
 const BAR = { x: 100, y: 70, w: 560, h: 224 };
 
-function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: { note: AgNote; config: ForgeConfig }; s: CraftState; set: Props["set"]; playing: boolean }) {
+function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: KnownDef<ForgeConfig>; s: CraftState; set: Props["set"]; playing: boolean }) {
   const { state, request, openNote } = useAg();
   const { toast } = useToast();
   const part = bp.config.parts.find((p) => p.key === s.part) ?? bp.config.parts[0];
@@ -284,7 +295,7 @@ function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: 
     setBusy(true);
     try {
       const portrait = partPortrait(part.shape, String(s.metal ?? live.current.metal), mat.color);
-      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, blueprintId: bp.note.id, partKey: part.key, materialId: matId, shape: shapePct, heat: mat.hasHeat ? heatPct : 100, portrait });
+      const res: CraftOutcome = await request({ op: "craft.forgePart", characterId, blueprintId: bp.id, partKey: part.key, materialId: matId, shape: shapePct, heat: mat.hasHeat ? heatPct : 100, portrait });
       set({ stage: "plan", metal: undefined, result: res, picks: { ...(s.picks ?? {}), [part.key]: res.noteId }, mats: { ...(s.mats ?? {}), [part.key]: undefined } });
     } catch (e: any) { toast({ title: "Couldn't save the part", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
@@ -294,10 +305,10 @@ function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: 
     <div className="space-y-2" data-testid="forge-anvil">
       <div className="flex flex-wrap items-center gap-2">
         {playing && <button type="button" onClick={() => set({ stage: "plan" })} className="h-8 px-2 rounded-md border border-stone-700 text-xs text-stone-300 inline-flex items-center gap-1 hover:border-stone-500"><ArrowLeft className="h-3.5 w-3.5" /> Plan</button>}
-        <span className="text-sm font-bold text-amber-200">{bp.note.name} — {part.label}</span>
+        <span className="text-sm font-bold text-amber-200">{bp.name} — {part.label}</span>
         <span className="text-[11px] text-stone-400">{matId ? state.notes.get(matId)?.name : "no material"}{mat.hasHeat ? ` · keep it at ${mat.heatMin}–${mat.heatMax}°` : " · no heat needed"}</span>
       </div>
-      <div className="relative rounded-xl overflow-hidden border border-orange-900/60 shadow-[0_0_30px_rgba(234,88,12,0.25)_inset]">
+      <div className="relative rounded-xl overflow-hidden border border-orange-900/60">
         <canvas ref={canvas} width={W} height={H} onPointerDown={strike} className={`w-full block touch-none ${playing ? "cursor-crosshair" : ""}`} data-testid="forge-canvas" />
         {!playing && <div className="absolute top-2 left-2 text-[10px] px-2 py-0.5 rounded-full bg-black/60 text-amber-200 border border-amber-700/50">Watching live</div>}
       </div>
@@ -305,7 +316,7 @@ function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: 
         {mat.hasHeat && (
           <button type="button" disabled={!playing}
             onPointerDown={(e) => { e.preventDefault(); live.current.bellows = true; }} onPointerUp={() => { live.current.bellows = false; }} onPointerLeave={() => { live.current.bellows = false; }} onPointerCancel={() => { live.current.bellows = false; }}
-            className={`h-10 px-4 rounded-lg border text-sm font-semibold inline-flex items-center gap-2 select-none touch-none ${s.bellows ? "border-orange-400 bg-orange-600/40 text-orange-100 shadow-[0_0_18px_rgba(249,115,22,0.6)]" : "border-orange-800 bg-orange-950/40 text-orange-200"}`} data-testid="forge-bellows">
+            className={`h-10 px-4 rounded-lg border text-sm font-semibold inline-flex items-center gap-2 select-none touch-none ${s.bellows ? "border-orange-400 bg-orange-600/40 text-orange-100" : "border-orange-800 bg-orange-950/40 text-orange-200"}`} data-testid="forge-bellows">
             <Wind className="h-4 w-4" /> Hold: Bellows
           </button>
         )}
@@ -315,7 +326,7 @@ function Anvil({ characterId, bp, s, set, playing }: { characterId: string; bp: 
         <Stat label={part.role === "blade" ? "Damage" : part.role === "handle" ? "Accuracy" : "Tier"} value={part.role === "blade" ? `${preview.damageBonus >= 0 ? "+" : ""}${preview.damageBonus}` : part.role === "handle" ? `${preview.accuracy >= 0 ? "+" : ""}${preview.accuracy}` : TIER_LABEL[preview.tier]} color={TIER_COLOR[preview.tier]} />
         {playing && (
           <button type="button" disabled={busy || strikes === 0} onClick={quench}
-            className="ml-auto h-10 px-4 rounded-lg bg-gradient-to-b from-sky-500 to-sky-800 text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-40 shadow-[0_0_16px_rgba(56,189,248,0.45)]" data-testid="forge-quench">
+            className="ml-auto h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40" data-testid="forge-quench">
             <Droplets className="h-4 w-4" /> Quench & save part
           </button>
         )}

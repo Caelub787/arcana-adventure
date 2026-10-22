@@ -19,7 +19,7 @@ import * as snap from "./snapshot";
 import * as docs from "./docs";
 import { copySheet, markAsCopy, syncCopyOwners, syncCopiesOn } from "./copies";
 import { applyCAKit } from "./kits/ca";
-import { runCraftOp, CraftError } from "./crafting";
+import { runCraftOp, CraftError, syncScrolls } from "./crafting";
 import { systemOfScope } from "./systemSeed";
 import * as repo from "./repo";
 
@@ -603,6 +603,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         }
         delete f.eff; delete f.err;
         await store.putField(f, cs);
+        // A recipe's setup: the scrolls that teach it follow, live.
+        if (f.key === "craft") await syncScrolls(store, f.noteId, cs);
         return { ok: true as const };
       });
     }
@@ -885,7 +887,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       });
     }
     case "craft.session": case "craft.close": case "craft.forgePart": case "craft.forgeWeapon": case "craft.forgeQuick":
-    case "craft.brew": case "craft.experiment": case "craft.resolveExperiment": case "craft.rune": {
+    case "craft.brew": case "craft.experiment": case "craft.resolveExperiment": case "craft.rune": case "craft.makeScroll": {
       try { return await runCraftOp(ctx, body); }
       catch (e) { if (e instanceof CraftError) fail(e.message); throw e; }
     }

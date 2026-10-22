@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from "@shared/agnostic/types";
 import { noteDocName, regionDocName } from "@shared/agnostic/types";
 import {
-  parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
+  traceAccuracy, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
 } from "@shared/agnostic/crafting";
@@ -200,16 +200,55 @@ function needStation(store: ScopeStore, inv: AgNote[], kind: CraftKind) {
   if (stationsInUse(store) && !stationIn(store, inv, kind)) fail(`You need a ${stationName(store, kind)} in your inventory for ${CRAFT_KIND_LABEL[kind]}`);
 }
 
-function defOf<K extends CraftKind>(store: ScopeStore, id: string, kind: K): { note: AgNote; config: Extract<ForgeConfig | AlchemyConfig | RuneConfig, { kind: K }> } {
-  const note = noteOf(store, id, "That recipe");
-  const config = parseCraftConfig(valueOf(store, id, "craft"));
-  if (!config || config.kind !== kind) fail(`${note.name || "That sheet"} isn't set up as a ${CRAFT_KIND_LABEL[kind]} recipe yet`);
-  return { note, config: config as any };
+// --------------------------------------------------------------------------- knowledge (scrolls)
+// A character knows a blueprint, recipe or rune by carrying a scroll that
+// teaches it: an item whose "teaches" value is that sheet (with its name in
+// "teaches_name" and a copy of its setup in "craft", kept in step with it).
+type Def<K extends CraftKind> = { defId: string; name: string; config: Extract<ForgeConfig | AlchemyConfig | RuneConfig, { kind: K }> };
+function knownDef<K extends CraftKind>(store: ScopeStore, inv: AgNote[], id: string, kind: K, what: string): Def<K> {
+  const scroll = inv.find((n) => n.id === id || String(valueOf(store, n.id, "teaches") ?? "") === id);
+  if (!scroll) fail(`${what} isn't known — it takes a scroll that teaches it`);
+  const defId = String(valueOf(store, scroll!.id, "teaches") ?? "") || scroll!.id;
+  const def = store.notes.get(defId);
+  const config = (def && parseCraftConfig(valueOf(store, def.id, "craft"))) || parseCraftConfig(valueOf(store, scroll!.id, "craft"));
+  if (!config || config.kind !== kind) fail(`${scroll!.name} doesn't teach ${CRAFT_KIND_LABEL[kind]}`);
+  return { defId, name: def?.name ?? String(valueOf(store, scroll!.id, "teaches_name") ?? scroll!.name), config: config as any };
 }
-/** Players craft only from recipes they can see (the GM shares them); experiments find hidden ones. */
-function canSee(store: ScopeStore, n: AgNote, viewer: AgViewer) {
-  if (viewer.isGM) return true;
-  return n.ownerIds.includes(viewer.userId) || (n.userIds ?? []).includes(viewer.userId) || n.acl.view === "everyone";
+/** Every definition sheet of a craft here (for experiments and freehand runes, which find recipes nobody has taught). */
+function allDefs<K extends CraftKind>(store: ScopeStore, kind: K): Array<{ note: AgNote; config: Extract<ForgeConfig | AlchemyConfig | RuneConfig, { kind: K }> }> {
+  const out: any[] = [];
+  for (const n of Array.from(store.notes.values())) {
+    if (n.isTemplate || n.type !== CRAFT_DEF_TYPE[kind]) continue;
+    const c = parseCraftConfig(valueOf(store, n.id, "craft"));
+    if (c && c.kind === kind) out.push({ note: n, config: c });
+  }
+  return out;
+}
+const scrollName = (def: AgNote) => `${def.name.replace(/\s*recipe\s*$/i, "").trim() || def.name} Scroll`;
+/** A scroll that teaches `def` — the GM's (in the recipe's folder), or given straight to a character. */
+export async function makeScroll(ctx: Ctx, def: AgNote, cs: ChangeSet, character?: AgNote): Promise<AgNote> {
+  const { store } = ctx;
+  const tpl = Array.from(store.notes.values()).find((n) => n.isTemplate && n.type === "item" && fieldsOf(store, n.id).has("teaches"));
+  let scroll: AgNote;
+  if (character) scroll = await giveItem(ctx, character, tpl?.id ?? null, scrollName(def), cs);
+  else if (tpl) scroll = await snap.createFromSnapshot(store, await snap.takeSnapshot(store, tpl.id), { name: scrollName(def), folder: def.folder, ownerIds: [] }, cs, { fromTemplateId: tpl.id });
+  else {
+    const now = Date.now();
+    scroll = { id: randomUUID(), scope: store.scope.kind, scopeId: store.scope.id, type: "item", isTemplate: false, templateMeta: null, templateId: null, templateVersion: null, name: scrollName(def), portrait: null, ownerIds: [], acl: { view: "owners", edit: "owners" }, bodyAcl: { view: "inherit", edit: "inherit" }, tokenBars: null, folder: def.folder, sortOrder: now % 1e9, docEpoch: 0, createdAt: now, updatedAt: now };
+    await store.putNote(scroll, cs);
+  }
+  for (const [k, v] of Object.entries({ teaches: def.id, teaches_name: def.name, craft: String(valueOf(store, def.id, "craft") ?? ""), item_type: "Scroll", qty: 1 } as Record<string, AgValue>)) await setValue(store, scroll.id, k, v, cs);
+  return store.notes.get(scroll.id)!;
+}
+/** A definition's setup changed: the scrolls that teach it follow. */
+export async function syncScrolls(store: ScopeStore, defId: string, cs: ChangeSet) {
+  const craft = fieldsOf(store, defId).get("craft");
+  if (!craft) return;
+  for (const fields of Array.from(store.fieldsByNote.values())) {
+    if (String(fields.get("teaches")?.value ?? "") !== defId) continue;
+    const f = fields.get("craft");
+    if (f && f.value !== craft.value) await store.putField({ ...f, value: craft.value }, cs);
+  }
 }
 
 async function announce(ctx: Ctx, text: string) {
@@ -260,12 +299,19 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
             { id: "f_done", noteId: "SELF", key: "craft_done", label: "Finished", type: "number", value: 0, formula: null, options: {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: 1, templateFieldId: null },
           ],
           regions: [], actions: [], modifiers: [],
-          docs: { note: buildDocState([p(i(`${character.name}'s ${CRAFT_KIND_LABEL[kind].toLowerCase()} — open it from their Crafting to watch.`))]) },
+          docs: { note: buildDocState([p(i(`${character.name}'s ${CRAFT_KIND_LABEL[kind].toLowerCase()} — open their crafting station's sheet to watch.`))]) },
         };
         const n = await snap.createFromSnapshot(store, s, {}, cs);
         await store.putLink({ id: randomUUID(), fromNoteId: n.id, toNoteId: character.id, label: "crafter", reverseLabel: "crafting", acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
         return { noteId: n.id, stations: stationsInUse(store) };
       });
+    }
+    case "craft.makeScroll": {
+      if (!viewer.isGM) fail("Only the GM makes scrolls");
+      const def = noteOf(store, body.defId, "That recipe");
+      if (!parseCraftConfig(valueOf(store, def.id, "craft"))) fail(`${def.name} isn't set up as a recipe yet`);
+      const character = body.characterId ? noteOf(store, body.characterId, "That character") : undefined;
+      return store.run(async (cs) => { const sc = await makeScroll(ctx, def, cs, character); return { noteId: sc.id, name: sc.name }; });
     }
     case "craft.close": {
       const n = noteOf(store, body.sessionId);
@@ -277,11 +323,11 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     // ---------------------------------------------------------------- blacksmithing
     case "craft.forgePart": {
       const character = crafter(ctx, body.characterId);
-      const { note: bp, config } = defOf(store, body.blueprintId, "forge");
-      if (!canSee(store, bp, viewer)) fail("You don't know that blueprint");
-      const part = config.parts.find((x) => x.key === body.partKey) ?? fail("That blueprint has no such part");
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
       needStation(store, inv, "forge");
+      const { defId, name: bpName, config } = knownDef(store, inv, body.blueprintId, "forge", "That blueprint");
+      const bp = { id: defId, name: bpName };
+      const part = config.parts.find((x) => x.key === body.partKey) ?? fail("That blueprint has no such part");
       const material = inInventory(inv, body.materialId, "That material");
       const mat = { hardness: numOf(valueOf(store, material.id, "hardness"), 3), value: numOf(valueOf(store, material.id, "value"), 1), weight: numOf(valueOf(store, material.id, "weight"), 1) };
       const st = partStats(part.role, Math.max(0, Math.min(100, body.shape)), Math.max(0, Math.min(100, body.heat)), mat);
@@ -303,10 +349,10 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     case "craft.forgeWeapon":
     case "craft.forgeQuick": {
       const character = crafter(ctx, body.characterId);
-      const { note: bp, config } = defOf(store, body.blueprintId, "forge");
-      if (!canSee(store, bp, viewer)) fail("You don't know that blueprint");
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
       needStation(store, inv, "forge");
+      const { defId, name: bpName, config } = knownDef(store, inv, body.blueprintId, "forge", "That blueprint");
+      const bp = { id: defId, name: bpName };
       const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", inv) : null;
       const QUICK: Record<CraftTier, number> = { fail: 5, weak: 45, default: 72, slight: 88, huge: 98 };
       const used: AgNote[] = [];
@@ -351,10 +397,10 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     // ---------------------------------------------------------------- alchemy
     case "craft.brew": {
       const character = crafter(ctx, body.characterId);
-      const { note: recipe, config } = defOf(store, body.recipeId, "alchemy");
-      if (!canSee(store, recipe, viewer)) fail("You don't know that recipe");
       const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
       needStation(store, inv, "alchemy");
+      const { name: recipeName, config } = knownDef(store, inv, body.recipeId, "alchemy", "That recipe");
+      const recipe = { name: recipeName };
       const use = gather(store, inv, config.ingredients);
       const quick = body.mode === "quick" ? quickRoll(store, character, "alchemy", inv) : null;
       const tier = quick ? quick.tier : accuracyTier(Math.max(0, Math.min(100, body.accuracy ?? 0)));
@@ -382,13 +428,11 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         if (found) {
           const tier = accuracyTier(found.score);
           const out = await brewOutput(ctx, character, found.note, found.config, tier, cs);
-          // Discovered: the recipe is theirs to brew from now on.
-          for (const uid of character.ownerIds) {
-            const r = store.notes.get(found.note.id)!;
-            if (!r.ownerIds.includes(uid) && !(r.userIds ?? []).includes(uid)) await store.putNote({ ...r, userIds: [...(r.userIds ?? []), uid] }, cs, true);
-          }
+          // Discovered: they write it down — its scroll is theirs (unless they have one already).
+          const knew = inv.some((n) => String(valueOf(store, n.id, "teaches") ?? "") === found.note.id);
+          if (!knew) await makeScroll(ctx, found.note, cs, character);
           await announce(ctx, `⚗ ${character.name} discovered ${found.note.name} by experimenting!`);
-          return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, message: `You discovered ${found.note.name}! ${out.name} (${TIER_LABEL[tier]}).` } satisfies CraftResult;
+          return { tier, tierLabel: TIER_LABEL[tier], noteId: out.id, name: out.name, message: `You discovered ${found.note.name}! ${out.name} (${TIER_LABEL[tier]})${knew ? "" : " — its recipe scroll is in your inventory"}.` } satisfies CraftResult;
         }
         // Something new: the GM decides what (if anything) it makes.
         const tried = [
@@ -440,22 +484,35 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
     // ---------------------------------------------------------------- rune making
     case "craft.rune": {
       const character = crafter(ctx, body.characterId);
-      const { note: rune, config } = defOf(store, body.runeId, "rune");
-      if (!canSee(store, rune, viewer)) fail("You don't know that rune");
       const list = await inventoryList(store, character);
       const inv = inventoryOf(store, character.id, list.reverse);
       needStation(store, inv, "rune");
+      // Freehand: whatever rune the marks come closest to (any rune — none needs to be known), at the guided thresholds.
+      let freehand: { score: number } | null = null;
+      let def: Def<"rune">;
+      if (body.mode === "freehand") {
+        const drawn = (body.strokes ?? []).slice(0, 40);
+        const best = allDefs(store, "rune").map((d) => ({ d, score: traceAccuracy(d.config.sigil, drawn) })).sort((a, b) => b.score - a.score)[0];
+        if (!best || best.score < 60) fail(`Those marks don't form any rune${best ? ` (closest: ${best.score}%)` : ""} — nothing took.`);
+        def = { defId: best!.d.note.id, name: best!.d.note.name, config: best!.d.config };
+        freehand = { score: best!.score };
+      } else def = knownDef(store, inv, body.runeId ?? "", "rune", "That rune");
+      const { config } = def;
+      const rune = { name: def.name };
       const target = inInventory(inv, body.targetId, "The item to inscribe");
       if (target.id === body.inkId || target.id === body.toolId) fail("Pick a different item to inscribe");
       const use = gather(store, inv.filter((n) => n.id !== target.id), config.ingredients);
-      const tool = body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
+      let tool = body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
+      // Freehand: nobody knew which rune it would be, so any fitting tool they carry will do.
+      if (freehand && config.tools.length && (!tool || !config.tools.some((tn) => itemMatches(tool!, tn)))) tool = inv.find((n) => config.tools.some((tn) => itemMatches(n, tn))) ?? tool;
       if (config.tools.length && (!tool || !config.tools.some((tn) => itemMatches(tool, tn)))) fail(`It needs ${config.tools.map((tn) => tn.name).join(" or ")} to carve`);
       const ink = body.inkId ? inInventory(inv, body.inkId, "That ink") : null;
       if (ink && valueOf(store, ink.id, "ink_color") === undefined) fail(`${ink.name} isn't a liquid or ink`);
       if (config.needsInk && !ink) fail("This rune needs a liquid or ink");
       const quick = body.mode === "quick" ? quickRoll(store, character, "rune", inv) : null;
-      const accuracy = Math.max(0, Math.min(100, body.accuracy ?? 0));
-      const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, body.guide !== false);
+      const accuracy = freehand ? freehand.score : Math.max(0, Math.min(100, body.accuracy ?? 0));
+      // Freehand counts like tracing with the guide; tracing a known rune without it is easier to excel at.
+      const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
       const color = ink ? String(valueOf(store, ink.id, "ink_color") ?? "") : "";
       const glow = ink ? numOf(valueOf(store, ink.id, "ink_glow")) : 0;
       const style = tool ? String(valueOf(store, tool.id, "mark_style") ?? "Carved") : "Carved";
@@ -502,7 +559,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
 }
 
 /** A brew's output: the recipe's item, with the tier's numbers (a failed brew is inert). */
-async function brewOutput(ctx: Ctx, character: AgNote, recipe: AgNote, config: AlchemyConfig, tier: CraftTier, cs: ChangeSet): Promise<AgNote> {
+async function brewOutput(ctx: Ctx, character: AgNote, recipe: { name: string }, config: AlchemyConfig, tier: CraftTier, cs: ChangeSet): Promise<AgNote> {
   const { store } = ctx;
   const base = recipe.name.replace(/\s*recipe\s*/i, "").trim() || "Potion";
   const name = tier === "fail" ? `Inert ${base}` : tier === "default" ? base : `${TIER_LABEL[tier]} ${base}`;

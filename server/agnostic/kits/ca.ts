@@ -137,8 +137,8 @@ export function rankTooltip(): string {
 const ABILITY_CATEGORIES = ["Attack", "Defense", "Support", "Movement", "Utility", "Passive"];
 const ABILITY_COLORS: Record<string, string> = { Attack: "#f87171", Defense: "#60a5fa", Support: "#34d399", Movement: "#fbbf24", Utility: "#c084fc", Passive: "#a8a29e" };
 
-export const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Ingredient", "Ink", "Material", "Miscellaneous", "Part", "Rune", "Station", "Tool", "Weapon"];
-export const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e", Material: "#d6d3d1", Ingredient: "#86efac", Ink: "#f0abfc", Tool: "#fdba74", Part: "#cbd5e1", Station: "#fb923c" };
+export const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Ingredient", "Ink", "Material", "Miscellaneous", "Part", "Rune", "Scroll", "Station", "Tool", "Weapon"];
+export const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e", Material: "#d6d3d1", Ingredient: "#86efac", Ink: "#f0abfc", Tool: "#fdba74", Part: "#cbd5e1", Station: "#fb923c", Scroll: "#fcd34d" };
 const RARITIES = ["Common", "Uncommon", "Rare", "Epic", "Legendary"];
 const RARITY_COLORS: Record<string, string> = { Common: "#a8a29e", Uncommon: "#22c55e", Rare: "#3b82f6", Epic: "#a855f7", Legendary: "#f59e0b" };
 const SEVERITIES = ["Minor", "Moderate", "Severe"];
@@ -337,7 +337,6 @@ function characterTemplate(): AgSnapshot {
       { title: "Skills", icon: "Zap", content: skillsTab },
       { title: "Ability", icon: "Flame", content: abilityTab },
       { title: "Inventory", icon: "Backpack", content: inventoryTab },
-      { title: "Crafting", icon: "Hammer", content: craftingTabContent() },
     ], { color: GILT }),
   ];
   return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: identityChips(), cv_attributes: attrBoxes });
@@ -360,9 +359,17 @@ export function craftingSkillNodes(): DocNode[] {
     columns([cell("Hammer", "#fb923c", "blacksmithing", "Blacksmithing"), cell("FlaskConical", "#34d399", "alchemy", "Alchemy"), cell("PenTool", "#a78bfa", "rune_making", "Rune Making")], { ...SECTION_LOOK, padding: 10, gap: 10, boxed: true }),
   ];
 }
-/** The Crafting tab: the three crafts and their tools. */
+/** The old Crafting tab (characters made before stations opened their crafts on their own sheets). */
 export function craftingTabContent(): DocNode[] {
   return [h(3, icon("Anvil", GILT, 18), " Crafting ", tip(CRAFTING_HELP)), { type: "agCraftStation", attrs: { kinds: [] } }];
+}
+
+/** On a station item's page: its craft, open right there for whoever holds it. */
+export const craftBenchNode = (): DocNode => ({ type: "agCraftBench" });
+export const SCROLL_HELP = "Whoever carries this scroll knows what it teaches. **Blacksmithing** needs a blueprint's scroll to forge it. **Alchemy** works without one (experiment), but a recipe's scroll guides the brew. **Rune Making** works freehand without one; a rune's scroll lets you trace it over a guide. The GM makes scrolls from a recipe sheet (Make a scroll).";
+/** A scroll's page: what it teaches (read from the recipe it was made from). */
+export function scrollNodes(): DocNode[] {
+  return [h(3, icon("ScrollText", "#fcd34d", 16), " Scroll ", tip(SCROLL_HELP)), p(muted("TEACHES "), val("teaches_name", { look: { bold: true } })), { type: "agCraftDef" }];
 }
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
@@ -629,16 +636,16 @@ export const MATERIAL_HELP = "For Blacksmithing. **Heat**: the range the metal m
 export const INGREDIENT_HELP = "For Alchemy and Rune Making: recipes ask for it by name (or by this sheet — copies of it count).";
 export const INK_HELP = "A liquid or ink for Rune Making. A rune drawn or carved with it takes its **colour**, and **glows** as brightly as its glow (0 = none, 100 = blazing) — on the item and its picture.";
 export const TOOL_HELP = "A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.";
-export const STATION_HELP = "A crafting station. Its craft can only be worked with one in the inventory: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Its Quick Craft bonus adds to Quick Craft rolls.";
+export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it. Its Quick Craft bonus adds to Quick Craft rolls.";
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
 export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
 export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";
 export const consumableLine = (): DocNode => p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }));
 export const RUNE_HELP = "Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).";
 export const CONTAINER_HELP = "A Backpack raises its owner's carry weight by its capacity while equipped. A Storage Ring holds its own items (below).";
-export type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training" | "Material" | "Ingredient" | "Ink" | "Tool" | "Part" | "Station";
+export type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training" | "Material" | "Ingredient" | "Ink" | "Tool" | "Part" | "Station" | "Scroll";
 /** Crafting supplies and parts (see kits/caCrafting.ts). */
-export const CA_CRAFT_ITEM_KINDS: ItemKind[] = ["Material", "Ingredient", "Ink", "Tool", "Part", "Station"];
+export const CA_CRAFT_ITEM_KINDS: ItemKind[] = ["Material", "Ingredient", "Ink", "Tool", "Part", "Station", "Scroll"];
 
 /** What a training item can raise: every attribute and skill, by name → value key. */
 const RAISABLE = [...ATTRS.map((a) => ({ name: a.name, key: a.key, kind: "attribute" })), ...SKILLS.map((k) => ({ name: k.name, key: k.key, kind: "skill" }))];
@@ -648,7 +655,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   s.choice("item_type", "Type", ITEM_TYPES, kind === "Training" ? "Consumable" : kind, ITEM_TYPE_COLORS)
     .choice("rarity", "Rarity", RARITIES, "Common", RARITY_COLORS)
     .choice("rank_tag", "Rank", ITEM_RANK_CHOICES, "Unranked")
-    .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" || kind === "Ink" || kind === "Ingredient" ? 0 : kind === "Material" ? 2 : 1, { min: 0, step: 0.1 })
+    .num("qty", "Qty", 1, { min: 0 }).num("weight", "Weight", kind === "Rune" || kind === "Currency" || kind === "Ink" || kind === "Ingredient" || kind === "Scroll" ? 0 : kind === "Material" ? 2 : 1, { min: 0, step: 0.1 })
     .calc("total_weight", "Total weight", "weight * qty").num("value", "Value", kind === "Currency" ? 1 : 10, { min: 0 })
     .calc("coin_total", "Coins", `if(item_type == "Currency", qty * value, 0)`)
     .num("durability", "Durability", 10, { min: 0 }).num("durability_max", "Max durability", 10, { min: 0 }).bool("equipped", "Equipped", false);
@@ -762,7 +769,11 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   if (kind === "Station") {
     s.choice("station_for", "Station for", ["Blacksmithing", "Alchemy", "Rune Making"], "Blacksmithing", { Blacksmithing: "#f97316", Alchemy: "#34d399", "Rune Making": "#a78bfa" })
       .num("station_bonus", "Quick Craft bonus", 0, { min: -5, max: 10, tooltip: "Added to Quick Craft rolls made with it (a master's forge, a cracked pot…)." });
-    body.push(h(3, icon("Anvil", "#fb923c", 16), " Crafting station ", tip(STATION_HELP)), p(muted("FOR "), val("station_for", { display: "badge" }), muted("    QUICK CRAFT "), val("station_bonus", { display: "input" })));
+    body.push(h(3, icon("Anvil", "#fb923c", 16), " Crafting station ", tip(STATION_HELP)), p(muted("FOR "), val("station_for", { display: "badge" }), muted("    QUICK CRAFT "), val("station_bonus", { display: "input" })), craftBenchNode());
+  }
+  if (kind === "Scroll") {
+    s.text("teaches", "Teaches (sheet)", "").text("teaches_name", "Teaches", "").text("craft", "Crafting setup", "");
+    body.push(...scrollNodes());
   }
   if (kind === "Part") {
     s.text("part_of", "Part of", "").text("part_role", "Role", "").text("material", "Material", "").num("quality", "Quality", 0)
@@ -791,7 +802,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   ];
   return s.snapshot({
     type: "item", name: kind === "Miscellaneous" ? "CA Item" : kind === "Training" ? "CA Training Item" : `CA ${kind}`, playersCanCreate: true,
-    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its craft needs one in the inventory." }[kind],
+    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
   }, page);
 }
 

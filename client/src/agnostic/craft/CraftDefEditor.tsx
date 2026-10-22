@@ -3,7 +3,7 @@
 // sigil, what it makes and what each tier does); players see what it needs.
 // It's kept as JSON in the sheet's "craft" value.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Package, Eraser } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Package, Eraser, ScrollText } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
   parseCraftConfig, emptyCraftConfig, FORGE_SHAPES, SIGILS, ALCHEMY_STEP_LABEL, CRAFT_TIERS, TIER_LABEL, TIER_COLOR, CRAFT_KIND_LABEL,
@@ -23,7 +23,10 @@ export function CraftDefBlock({ noteId }: { noteId: string }) {
   const note = state.notes.get(noteId);
   const field = Array.from(state.fields.values()).find((f) => f.noteId === noteId && f.key === "craft");
   const config = useMemo(() => parseCraftConfig(field?.value), [field?.value]);
-  const editable = viewer.isGM && canEditBody;
+  // A scroll carries a copy of what it teaches (kept in step with the recipe) — it's read here, never edited.
+  const scroll = Array.from(state.fields.values()).some((f) => f.noteId === noteId && f.key === "teaches");
+  const editable = viewer.isGM && canEditBody && !scroll;
+  const [giving, setGiving] = useState(false);
   if (!note) return null;
   const save = (c: CraftConfig) => {
     if (!field) return;
@@ -53,13 +56,36 @@ export function CraftDefBlock({ noteId }: { noteId: string }) {
     );
   }
   return (
-    <div className="rounded-xl border border-amber-800/50 bg-stone-950/60 p-3 space-y-3" data-testid={`craft-def-${config.kind}`}>
-      <div className="text-[11px] uppercase tracking-[0.14em] text-amber-400 font-semibold">{CRAFT_KIND_LABEL[config.kind]}{editable ? " — setup" : ""}</div>
+    <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-3 space-y-3" data-testid={`craft-def-${config.kind}`}>
+      <div className="flex items-center gap-2">
+        <div className="text-[10px] uppercase tracking-wide text-amber-400/80 flex-1">{scroll ? `Teaches — ${CRAFT_KIND_LABEL[config.kind]}` : `${CRAFT_KIND_LABEL[config.kind]}${editable ? " — setup" : ""}`}</div>
+        {editable && <button type="button" onClick={() => setGiving(true)} className="h-7 px-2.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-medium inline-flex items-center gap-1.5" title="A scroll that teaches this — whoever carries one knows it" data-testid="craft-def-make-scroll"><ScrollText className="h-3.5 w-3.5" /> Make a scroll</button>}
+      </div>
+      {giving && <ScrollGiver defId={noteId} onClose={() => setGiving(false)} />}
       {config.kind === "forge" && <ForgeDef c={config} save={save} editable={editable} />}
       {config.kind === "alchemy" && <AlchemyDef c={config} save={save} editable={editable} />}
       {config.kind === "rune" && <RuneDef c={config} save={save} editable={editable} />}
     </div>
   );
+}
+
+/** The GM makes a scroll of a recipe: straight into a character's inventory, or kept with the recipe to hand out later. */
+function ScrollGiver({ defId, onClose }: { defId: string; onClose: () => void }) {
+  const { state, request } = useAg();
+  const { toast } = useToast();
+  const NONE = "__keep";
+  const items: SelItem[] = [
+    { id: NONE, name: "Just make it (kept with the recipe)", group: "Make", icon: <ScrollText className="h-4 w-4" /> },
+    ...Array.from(state.notes.values()).filter((n) => !n.isTemplate && (n.type === "character" || n.type === "npc")).sort((a, b) => a.name.localeCompare(b.name))
+      .map((n) => ({ id: n.id, name: n.name || "Untitled", image: n.portrait, group: "Give it to", icon: <Package className="h-4 w-4" /> })),
+  ];
+  const make = (id: string) => {
+    onClose();
+    request<{ name: string }>({ op: "craft.makeScroll", defId, characterId: id === NONE ? null : id })
+      .then((r) => toast({ title: `${r.name} made`, description: id === NONE ? "It's in the recipe's folder." : `${state.notes.get(id)?.name ?? "They"} can use it now.` }))
+      .catch((e: any) => toast({ title: "Couldn't make the scroll", description: e.message, variant: "destructive" }));
+  };
+  return <AgSelector title="Make a scroll" items={items} onPick={make} onClose={onClose} testId="craft-scroll-giver" />;
 }
 
 // --------------------------------------------------------------------------- shared bits

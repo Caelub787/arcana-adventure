@@ -12,7 +12,7 @@ import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
-import { applyCACrafting } from "./caCrafting";
+import { applyCACrafting, giveCopies, STARTER_SCROLLS } from "./caCrafting";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -28,14 +28,14 @@ import {
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
-  craftingSkillNodes, craftingTabContent, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
+  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 20;
+export const CA_KIT_LEVEL = 21;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -68,6 +68,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 18) await upgrade17(store, characterTemplates);
   if (level < 19) await upgrade19(store, characterTemplates);
   if (level < 20) await upgrade20(store);
+  if (level < 21) await upgrade21(store, characterTemplates);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1314,4 +1315,57 @@ async function upgrade20(store: ScopeStore) {
       if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices, choiceColors: { ...ITEM_TYPE_COLORS, ...(f.options.choiceColors ?? {}) } } }, cs);
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 21
+// Knowledge comes from scrolls: a character knows a blueprint, recipe or rune by
+// carrying a scroll that teaches it (Blacksmithing needs one; Alchemy and Rune
+// Making work without, but a scroll guides them). Every recipe gets a scroll for
+// the GM to hand out, and the example character gets a few. There's no Crafting
+// tab any more — a station's own sheet is where its holder crafts.
+async function upgrade21(store: ScopeStore, characterTemplates: AgNote[]) {
+  let made: Record<string, AgNote> = {};
+  await store.run(async (cs) => {
+    made = await applyCACrafting(store, cs, { starter: true });
+    for (const fields of Array.from(store.fieldsByNote.values())) {
+      const f = fields.get("item_type");
+      if (!f || f.type !== "select") continue;
+      const have = f.options.choices ?? [];
+      const choices = [...ITEM_TYPES, ...have.filter((c) => !ITEM_TYPES.includes(c))];
+      if (choices.join("|") !== have.join("|")) await store.putField({ ...f, options: { ...f.options, choices, choiceColors: { ...ITEM_TYPE_COLORS, ...(f.options.choiceColors ?? {}) } } }, cs);
+    }
+    // The example character starts out knowing a few (if it has the starter supplies and no scrolls yet).
+    const carried = (id: string) => Array.from(store.links.values()).filter((l) => l.toNoteId === id).map((l) => store.notes.get(l.fromNoteId)).filter((n): n is AgNote => !!n);
+    for (const hero of Array.from(store.notes.values()).filter((n) => !n.isTemplate && n.name === "Example Cultivator")) {
+      const inv = carried(hero.id);
+      if (!inv.some((n) => store.fieldsByNote.get(n.id)?.get("station_for")) || inv.some((n) => store.fieldsByNote.get(n.id)?.get("teaches"))) continue;
+      await giveCopies(store, hero, made, STARTER_SCROLLS.map((k): [string, number] => [k, 1]), cs);
+    }
+  });
+  // Characters: the Crafting tab goes (the crafting skills stay on Skills).
+  const charIds = new Set(characterTemplates.map((t) => t.id));
+  for (const n of Array.from(store.notes.values()).filter((x) => charIds.has(x.id) || (x.templateId && charIds.has(x.templateId)))) {
+    await editPage(n, (_doc, frag) => {
+      for (const tab of findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Crafting")) {
+        const parent = tab.parent as Y.XmlElement | null;
+        if (!parent) continue;
+        const idx = parent.toArray().indexOf(tab);
+        if (idx >= 0) parent.delete(idx, 1);
+      }
+    });
+  }
+  // Stations: their craft opens on their own page.
+  for (const n of Array.from(store.notes.values()).filter((x) => x.type === "item" && store.fieldsByNote.get(x.id)?.get("station_for"))) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agCraftBench")) return;
+      const para = findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).trim().startsWith("FOR"))[0];
+      const parent = (para?.parent as Y.XmlElement | Y.XmlFragment | null) ?? frag;
+      const idx = para ? parent.toArray().indexOf(para) + 1 : parent.length;
+      insertNodes(parent, idx, [craftBenchNode()]);
+    });
+  }
+  // Scrolls (the template and those just made) show what they teach.
+  for (const n of Array.from(store.notes.values()).filter((x) => x.type === "item" && store.fieldsByNote.get(x.id)?.get("teaches"))) {
+    await editPage(n, (_doc, frag) => { if (!hasType(frag, "agCraftDef") && !hasType(frag, "agCraftBench")) appendNodes(frag, scrollNodes()); });
+  }
 }

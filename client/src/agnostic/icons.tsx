@@ -7,7 +7,7 @@ import {
   Crosshair, Dices, Coins, Scale, Hourglass, Sun, Moon, Droplet, Leaf, Hammer, Wand2, Scroll, BookOpen, Crown, Activity, TrendingUp,
   Infinity as InfinityIcon, Anchor, Bird, Fish, Hand, Bone, FlaskConical, Key, Lock, MapPin, Compass, Tent, Weight, Gauge, Orbit, Atom,
   CircleDot, Hexagon, Diamond, Snowflake, CloudLightning, Ghost, PawPrint, Shirt, Medal, Trophy, Flag, Bell, Music, Map as MapIcon,
-  PenTool, Anvil, Pickaxe, Droplets, FlaskRound,
+  PenTool, Anvil, Pickaxe, Droplets, FlaskRound, ScrollText,
 } from "lucide-react";
 
 export const AG_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -16,7 +16,7 @@ export const AG_ICONS: Record<string, React.ComponentType<{ className?: string; 
   Crosshair, Dices, Coins, Scale, Hourglass, Sun, Moon, Droplet, Leaf, Hammer, Wand2, Scroll, BookOpen, Crown, Activity, TrendingUp,
   Infinity: InfinityIcon, Anchor, Bird, Fish, Hand, Bone, FlaskConical, Key, Lock, MapPin, Compass, Tent, Weight, Gauge, Orbit, Atom,
   CircleDot, Hexagon, Diamond, Snowflake, CloudLightning, Ghost, PawPrint, Shirt, Medal, Trophy, Flag, Bell, Music, Map: MapIcon,
-  PenTool, Anvil, Pickaxe, Droplets, FlaskRound,
+  PenTool, Anvil, Pickaxe, Droplets, FlaskRound, ScrollText,
 };
 export const AG_ICON_NAMES = Object.keys(AG_ICONS);
 
