@@ -375,7 +375,9 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
     return () => onFullscreenChange?.(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return (
+  // Portalled like the desktop panel: opened from inside a transformed or clipped parent (the hotbar,
+  // a sheet's block), "fixed inset-0" would otherwise fill that parent instead of the screen.
+  return createPortal(
     <div
       className={cn(
         "fixed inset-0 bg-stone-900 flex flex-col",
@@ -416,7 +418,8 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 });
 

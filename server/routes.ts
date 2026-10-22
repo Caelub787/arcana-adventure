@@ -5593,7 +5593,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Access check for putting an item/character on the caller's free hotbar.
   // Characters require edit access. Character-owned items require edit access
   // on the owning character. Library items (characterId null) are GM-only.
-  // Which of these Agnostic hotbar targets ("note:<id>" / "action:<id>") the
+  // Which of these Agnostic hotbar targets ("note:<id>" / "action:<id>" /
+  // "item:<characterId>:<itemId>") the
   // person can still see in this campaign's Agnostic data — or that are gone.
   const agnosticHotbarVisibility = async (userId: string, campaignId: string, refs: string[]): Promise<Map<string, "visible" | "hidden" | "gone">> => {
     const out = new Map<string, "visible" | "hidden" | "gone">();
@@ -5602,8 +5603,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const viewer = await resolveAgnosticScopeAccess(userId, scope);
     const store = await getAgnosticStore(scope);
     for (const ref of refs) {
-      const [kind, id] = ref.split(":");
-      if (kind === "note") {
+      const [kind, id, itemId] = ref.split(":");
+      if (kind === "item") {
+        // One item off one character's inventory: both must still be there and seen.
+        const c = store.notes.get(id), n = store.notes.get(itemId);
+        out.set(ref, !c || !n ? "gone" : viewer && canViewAgNote(c, viewer) && canViewAgNote(n, viewer) ? "visible" : "hidden");
+      } else if (kind === "note") {
         const n = store.notes.get(id);
         out.set(ref, !n ? "gone" : viewer && canViewAgNote(n, viewer) ? "visible" : "hidden");
       } else if (kind === "action") {
@@ -5874,7 +5879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (agnosticRef) {
         // An Agnostic sheet or button: only in an Agnostic campaign, and only one this person can see.
         if (characterId || itemId || rollEntryId || skillKey || soundId) return res.status(400).json({ error: "agnosticRef can't be combined with other targets" });
-        if (!/^(note|action):[0-9a-f-]{36}$/.test(agnosticRef)) return res.status(400).json({ error: "Bad sheet or button" });
+        if (!/^(note|action):[0-9a-f-]{36}$/.test(agnosticRef) && !/^item:[0-9a-f-]{36}:[0-9a-f-]{36}$/.test(agnosticRef)) return res.status(400).json({ error: "Bad sheet or button" });
         const campaign = await storage.getCampaign(campaignId);
         if (!campaign) return res.status(404).json({ error: "Campaign not found" });
         if (!isAgnosticSystem((campaign as any).system)) return res.status(400).json({ error: "Not an Agnostic campaign" });

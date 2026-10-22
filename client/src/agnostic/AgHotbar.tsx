@@ -1,8 +1,11 @@
 // The hotbar in Agnostic systems: the same bar C.A. uses, holding sheets
-// (press: open it) and buttons / rolls (press: use it). The GM can also make a
-// new function — a button with steps — straight from the picker.
-import React, { useEffect, useMemo, useState } from "react";
-import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil } from "lucide-react";
+// (press: open it), buttons / rolls (press: use it) and items off one
+// character's inventory (press: use it — a forge, pot or pen opens its craft
+// right there). The GM can also make a new function — a button with steps —
+// straight from the picker.
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil, Hammer, FlaskConical, PenTool, Package, User } from "lucide-react";
+import { CRAFT_KIND_LABEL, CRAFT_KIND_OF_STATION, type CraftKind } from "@shared/agnostic/crafting";
 import { agTypeLabel, type AgNote } from "@shared/agnostic/types";
 import { useAg, useAgMaybe, resolveRef } from "./hooks";
 import { AgPanel } from "./float";
@@ -11,8 +14,13 @@ import { RollIcon } from "./rollIcons";
 import { rollSummary, actionsOfNote, RollEditor } from "./rolls";
 import { ActionEditorDialog } from "./ActionEditor";
 import { useToast } from "@/hooks/use-toast";
+import { inventoryOf, qtyOf, valueOn } from "./craft/session";
 
-export type AgHotbarRef = `note:${string}` | `action:${string}`;
+// The craft itself (forge, alchemy, runes) only loads once a station is used from the bar.
+const CraftBench = lazy(() => import("./craft/CraftHost").then((m) => ({ default: m.CraftBench })));
+const STATION_ICON: Record<CraftKind, React.ComponentType<{ className?: string }>> = { forge: Hammer, alchemy: FlaskConical, rune: PenTool };
+
+export type AgHotbarRef = `note:${string}` | `action:${string}` | `item:${string}:${string}`;
 const parse = (ref: string) => { const i = ref.indexOf(":"); return { kind: ref.slice(0, i), id: ref.slice(i + 1) }; };
 
 /** A sheet's small bars (its token bars), for its hotbar tile. */
@@ -40,6 +48,7 @@ function AgHotbarSlotInner({ agRef, className, onRemove, registerPress, testId }
   agRef: string; className: string; onRemove: () => void; registerPress: (fn: (() => void) | null) => void; testId?: string;
 }) {
   const { kind, id } = parse(agRef);
+  if (kind === "item") { const [characterId, itemId] = id.split(":"); return <ItemSlot characterId={characterId} itemId={itemId} className={className} onRemove={onRemove} registerPress={registerPress} testId={testId} />; }
   return kind === "action"
     ? <ActionSlot actionId={id} className={className} onRemove={onRemove} registerPress={registerPress} testId={testId} />
     : <NoteSlot noteId={id} className={className} onRemove={onRemove} registerPress={registerPress} testId={testId} />;
@@ -130,9 +139,70 @@ function ActionSlot({ actionId, className, onRemove, registerPress, testId }: { 
   );
 }
 
+/** A crafting station's kind (forge, alchemy, runes), if the item is one. */
+const stationKind = (state: ReturnType<typeof useAg>["state"], itemId: string): CraftKind | undefined => CRAFT_KIND_OF_STATION[String(valueOn(state, itemId, "station_for") ?? "")];
+/** Whether the item is still connected to (carried by) that character. */
+const carries = (state: ReturnType<typeof useAg>["state"], characterId: string, itemId: string) => {
+  for (const l of Array.from(state.links.values())) if (l.fromNoteId === itemId && l.toNoteId === characterId) return true;
+  return false;
+};
+
+/**
+ * One item off one character's inventory. Press: use it — a crafting station opens its craft in a floating panel
+ * (the same live bench as on its sheet, so whoever is at it, the GM's take over and the rest all carry on); any
+ * other item opens its sheet. Hold: open the item or the character, or remove it.
+ */
+function ItemSlot({ characterId, itemId, className, onRemove, registerPress, testId }: { characterId: string; itemId: string; className: string; onRemove: () => void; registerPress: (fn: (() => void) | null) => void; testId?: string }) {
+  const { state, openNote } = useAg();
+  const item = state.notes.get(itemId);
+  const character = state.notes.get(characterId);
+  const [menu, setMenu] = useState(false);
+  const [bench, setBench] = useState(false);
+  const kind = item ? stationKind(state, itemId) : undefined;
+  const held = carries(state, characterId, itemId);
+  const qty = item ? qtyOf(state, itemId) : 1;
+  const Icon = kind ? STATION_ICON[kind] : null;
+  const use = () => { if (!item) return; if (kind && held) setBench(true); else openNote(itemId); };
+  useEffect(() => { registerPress(use); return () => registerPress(null); });
+  const hold = useHold(() => setMenu(true));
+  const title = item ? [item.name, character ? (held ? character.name : `no longer with ${character.name}`) : null, kind ? `${CRAFT_KIND_LABEL[kind]} station` : null].filter(Boolean).join(" · ") : "Item";
+  return (
+    <>
+      <button type="button" className={className} title={title} data-testid={testId}
+        onClick={(e) => { if (hold.fired.current) { hold.fired.current = false; e.preventDefault(); return; } use(); }} {...hold.handlers}>
+        {item ? (
+          <div className={`relative w-full h-full pointer-events-none ${held ? "" : "opacity-40 grayscale"}`} data-testid="ag-hotbar-item">
+            {item.portrait ? <img src={item.portrait} alt={item.name} className="w-full h-full object-cover" />
+              : <div className="w-full h-full grid place-items-center text-amber-400">{Icon ? <Icon className="h-5 w-5" /> : <Package className="h-5 w-5" />}</div>}
+            {character && <span className="absolute top-0 left-0 h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-br overflow-hidden border-r border-b border-black/60 bg-stone-900">
+              {character.portrait ? <img src={character.portrait} alt="" className="w-full h-full object-cover" /> : <span className="block text-[8px] leading-[14px] text-center text-amber-300">{(character.name || "?").slice(0, 1).toUpperCase()}</span>}
+            </span>}
+            {Icon && item.portrait && <span className="absolute top-0 right-0 h-3.5 w-3.5 sm:h-4 sm:w-4 grid place-items-center rounded-bl bg-black/70 text-amber-300"><Icon className="h-2.5 w-2.5" /></span>}
+            {qty > 1 && <span className="absolute bottom-0 right-0 px-0.5 rounded-tl bg-black/75 text-[9px] leading-tight font-mono text-stone-100">×{qty}</span>}
+          </div>
+        ) : <span className="text-[9px] text-stone-500">gone</span>}
+      </button>
+      {menu && (
+        <SlotMenu title={item?.name ?? "Item"} onClose={() => setMenu(false)}>
+          {item && kind && held && Icon && <button type="button" className={menuBtn} onClick={() => { setMenu(false); setBench(true); }} data-testid="ag-hotbar-use-station"><Icon className="h-4 w-4" /> Use — {CRAFT_KIND_LABEL[kind]}</button>}
+          {item && <button type="button" className={menuBtn} onClick={() => { setMenu(false); openNote(itemId); }} data-testid="ag-hotbar-open-item"><FileText className="h-4 w-4" /> Open {item.name}</button>}
+          {character && <button type="button" className={menuBtn} onClick={() => { setMenu(false); openNote(characterId); }}><User className="h-4 w-4" /> Open {character.name}</button>}
+          <button type="button" className={`${menuBtn} text-red-300`} onClick={() => { setMenu(false); onRemove(); }} data-testid="ag-hotbar-remove"><Trash2 className="h-4 w-4" /> Remove from hotbar</button>
+        </SlotMenu>
+      )}
+      {bench && item && kind && held && (
+        <AgPanel title={<span className="inline-flex items-center gap-1.5 min-w-0"><span className="truncate">{item.name}</span>{character && <span className="text-[11px] text-stone-400 truncate">— {character.name}</span>}</span>}
+          onClose={() => setBench(false)} width={720} height={680} panelKey={`ag-hotbar-bench-${itemId}`} testId="ag-hotbar-bench">
+          <Suspense fallback={<div className="text-sm text-stone-400">Opening…</div>}><CraftBench noteId={itemId} /></Suspense>
+        </AgPanel>
+      )}
+    </>
+  );
+}
+
 const FUNCTIONS_SHEET = "Hotbar functions";
 
-/** Choose what goes in a slot: any sheet you can see, any of their buttons and rolls, or (GM) a new function. */
+/** Choose what goes in a slot: any sheet you can see, any of their buttons and rolls, any item a character carries, or (GM) a new function. */
 export function AgHotbarPicker(props: { onAssign: (ref: AgHotbarRef) => void; onClose: () => void }) {
   if (!useAgMaybe()) return <AgPanel title="Add to the hotbar" onClose={props.onClose} width={420} height={200}><div className="text-sm text-stone-400">Connecting…</div></AgPanel>;
   return <AgHotbarPickerInner {...props} />;
@@ -153,7 +223,14 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
   const types = useMemo(() => Array.from(new Set(sheets.map((n) => n.type))).sort(), [sheets]);
   const needle = q.trim().toLowerCase();
   const matchesAction = (n: AgNote) => !!needle && actionsOfNote(state.actions, n.id).some((a) => a.name.toLowerCase().includes(needle));
-  const shown = sheets.filter((n) => (!type || n.type === type) && (!needle || n.name.toLowerCase().includes(needle) || matchesAction(n)));
+  // What each character carries — its items go on the bar as that character's.
+  const carried = useMemo(() => {
+    const out = new Map<string, AgNote[]>();
+    for (const n of sheets) if (n.type === "character") { const inv = inventoryOf(state, n.id); if (inv.length) out.set(n.id, inv); }
+    return out;
+  }, [sheets, state]);
+  const matchesItem = (n: AgNote) => !!needle && (carried.get(n.id) ?? []).some((i) => i.name.toLowerCase().includes(needle));
+  const shown = sheets.filter((n) => (!type || n.type === type) && (!needle || n.name.toLowerCase().includes(needle) || matchesAction(n) || matchesItem(n)));
 
   // The GM's own sheet for functions that don't belong to any one sheet.
   const newFunction = async () => {
@@ -180,7 +257,7 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
 
   return (
     <AgPanel title="Add to the hotbar" onClose={onClose} width={420} height={600} testId="ag-hotbar-picker">
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sheets and their rolls…" className="w-full h-9 px-2 rounded bg-stone-950 border border-stone-700 text-sm" data-testid="ag-hotbar-search" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sheets, their rolls and items…" className="w-full h-9 px-2 rounded bg-stone-950 border border-stone-700 text-sm" data-testid="ag-hotbar-search" />
       <div className="flex flex-wrap gap-1">
         <button type="button" onClick={() => setType("")} className={`h-7 px-2.5 rounded-full text-[11px] border ${!type ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>All</button>
         {types.map((t) => <button key={t} type="button" onClick={() => setType(type === t ? "" : t)} className={`h-7 px-2.5 rounded-full text-[11px] border ${type === t ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>{agTypeLabel(t)}</button>)}
@@ -208,7 +285,8 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
       <div className="space-y-1">
         {shown.map((n) => {
           const acts = actionsOfNote(state.actions, n.id);
-          const expanded = open === n.id || (!!needle && matchesAction(n));
+          const items = carried.get(n.id) ?? [];
+          const expanded = open === n.id || (!!needle && (matchesAction(n) || matchesItem(n)));
           return (
             <div key={n.id} className="rounded-lg bg-stone-800/70 border border-stone-700" data-testid={`ag-hotbar-sheet-${n.name}`}>
               <div className="flex items-center gap-2 p-2">
@@ -216,7 +294,7 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
                   {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </button>
                 <Portrait note={n} size={30} radius={6} />
-                <span className="flex-1 min-w-0"><span className="block text-sm text-stone-100 truncate">{n.name || "Untitled"}</span><span className="block text-[10px] text-stone-500">{agTypeLabel(n.type)}{acts.length ? ` · ${acts.length} button${acts.length > 1 ? "s" : ""}` : ""}</span></span>
+                <span className="flex-1 min-w-0"><span className="block text-sm text-stone-100 truncate">{n.name || "Untitled"}</span><span className="block text-[10px] text-stone-500">{agTypeLabel(n.type)}{acts.length ? ` · ${acts.length} button${acts.length > 1 ? "s" : ""}` : ""}{items.length ? ` · ${items.length} item${items.length > 1 ? "s" : ""}` : ""}</span></span>
                 <button type="button" onClick={() => onAssign(`note:${n.id}`)} className="h-7 w-7 grid place-items-center rounded border border-amber-700 text-amber-400 hover:bg-amber-900/30" title="Put this sheet on the slot" data-testid={`ag-hotbar-add-sheet-${n.name}`}><Plus className="h-3.5 w-3.5" /></button>
               </div>
               {expanded && (
@@ -236,6 +314,23 @@ function AgHotbarPickerInner({ onAssign, onClose }: { onAssign: (ref: AgHotbarRe
                     );
                   })}
                   {!acts.length && <div className="text-[11px] text-stone-500 px-1">No buttons or rolls on this sheet.</div>}
+                  {items.length > 0 && (
+                    <div className="pt-1 space-y-1" data-testid={`ag-hotbar-inventory-${n.name}`}>
+                      <div className="text-[10px] uppercase tracking-wide text-stone-500 px-1">Inventory — used as {n.name}'s</div>
+                      {items.filter((i) => !needle || i.name.toLowerCase().includes(needle) || n.name.toLowerCase().includes(needle)).map((i) => {
+                        const k = stationKind(state, i.id);
+                        const I = k ? STATION_ICON[k] : Package;
+                        const qty = qtyOf(state, i.id);
+                        return (
+                          <button key={i.id} type="button" onClick={() => onAssign(`item:${n.id}:${i.id}`)} className="w-full min-w-0 flex items-center gap-2 p-1.5 rounded bg-stone-900/80 border border-stone-700 hover:border-amber-600 text-left" data-testid={`ag-hotbar-add-item-${i.name}`}>
+                            {i.portrait ? <Portrait note={i} size={28} radius={5} /> : <span className="h-7 w-7 grid place-items-center rounded bg-stone-800 text-amber-300"><I className="h-4 w-4" /></span>}
+                            <span className="flex-1 min-w-0 text-sm text-stone-200 truncate">{i.name}{qty > 1 ? <span className="text-stone-400 font-mono text-xs"> ×{qty}</span> : null}</span>
+                            {k && <span className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 rounded-full border border-amber-700/70 text-[10px] text-amber-200"><I className="h-3 w-3" />{CRAFT_KIND_LABEL[k]}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {gm && <button type="button" onClick={() => setMaking(n.id)} className="w-full h-8 rounded bg-stone-900 text-[11px] text-amber-200 inline-flex items-center justify-center gap-1 hover:bg-stone-800" data-testid={`ag-hotbar-new-function-on-${n.name}`}><Wand2 className="h-3.5 w-3.5" /> New function on {n.name}</button>}
                 </div>
               )}

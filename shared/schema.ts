@@ -1370,7 +1370,8 @@ export const freeHotbarEntries = pgTable("free_hotbar_entries", {
   // Soundscape (GM): a library sound id — loops toggle in/out of the mix,
   // one-shots play for everyone.
   soundId: text("sound_id"),
-  // Agnostic systems: "note:<id>" (opens that sheet) or "action:<id>" (presses that button / roll).
+  // Agnostic systems: "note:<id>" (opens that sheet), "action:<id>" (presses that button / roll)
+  // or "item:<characterId>:<itemId>" (uses one item off that character — a forge opens its craft).
   agnosticRef: text("agnostic_ref"),
 }, (table) => ({
   uniqueSlot: uniqueIndex("free_hotbar_user_campaign_loadout_slot_unique").on(

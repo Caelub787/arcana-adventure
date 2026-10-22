@@ -66,7 +66,7 @@ export interface FreeHotbarEntryView {
   skillKey?: string | null;
   /** Soundscape (GM only): a library sound — loops toggle in the mix, one-shots play for all. */
   soundId?: string | null;
-  /** Agnostic systems: "note:<id>" (a sheet) or "action:<id>" (a button / roll). */
+  /** Agnostic systems: "note:<id>" (a sheet), "action:<id>" (a button / roll) or "item:<characterId>:<itemId>" (one of their items). */
   agnosticRef?: string | null;
   character: FreeHotbarCharView | null;
   item: any | null;
