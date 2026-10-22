@@ -19,7 +19,8 @@ import type { ChangeSet, ScopeStore } from "./store";
 import * as snap from "./snapshot";
 import * as docs from "./docs";
 import { copySheet, markAsCopy, syncCopyOwners } from "./copies";
-import { buildDocState, p, i, t, h, block, type DocNode } from "./kits/doc";
+import * as Y from "yjs";
+import { buildDocState, appendNodes, p, i, t, h, hr, pAlign, muted, val, block, type DocNode } from "./kits/doc";
 import type { HostHooks } from "./ops";
 
 class CraftError extends Error {}
@@ -280,6 +281,30 @@ async function announce(ctx: Ctx, text: string) {
   if (ctx.store.scope.kind === "campaign") await ctx.host.postChat?.(ctx.store.scope.id, { sender: "Crafting", text, audience: "everyone" }).catch(() => {});
 }
 
+/**
+ * The smith's mark on what they forged: who made it (kept on the item, so it stays theirs wherever it goes), and a
+ * signature at the foot of its page — their name in a hand. Added once; a page that has one already keeps it.
+ */
+async function signItem(store: ScopeStore, itemId: string, character: AgNote, cs: ChangeSet) {
+  await setValue(store, itemId, "forged_by", character.name || "Unknown smith", cs, "Forged by");
+  await setValue(store, itemId, "forged_by_id", character.id, cs, "Forged by (sheet)");
+  const note = store.notes.get(itemId);
+  if (!note) return;
+  const name = noteDocName(note.id, note.docEpoch);
+  const entry = await docs.getDoc(name, note.id);
+  const frag = entry.doc.getXmlFragment("default");
+  const signed = (el: Y.XmlFragment | Y.XmlElement): boolean => el.toArray().some((c) => c instanceof Y.XmlElement && ((c.nodeName === "agField" && c.getAttribute("ref") === "forged_by") || signed(c)));
+  if (!signed(frag)) {
+    entry.doc.transact(() => appendNodes(frag, [
+      hr(),
+      pAlign("right", muted("Forged by  "), val("forged_by", { look: { font: "script", fontSize: 22, textColor: "#e7c27a" } })),
+    ]));
+  }
+  // Saved like any edit; let it go from memory when nobody has the page open.
+  docs.subscribe(entry, "craft-signature");
+  docs.unsubscribe(name, "craft-signature");
+}
+
 /** Apply a tier's changes to the output (values set or added; text — dice, a choice, words — is always set). */
 async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number | string>> }>, tier: CraftTier, cs: ChangeSet) {
   for (const e of effects) {
@@ -374,6 +399,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs);
         await setPortrait(ctx, item.id, body.portrait, cs);
+        await signItem(store, item.id, character, cs);
         const name = store.notes.get(item.id)!.name;
         await announce(ctx, `⚒ ${character.name} forged ${name} — shape ${st.quality}%, ${st.durability}% durability.`);
         return { tier: st.tier, tierLabel: TIER_LABEL[st.tier], noteId: item.id, name, message: `${name}: shape ${st.quality}%, durability ${st.durability}%${part.role === "blade" ? `, damage ${st.damageBonus >= 0 ? "+" : ""}${st.damageBonus}` : part.role === "handle" ? `, accuracy ${st.accuracy >= 0 ? "+" : ""}${st.accuracy}` : ""}.` } satisfies CraftResult;
@@ -428,6 +454,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         await applyEffects(store, item.id, config.effects ?? [], tier, cs);
         await patchWeaponRolls(store, item.id, config.damageDie, failed, cs);
         await setPortrait(ctx, item.id, body.portrait, cs);
+        await signItem(store, item.id, character, cs);
         await announce(ctx, `⚒ ${character.name} ${quick ? "quick-forged" : "assembled"} ${name}${quick ? ` (${TIER_LABEL[tier]})` : ""}.`);
         return { tier, tierLabel: TIER_LABEL[tier], noteId: item.id, name, roll: quick?.roll, message: failed ? `${name} is done — but it's a failure: it does nothing.` : `${name}: durability ${w.durability}%, damage d${config.damageDie} ${vals.damage_bonus as number >= 0 ? "+" : ""}${vals.damage_bonus}, accuracy ${w.accuracy >= 0 ? "+" : ""}${w.accuracy}, worth ${w.value} (sells for ${sellValue(w.value, w.durability)}).` } satisfies CraftResult;
       });

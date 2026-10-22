@@ -154,6 +154,7 @@ export function LookEditor({ look, onChange, kind, inCanvas = false }: { look: A
           <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" className="accent-amber-500" checked={!!L.italic} onChange={(e) => set({ italic: e.target.checked || undefined })} /> Italic</label>
         </>
       ))}
+      {s.font && row("Font", select("font", [["body", "Sheet"], ["display", "Title"], ["script", "Handwritten"], ["mono", "Typewriter"]], "body"))}
       {s.labelPos && row("Label", select("labelPos", s.labelPos.map((p) => [p, LABEL_POS[p]]), defaultLabelPos(kind)))}
       {s.labelPos && row("Label text", (
         <>

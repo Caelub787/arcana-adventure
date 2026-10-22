@@ -130,6 +130,8 @@ export interface AgLook {
   fontSize?: number;
   bold?: boolean;
   italic?: boolean;
+  /** Typeface: the sheet's own (body), the title face (display), a hand (script — signatures, letters) or typewriter (mono). */
+  font?: "body" | "display" | "script" | "mono";
   labelPos?: "above" | "left" | "right" | "below" | "inside" | "none";
   /** Small-caps style labels (and badge text). */
   labelUpper?: boolean;

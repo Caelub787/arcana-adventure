@@ -23,6 +23,9 @@ import { RollIcon } from "./rollIcons";
 // --- battlemap / tracker targets ("@target" in actions) -----------------------------
 let currentTargets: string[] = [];
 const targetListeners = new Set<() => void>();
+/** A look's typeface as CSS (undefined: the sheet's own). */
+export const lookFont = (L: { font?: string }) => (L.font === "display" ? "Cinzel, serif" : L.font === "script" ? "MedievalSharp, cursive" : L.font === "mono" ? "ui-monospace, monospace" : undefined);
+
 export function setAgTargets(noteIds: string[]) {
   currentTargets = noteIds;
   targetListeners.forEach((l) => l());
@@ -487,9 +490,9 @@ function FieldDisplayCore({ noteId, refPath, maxRef, display, label, showLabel =
   const labelSize = L.fontSize ? Math.max(8, Math.round(L.fontSize * 0.85)) : display === "bar" || display === "pips" || display === "dial" ? 11 : 13;
   const labelH = column && pos !== "none" ? Math.round(labelSize * 1.25) + 2 : 0;
   const labelEl = pos === "none" || pos === "inside" ? null : (
-    <span className="leading-tight shrink-0 truncate" style={{ fontSize: L.labelSize ?? labelSize, color: L.labelColor ?? "#a8a29e", fontStyle: L.italic ? "italic" : undefined, maxWidth: "100%", textTransform: L.labelUpper ? "uppercase" : undefined, letterSpacing: L.labelUpper ? "0.12em" : undefined }}>{name}</span>
+    <span className="leading-tight shrink-0 truncate" style={{ fontSize: L.labelSize ?? labelSize, color: L.labelColor ?? "#a8a29e", fontStyle: L.italic ? "italic" : undefined, fontFamily: lookFont(L), maxWidth: "100%", textTransform: L.labelUpper ? "uppercase" : undefined, letterSpacing: L.labelUpper ? "0.12em" : undefined }}>{name}</span>
   );
-  const textStyle: React.CSSProperties = { fontSize: L.fontSize, color: L.textColor, fontWeight: L.bold ? 700 : undefined, fontStyle: L.italic ? "italic" : undefined };
+  const textStyle: React.CSSProperties = { fontSize: L.fontSize, color: L.textColor, fontWeight: L.bold ? 700 : L.font === "script" ? 400 : undefined, fontStyle: L.italic ? "italic" : undefined, fontFamily: lookFont(L) };
   const many = fields.length > 1 ? fields.map((f) => formatValue(effOf(f))).join(", ") : null;
   let body: React.ReactNode;
   switch (display) {
@@ -504,7 +507,7 @@ function FieldDisplayCore({ noteId, refPath, maxRef, display, label, showLabel =
       body = (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 border" style={{ borderColor: L.border ?? choiceColor ?? L.color ?? "#78350f", background: choiceColor ? `color-mix(in srgb, ${choiceColor} 14%, transparent)` : "rgba(0,0,0,.35)", borderRadius: L.radius ?? 999, fontSize: L.fontSize ?? 12 }}>
           {pos === "left" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
-          <EditOnDoubleClick field={many ? undefined : field} empty={!many && formatValue(effOf(field), field.options.decimals) === ""}><span className="font-semibold" style={{ color: L.textColor ?? choiceColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined, textTransform: L.labelUpper ? "uppercase" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span></EditOnDoubleClick>
+          <EditOnDoubleClick field={many ? undefined : field} empty={!many && formatValue(effOf(field), field.options.decimals) === ""}><span className="font-semibold" style={{ color: L.textColor ?? choiceColor ?? "#f5f5f4", fontStyle: L.italic ? "italic" : undefined, fontFamily: lookFont(L), textTransform: L.labelUpper ? "uppercase" : undefined }}>{many ?? formatValue(effOf(field), field.options.decimals)}</span></EditOnDoubleClick>
           {pos === "right" && <span style={{ color: L.labelColor ?? "#a8a29e" }}>{name}</span>}
         </span>
       );
