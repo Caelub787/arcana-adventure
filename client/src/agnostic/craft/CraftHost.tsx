@@ -2,7 +2,7 @@
 // station that opens them from a character's sheet. A tool is a live session:
 // the crafter plays it; the GM and anyone the session is shared with watch.
 import React, { useEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Hammer, FlaskConical, PenTool, Eye, Loader2, X, Wand2, Hand, Settings2, Lock, Check, Plus, Minus } from "lucide-react";
+import { Hammer, FlaskConical, PenTool, Eye, Loader2, X, Wand2, Hand, Settings2, Lock, Check, Plus, Minus, Undo2 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import type { AgNote } from "@shared/agnostic/types";
 import { CRAFT_KIND_LABEL, CRAFT_KIND_OF_STATION, CRAFT_DEF_TYPE, stationRecipes, type CraftKind } from "@shared/agnostic/crafting";
@@ -50,8 +50,9 @@ function CraftWindow({ sessionId, characterId, kind, stations, claim }: OpenCraf
   );
 }
 
-/** The live tool of a crafting session. One person is at the controls: whoever pressed Craft. Anyone else who may craft
- *  as that character (its player, and the GM — always) can take over; everyone else watches, every move live. */
+/** The live tool of a crafting session. One person is at the controls: whoever pressed Craft (a character can have
+ *  several players — pressing Craft is what decides). Only the GM can take over from them, and give it back after;
+ *  everyone else watches, every move live. */
 export function CraftBody({ sessionId, characterId, kind, stations, station: atStation, claim, onClaimed }: OpenCraft & { /** The station item this is open on (its sheet). */ station?: string; onClaimed?: () => void }) {
   const { state, viewer } = useAg();
   const { user } = useAuth() as any;
@@ -66,10 +67,21 @@ export function CraftBody({ sessionId, characterId, kind, stations, station: atS
   const [, tick] = useState(0);
   const present = !!driver && (driver === viewer.userId || Date.now() - beat.current.at < 12000);
   const playing = mayPlay && driver === viewer.userId;
-  const take = () => session.set({ driver: viewer.userId, driverName: String(user?.username || user?.name || (viewer.isGM ? "The GM" : "Someone")), beat: Date.now() });
-  const stepAway = () => session.set({ driver: undefined, driverName: undefined });
+  const myName = String(user?.username || user?.name || (viewer.isGM ? "The GM" : "Someone"));
+  const take = () => session.set({ driver: viewer.userId, driverName: myName, beat: Date.now(), returnTo: undefined });
+  // The GM taking over remembers whose turn it was, to hand it back.
+  const takeOver = () => session.set({ driver: viewer.userId, driverName: myName, beat: Date.now(), returnTo: present && driver !== viewer.userId ? { id: driver, name: String(session.state.driverName ?? "them") } : undefined });
+  const returnTo = session.state.returnTo && typeof session.state.returnTo.id === "string" ? session.state.returnTo as { id: string; name: string } : null;
+  const giveBack = () => returnTo && session.set({ driver: returnTo.id, driverName: returnTo.name, beat: Date.now(), returnTo: undefined });
+  const stepAway = () => session.set({ driver: undefined, driverName: undefined, returnTo: undefined });
   // Pressed Craft to get here: they're the one crafting.
-  useEffect(() => { if (claim && mayPlay && session.ready) { take(); onClaimed?.(); } }, [claim, mayPlay, session.ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (Unless someone else already is — then they watch; only the GM takes over, with Take over.)
+  useEffect(() => {
+    if (!claim || !mayPlay || !session.ready) return;
+    const d = session.map?.get("driver");
+    if (!d || d === viewer.userId) take();
+    onClaimed?.();
+  }, [claim, mayPlay, session.ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const playingRef = useRef(playing); playingRef.current = playing;
   useEffect(() => {
     if (!session.ready) return;
@@ -91,10 +103,11 @@ export function CraftBody({ sessionId, characterId, kind, stations, station: atS
           {station && !atStation && <StationChip note={station} kind={kind} />}
           {playing ? <>
             <span className={chip} data-testid="craft-playing"><Hand className="h-3.5 w-3.5 text-amber-400" />You're crafting</span>
+            {viewer.isGM && returnTo && <button type="button" onClick={giveBack} className="h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5" data-testid="craft-give-back"><Undo2 className="h-3.5 w-3.5" /> Give back to {returnTo.name}</button>}
             <button type="button" onClick={stepAway} className="h-7 px-2 rounded-md text-[11px] text-stone-400 hover:text-stone-100" data-testid="craft-step-away">Step away</button>
           </> : present ? <>
-            <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5" />{String(session.state.driverName ?? "Someone")} is crafting — you're watching</span>
-            {mayPlay && <button type="button" onClick={take} className="h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5" data-testid="craft-take-over"><Hand className="h-3.5 w-3.5" /> Take over</button>}
+            <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5" />{returnTo?.id === viewer.userId ? `The GM (${String(session.state.driverName ?? "")}) has taken over — you're watching` : `${String(session.state.driverName ?? "Someone")} is crafting — you're watching`}</span>
+            {mayPlay && viewer.isGM && <button type="button" onClick={takeOver} className="h-7 px-2.5 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-[11px] text-stone-100 inline-flex items-center gap-1.5" data-testid="craft-take-over"><Hand className="h-3.5 w-3.5" /> Take over</button>}
           </> : <>
             <span className={chip} data-testid="craft-watching"><Eye className="h-3.5 w-3.5" />Nobody is crafting</span>
             {mayPlay && <button type="button" onClick={take} className="h-7 px-3 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-medium inline-flex items-center gap-1.5" data-testid="craft-start"><Hammer className="h-3.5 w-3.5" /> Craft</button>}
@@ -180,7 +193,7 @@ export function CraftBench({ noteId }: { noteId: string }) {
             <button type="button" disabled={busy} onClick={craft} className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50" data-testid={`craft-open-${kind}`}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />} Craft
             </button>
-            <span className="text-xs text-stone-400">{holder.ownerIds.includes(viewer.userId) ? `Work the ${note.name}.` : `Craft as ${holder.name} — or wait, and watch when they start.`}</span>
+            <span className="text-xs text-stone-400">{holder.ownerIds.includes(viewer.userId) ? `Work the ${note.name} — whoever presses Craft is the one crafting.` : `Craft as ${holder.name} — or wait, and watch when they start.`}</span>
           </div>
         ) : <div className="text-xs text-stone-500 p-3">Nobody is crafting here right now.</div>}
     </div>
