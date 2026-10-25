@@ -155,7 +155,7 @@ export function weaponPortrait(parts: Array<{ part: ForgePart; color: string; /*
   const crossAt = (pc: Piece) => CROSS[pc.p.shape];
   const last = pieces[pieces.length - 1];
   const head = pieces.length > 1 && crossAt(last) ? last : null;
-  const stave = pieces.find((pc) => pc.p.shape === "bow_stave");
+  const stave = pieces.find((pc) => /_stave$/.test(pc.p.shape));
   const grip = stave ? pieces.find((pc) => pc.p.role === "handle") : undefined;
   const line = pieces.filter((pc) => pc !== head && pc !== grip);
   // Boxes in weapon units (x along the weapon, y across, down positive): the line chained joint to joint.

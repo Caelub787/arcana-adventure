@@ -12,7 +12,7 @@ import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
-import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS } from "./caCrafting";
+import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints } from "./caCrafting";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -21,22 +21,25 @@ import {
   LEGACY_ABILITY_LIST_COLUMNS as ABILITY_LIST_COLUMNS, LEGACY_ABILITY_HELP as ABILITY_HELP, LEGACY_INVENTORY_HELP,
   abilityTabContent as techniqueAbilityTab, abilityTemplateSnapshot as abilityPackSnapshot, aspectAbilityNode as techniqueAbilityNode,
   ASPECT_VIA as TECHNIQUE_VIA, ASPECT_TEMPLATE_DESCRIPTION, INVENTORY_HELP, ABILITY_HELP as ABILITY_SET_HELP, abilityColor,
-  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges, ITEM_RANK_CHOICES, CA_CARD_DC,
+  CA_COPIES_FOLDER, adoptCharacterCopies, FOCUS_NOTE, woundBadges, LEGACY_ITEM_RANK_CHOICES as ITEM_RANK_CHOICES, CA_CARD_DC,
   ASPECT_VIA, ALL_ABILITIES, ABILITY_LIST_COLUMNS as ABILITY_SET_COLUMNS, ASPECT_HELP, subAbilityNodes,
   FOCUS_FORMULA, CA_SHEET_ACL, CA_ITEM_TEMPLATE_NAMES,
   effectsNodes, WOUND_EFFECTS_HELP, ITEM_EFFECTS_HELP, USABLE_FORMULA, USABLE_NOTE,
   TEMP_HP_COLOR, TEMP_ENERGY_COLOR, TEMP_ENERGY_LINE,
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
-  RANK_NAMES, RANK_FORMULAS, LADDER_LABELS, rankLadder, trainingTemplateSnapshot,
+  // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
+  LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
+  RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
+import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 25;
+export const CA_KIT_LEVEL = 26;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -73,6 +76,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 22) await upgrade22(store, characterTemplates);
   if (level < 23) await upgrade23(store, characterTemplates);
   if (level < 25) await upgrade24(store);
+  if (level < 26) await upgrade26(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1498,4 +1502,109 @@ async function upgrade24(store: ScopeStore) {
       } catch { /* the GM's own text: leave it */ }
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 26
+// The ladder becomes nine ranks (Mortal to Paragon) of nine Pillars: every character's rank, Health, Usable
+// Energy, Focus, skill and attribute points, Lifespan and Absorption follow the Energy Pool they already have (HP,
+// Energy and Focus rise with their new maximums, as on any rank up). Stars are Pillars in every text. Item ranks are
+// the rank names (no Pillars): every item starts Unranked; sockets are 0 Unranked, 1 Mortal … 9 Paragon. Weapons'
+// Damage rolls get Damage Die, and the weapon blueprints their new dice (plus Short Sword, Longbow and Warbow).
+const LEGACY_TEXTS: Array<[string, string]> = [
+  [LEGACY_RANK_HELP, RANK_HELP],
+  [LEGACY_HEALTH_HELP, HEALTH_HELP],
+  [LEGACY_ENERGY_HELP, ENERGY_HELP],
+  [LEGACY_FOCUS_NOTE, FOCUS_NOTE],
+  ["8 + one per star (a rank up counts once) + bonus points from training items; up to 6 back from skills below 0.", SKILL_BUDGET_NOTE],
+  ["Attributes can't go below 0. 4 + one per rank (Silver, Gold…) + bonus points from training items.", ATTR_BUDGET_NOTE],
+  ["Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.", RUNE_SOCKETS_HELP],
+  [" — set by your star; it goes up when you break through, not with every point of the pool", USABLE_NOTE],
+  // Older wordings still on some pages.
+  ["20 base, +5 per star, +10 per rank", "Set by your rank (Mortal 50 … Paragon 1,000)"],
+  ["6 to start, +1 per star", "6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8"],
+];
+/** Swap old wordings for new in a page: the tips' text, and the words of its paragraphs (keeping their styling). */
+function retext(frag: Y.XmlFragment) {
+  for (const tipEl of findAll(frag, (e) => e.nodeName === "agTip")) {
+    let text = String(tipEl.getAttribute("text") ?? "");
+    for (const [from, to] of LEGACY_TEXTS) if (text.includes(from)) text = text.split(from).join(to);
+    if (text !== tipEl.getAttribute("text")) tipEl.setAttribute("text", text);
+  }
+  const walk = (node: Y.XmlFragment | Y.XmlElement) => {
+    for (const c of node.toArray()) {
+      if (c instanceof Y.XmlElement) { walk(c); continue; }
+      if (!(c instanceof Y.XmlText)) continue;
+      for (const [from, to] of LEGACY_TEXTS) {
+        for (let guard = 0; guard < 5; guard++) {
+          const delta = c.toDelta() as Array<{ insert: unknown; attributes?: Record<string, unknown> }>;
+          const plain = delta.map((d) => (typeof d.insert === "string" ? d.insert : "\u0000")).join("");
+          const at = plain.indexOf(from);
+          if (at < 0) break;
+          // The styling where the old words began.
+          let pos = 0, attrs: Record<string, unknown> | undefined;
+          for (const d of delta) { const len = typeof d.insert === "string" ? d.insert.length : 1; if (at < pos + len) { attrs = d.attributes; break; } pos += len; }
+          c.delete(at, from.length);
+          c.insert(at, to, attrs ?? {});
+        }
+      }
+    }
+  };
+  walk(frag);
+}
+async function upgrade26(store: ScopeStore) {
+  const flat = (x: string | null | undefined) => (x ?? "").replace(/\s+/g, "");
+  const ladderKeys = new Set(Object.keys(RANK_FORMULAS));
+  const touched = new Set<string>();
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields) continue;
+      // Characters (and their templates): the ladder's formulas, Focus and the point budgets.
+      const ri = fields.get("rank_index");
+      if (ri && ri.type === "formula") {
+        touched.add(n.id);
+        for (const key of Array.from(ladderKeys)) {
+          const f = fields.get(key);
+          if (f && f.type === "formula" && flat(f.formula) !== flat(RANK_FORMULAS[key])) await store.putField({ ...f, formula: RANK_FORMULAS[key] }, cs);
+        }
+        const rank = fields.get("rank");
+        if (rank) await store.putField({ ...(store.fieldsByNote.get(n.id)?.get("rank") ?? rank), options: { ...rank.options, tooltip: rankTooltip() } }, cs);
+        for (const [key, formula] of [["focus_max", FOCUS_FORMULA], ["attr_budget", ATTR_BUDGET_FORMULA], ["skill_budget", SKILL_BUDGET_FORMULA]] as const) {
+          const f = fields.get(key);
+          if (f && f.type === "formula" && flat(f.formula) !== flat(formula)) await store.putField({ ...f, formula }, cs);
+        }
+      }
+      // Items: ranks are the rank names now — everything starts Unranked.
+      const tag = fields.get("rank_tag");
+      if (tag && tag.type === "select") {
+        touched.add(n.id);
+        await store.putField({ ...tag, value: "Unranked", options: { ...tag.options, choices: [...ITEM_RANKS], choiceColors: { ...ITEM_RANK_COLORS } } }, cs);
+      }
+      const sockets = fields.get("rune_sockets");
+      if (sockets && sockets.type === "formula") await store.putField({ ...sockets, formula: RUNE_SOCKETS_FORMULA, options: { ...sockets.options, tooltip: RUNE_SOCKETS_HELP } }, cs);
+      // Weapons: Damage Die on their Damage roll (paid with Energy), for the die they roll.
+      if (n.type === "item") {
+        for (const a of store.actionsOf(n.id)) {
+          const r = a.options?.roll;
+          if (!r || r.scale || !/damage/i.test(a.name) || !(fields.get("handedness") || String(fields.get("item_type")?.value ?? "") === "Weapon")) continue;
+          const die = /^\s*\d+\s*$/.test(r.die) ? Number(r.die) : 6;
+          await store.putAction({ ...a, options: { ...a.options, roll: { ...r, scale: { step: String(defaultScaleStep(die)), pay: r.costs[0]?.key ?? "energy" } } } }, cs);
+        }
+      }
+    }
+    await updateWeaponBlueprints(store, cs);
+  });
+  // The words on their pages: Stars are Pillars, and the new figures.
+  for (const id of Array.from(touched)) {
+    const n = store.notes.get(id);
+    if (!n) continue;
+    await editPage(n, (_doc, frag) => {
+      retext(frag);
+      // The Rank box's icon: a pillared hall, not a star.
+      for (const para of findAll(frag, (e) => e.nodeName === "paragraph" && textOf(e).includes("Rank"))) {
+        for (const ic of findAll(para, (e) => e.nodeName === "agIcon" && e.getAttribute("name") === "Star")) ic.setAttribute("name", "Landmark");
+      }
+    });
+    for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag));
+  }
 }

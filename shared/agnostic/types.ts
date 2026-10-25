@@ -368,7 +368,25 @@ export interface AgRollSpec {
   /** A flat bonus (formula on this sheet). */
   bonus: string;
   costs: AgRollCost[];
+  /** Damage Die: the roller may roll more of the die by spending a value — each extra die costs a step more than the last. */
+  scale?: AgRollScale;
 }
+
+/**
+ * Damage Die on a roll: before rolling, the roller picks how many extra dice to add and pays for them from one of
+ * their values. The 1st extra die costs `step`, the 2nd 2 × step, the 3rd 3 × step… (so m extra dice cost
+ * step × m(m+1)/2): bigger hits always cost more than the last.
+ */
+export interface AgRollScale {
+  /** Formula on this sheet: the first extra die's cost (each one after costs that much more). */
+  step: string;
+  /** Value key on the rolling sheet it's paid from ("energy"). */
+  pay: string;
+}
+/** What m extra dice cost at a given step. */
+export const scaleCost = (step: number, extra: number) => Math.max(0, step) * Math.max(0, extra) * (Math.max(0, extra) + 1) / 2;
+/** The usual first step for a die: d4 15, d6 20, d8 25, d10 30, d12 35 (bigger dice cost more per die). */
+export const defaultScaleStep = (die: number) => Math.round((5 * die) / 2 + 5);
 
 /** How a button looks and where it shows, plus an optional simple roll. */
 export interface AgActionOptions {
@@ -396,6 +414,8 @@ export interface AgRollMods {
   mode?: "adv" | "dis" | null;
   /** Added to the total of every roll this press makes. */
   bonus?: number;
+  /** Damage Die: extra dice bought for this roll (paid for as its roll's scale says). */
+  extra?: number;
 }
 
 /** What a "choose" step offers before the button runs. */

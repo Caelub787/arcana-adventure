@@ -6,7 +6,7 @@ import type {
   AgAcl, AgAction, AgActionChoice, AgActionOptions, AgActionResult, AgActionStep, AgCampaignSettings, AgRollMods, AgRollSpec, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
   AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
 } from "@shared/agnostic/types";
-import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName } from "@shared/agnostic/types";
+import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost } from "@shared/agnostic/types";
 import {
   canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
@@ -207,6 +207,8 @@ function cleanActionOptions(raw: unknown): AgActionOptions | undefined {
       costs: (Array.isArray(r.costs) ? r.costs : []).slice(0, 8)
         .filter((c: any) => c && typeof c.key === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(c.key))
         .map((c: any) => ({ key: c.key, amount: formula(c.amount, "Cost", "0") })),
+      ...(r.scale && typeof r.scale === "object" && typeof r.scale.pay === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.scale.pay)
+        ? { scale: { step: formula(r.scale.step, "Damage Die step", "20"), pay: r.scale.pay } } : {}),
     };
   }
   if (typeof o.icon === "string" && o.icon.trim()) out.icon = o.icon.trim().slice(0, 120);
@@ -996,8 +998,11 @@ function personOf(store: ScopeStore, note: AgNote): AgNote | undefined {
 
 function cleanMods(raw: unknown): AgRollMods {
   const m = (raw && typeof raw === "object" ? raw : {}) as any;
-  const bonus = Number(m.bonus);
-  return { mode: m.mode === "adv" || m.mode === "dis" ? m.mode : null, bonus: Number.isFinite(bonus) ? Math.max(-1000, Math.min(1000, Math.round(bonus))) : 0 };
+  const bonus = Number(m.bonus), extra = Number(m.extra);
+  return {
+    mode: m.mode === "adv" || m.mode === "dis" ? m.mode : null, bonus: Number.isFinite(bonus) ? Math.max(-1000, Math.min(1000, Math.round(bonus))) : 0,
+    extra: Number.isFinite(extra) ? Math.max(0, Math.min(99, Math.floor(extra))) : 0,
+  };
 }
 const round2 = (x: number) => Math.round(x * 100) / 100;
 const signed = (x: number) => (x < 0 ? `− ${round2(-x)}` : `+ ${round2(x)}`);
@@ -1048,8 +1053,17 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
   const roller = store.notes.get(rollerId)!;
   const num = (expr: string, d: number) => { try { return asNumber(comp.evalIn(action.noteId, expr || String(d), { locals, roots }).value as any); } catch (e) { result.messages.push(`⚠ ${(e as Error).message}`); return d; } };
 
+  // Damage Die: extra dice bought for this roll, each a step dearer than the last, paid with the other costs.
+  const extra = spec.scale ? Math.max(0, Math.min(99, Math.floor(mods.extra ?? 0))) : 0;
+  const extraCost = extra ? scaleCost(num(spec.scale!.step, 0), extra) : 0;
+  const costList = spec.costs.map((c) => ({ c, f: store.fieldsByNote.get(rollerId)?.get(c.key), amount: num(c.amount, 0) }));
+  if (extraCost) {
+    const same = costList.find((x) => x.c.key === spec.scale!.pay);
+    if (same) same.amount += extraCost;
+    else costList.push({ c: { key: spec.scale!.pay, amount: String(extraCost) }, f: store.fieldsByNote.get(rollerId)?.get(spec.scale!.pay), amount: extraCost });
+  }
   // Costs: all checked first, so nothing is spent unless everything can be.
-  const costs = spec.costs.map((c) => ({ c, f: store.fieldsByNote.get(rollerId)?.get(c.key), amount: num(c.amount, 0) })).filter((x) => x.amount !== 0);
+  const costs = costList.filter((x) => x.amount !== 0);
   for (const { c, f, amount } of costs) {
     if (!f || f.type === "formula" || f.type === "dice") { result.messages.push(`⚠ ${roller.name} has no “${c.key}” to spend.`); return false; }
     // Temporary points (Temp Energy…) count, and are spent first.
@@ -1067,7 +1081,7 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
     result.changes.push({ noteId: rollerId, key: cur.key, from, to });
   }
 
-  const count = Math.max(1, Math.min(100, Math.floor(num(spec.count, 1))));
+  const count = Math.max(1, Math.min(100, Math.floor(num(spec.count, 1)) + extra));
   const die = Math.max(1, Math.min(1000, Math.floor(num(spec.die, 20))));
   const after = store.computer();
   const addField = spec.add ? store.fieldsByNote.get(rollerId)?.get(spec.add) : undefined;
@@ -1082,7 +1096,7 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
   if (addField && addVal) { total += addVal; breakdown += ` ${signed(addVal)} ${addField.label}`; }
   if (bonus) { total += bonus; breakdown += ` ${signed(bonus)} bonus`; }
   if (mods.bonus) { total += mods.bonus; breakdown += ` ${signed(mods.bonus)} temp`; }
-  const spent = costs.map(({ f, amount }) => `${round2(amount)} ${f!.label}`).join(", ");
+  const spent = costs.map(({ f, amount }) => `${round2(amount)} ${f!.label}`).join(", ") + (extra ? ` (${extra} extra ${extra === 1 ? "die" : "dice"})` : "");
   locals.roll = total;
   result.rolls.push({ name: "roll", label: action.name, expr: `${count}d${die}`, total, breakdown: `${breakdown} = ${round2(total)}${spent ? `  · spent ${spent}` : ""}` });
   return true;

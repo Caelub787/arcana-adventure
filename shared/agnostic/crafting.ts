@@ -212,6 +212,7 @@ const arc = (cx: number, cy: number, r: number, a0: number, a1: number, n = 10) 
 export const FORGE_SHAPES: Record<string, ForgeShape> = {
   long_blade: { label: "Long blade", role: "blade", points: [[0, 16], [82, 14.5], [100, 20], [82, 25.5], [0, 24]] },
   short_blade: { label: "Short blade (dagger)", role: "blade", points: [[0, 14], [55, 12.5], [100, 20], [55, 27.5], [0, 26]] },
+  short_sword: { label: "Short sword blade", role: "blade", points: [[0, 15], [78, 13.5], [100, 20], [78, 26.5], [0, 25]] },
   curved_blade: { label: "Curved blade (sabre)", role: "blade", points: [[0, 17], [40, 15], [75, 11], [100, 4], [92, 14], [70, 22], [38, 25], [0, 25]] },
   axe_head: { label: "Axe head", role: "blade", points: [[20, 14], [55, 12], [70, 2], [88, 0], [100, 20], [88, 40], [70, 38], [55, 28], [20, 26]] },
   scythe_blade: { label: "Scythe blade", role: "blade", points: [[0, 6], [30, 3], [60, 5], [85, 12], [100, 26], [82, 19], [58, 14], [30, 13], [0, 14]] },
@@ -219,6 +220,8 @@ export const FORGE_SHAPES: Record<string, ForgeShape> = {
   arrow_tip: { label: "Arrow tip", role: "blade", points: [[0, 17], [40, 17], [40, 8], [100, 20], [40, 32], [40, 23], [0, 23]] },
   hammer_head: { label: "Hammer head", role: "blade", points: [[25, 4], [75, 4], [78, 8], [78, 32], [75, 36], [25, 36], [22, 32], [22, 8]] },
   bow_stave: { label: "Bow stave", role: "blade", points: [...arc(50, 120, 110, -Math.PI * 0.72, -Math.PI * 0.28, 14), ...arc(50, 120, 104, -Math.PI * 0.28, -Math.PI * 0.72, 14)] },
+  long_stave: { label: "Longbow stave", role: "blade", points: [...arc(50, 150, 140, -Math.PI * 0.68, -Math.PI * 0.32, 16), ...arc(50, 150, 134, -Math.PI * 0.32, -Math.PI * 0.68, 16)] },
+  war_stave: { label: "Warbow stave (thick)", role: "blade", points: [...arc(50, 130, 122, -Math.PI * 0.7, -Math.PI * 0.3, 16), ...arc(50, 130, 111, -Math.PI * 0.3, -Math.PI * 0.7, 16)] },
   grip: { label: "Grip / handle", role: "handle", points: [[0, 15], [6, 13], [94, 13], [100, 15], [100, 25], [94, 27], [6, 27], [0, 25]] },
   long_haft: { label: "Long haft (pole)", role: "handle", points: [[0, 17], [100, 17], [100, 23], [0, 23]] },
   guard: { label: "Cross guard", role: "extra", points: [[40, 0], [60, 0], [60, 12], [64, 16], [64, 24], [60, 28], [60, 40], [40, 40], [40, 28], [36, 24], [36, 16], [40, 12]] },
@@ -465,7 +468,7 @@ export function metalBounds(metal: Metal): { c0: number; r0: number; c1: number;
 }
 /** How big each part's 100 × 40 box is in a finished weapon (one scale for its whole box, so its shape isn't stretched). */
 export const PART_SCALE: Record<string, number> = {
-  long_blade: 1, short_blade: 0.6, curved_blade: 0.95, axe_head: 0.8, scythe_blade: 0.8, spear_head: 0.45, arrow_tip: 0.25, hammer_head: 0.55,
+  long_blade: 1, short_blade: 0.6, short_sword: 0.8, long_stave: 1.7, war_stave: 1.8, curved_blade: 0.95, axe_head: 0.8, scythe_blade: 0.8, spear_head: 0.45, arrow_tip: 0.25, hammer_head: 0.55,
   bow_stave: 1.4, grip: 0.38, long_haft: 1.3, guard: 0.45, pommel: 0.25, fletching: 0.3,
 };
 /** Bits of metal no longer joined to the rest break off (all but the biggest piece). Returns the metal and what fell. */

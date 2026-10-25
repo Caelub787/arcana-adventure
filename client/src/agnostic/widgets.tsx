@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, Dices, Image as ImageIcon, Loader2, User as UserIcon, Skull as SkullIcon, Package as PackageIcon, Sparkles as SparklesIcon, Swords as SwordsIcon, Star as StarIcon, HeartPulse as HeartPulseIcon, MapPin as MapPinIcon, Dna as DnaIcon, StickyNote as StickyNoteIcon, Hammer as HammerIcon, FlaskConical as FlaskIcon, PenTool as PenToolIcon, Anvil as AnvilIcon, Wand2 as WandIcon } from "lucide-react";
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis, Cell } from "recharts";
 import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, AgLook, AgWidget, AgNote, AgAudience, AgRollMods } from "@shared/agnostic/types";
+import { scaleCost } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
@@ -602,6 +603,8 @@ export function useActionRunner(actionId: string) {
   };
   const run = async (mods: AgRollMods = {}) => {
     if (!action || !allowed || busy) return;
+    // Damage Die: how many dice to roll is chosen first (the dice panel), every time.
+    if (action.options?.roll?.scale && mods.extra === undefined) { setAsking(true); return; }
     // Buttons that ask "which one?" (e.g. which wound a potion heals) get the options first.
     if (action.asks || action.steps?.some((st) => st.type === "choose")) {
       setBusy(true);
@@ -619,7 +622,7 @@ export function useActionRunner(actionId: string) {
   };
   const ui = (
     <>
-      {asking && action && <RollModsPanel name={action.name} onClose={() => setAsking(false)} onRoll={(mods) => { setAsking(false); void run(mods); }} />}
+      {asking && action && <RollModsPanel name={action.options?.roll?.scale && state.notes.get(action.noteId)?.name ? `${action.name} · ${state.notes.get(action.noteId)!.name}` : action.name} scale={rollScaleInfo(state, action)} onClose={() => setAsking(false)} onRoll={(mods) => { setAsking(false); void run({ ...mods, extra: mods.extra ?? 0 }); }} />}
       {picking && (() => {
         const c = picking.choices[picking.idx];
         return (
@@ -689,7 +692,28 @@ export function ActionButton({ actionId, label, className = "", look, compact }:
 }
 
 /** Advantage / disadvantage and a one-off modifier for a single press. */
-export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll: (mods: AgRollMods) => void; onClose: () => void }) {
+/** A roll's Damage Die as the roller sees it: the die, the dice it starts with, each step's cost and what they have to pay. */
+export interface RollScaleInfo { die: number; count: number; step: number; payLabel: string; have: number }
+export function rollScaleInfo(state: ReturnType<typeof useAg>["state"], action: { noteId: string; options?: { roll?: import("@shared/agnostic/types").AgRollSpec } }): RollScaleInfo | null {
+  const spec = action.options?.roll;
+  if (!spec?.scale) return null;
+  const rollerId = spec.via ? follow(state, action.noteId, spec.via)[0] : action.noteId;
+  const value = (expr: string, d: number) => {
+    if (/^\s*-?\d+(\.\d+)?\s*$/.test(expr)) return Number(expr);
+    const f = resolveRef(state, action.noteId, expr)[0];
+    return f ? asNumber(effOf(f) as any) : d;
+  };
+  const pay = rollerId ? fieldsOf(state, rollerId).find((f) => f.key === spec.scale!.pay) : undefined;
+  const temp = pay?.options.shield && rollerId ? fieldsOf(state, rollerId).find((f) => f.key === pay.options.shield) : undefined;
+  return {
+    die: Math.max(1, Math.floor(value(spec.die, 20))), count: Math.max(1, Math.floor(value(spec.count, 1))), step: Math.max(0, value(spec.scale.step, 0)),
+    payLabel: pay?.label ?? spec.scale.pay, have: (pay ? asNumber(effOf(pay) as any) : 0) + (temp ? Math.max(0, asNumber(temp.value as any)) : 0),
+  };
+}
+
+export function RollModsPanel({ name, onRoll, onClose, scale }: { name: string; onRoll: (mods: AgRollMods) => void; onClose: () => void; scale?: RollScaleInfo | null }) {
+  const [extra, setExtra] = useState(0);
+  const [more, setMore] = useState(!scale);
   const [mode, setMode] = useState<"adv" | "dis" | null>(null);
   const [bonus, setBonus] = useState(0);
   const [text, setText] = useState("0");
@@ -700,12 +724,11 @@ export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll:
       <div className="text-[10px] text-stone-500 leading-tight">{hint}</div>
     </button>
   );
-  return (
-    <AgPanel title={<span>Roll options — {name}</span>} onClose={onClose} width={380} height={330} testId="ag-rollmods"
-      footer={<>
-        <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800" data-testid="ag-rollmods-cancel">Cancel</button>
-        <button type="button" onClick={() => onRoll({ mode, bonus })} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1.5" data-testid="ag-rollmods-roll"><Dices className="h-4 w-4" /> Roll</button>
-      </>}>
+  const cost = scale ? scaleCost(scale.step, extra) : 0;
+  const nextCost = scale ? scaleCost(scale.step, extra + 1) : 0;
+  const dice = scale ? `${scale.count + extra}d${scale.die}` : "";
+  const modsUi = (
+    <>
       <div className="flex gap-1.5">
         {opt("adv", "Advantage", "Roll twice, keep the higher", "#22c55e")}
         {opt(null, "Normal", "One roll", "#d4a24c")}
@@ -721,6 +744,34 @@ export function RollModsPanel({ name, onRoll, onClose }: { name: string; onRoll:
           <div className="flex gap-1 ml-1">{[-2, 2, 5].map((n) => <button key={n} type="button" onClick={() => set(bonus + n)} className="h-9 px-2 rounded bg-stone-800 text-xs text-stone-300">{n > 0 ? `+${n}` : n}</button>)}</div>
         </div>
       </div>
+    </>
+  );
+  return (
+    <AgPanel title={<span>{scale ? name : `Roll options — ${name}`}</span>} onClose={onClose} width={400} height={scale ? 470 : 330} testId="ag-rollmods"
+      footer={<>
+        <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800" data-testid="ag-rollmods-cancel">Cancel</button>
+        <button type="button" disabled={!!scale && cost > scale.have} onClick={() => onRoll({ mode, bonus, ...(scale ? { extra } : {}) })} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="ag-rollmods-roll">
+          <Dices className="h-4 w-4" /> Roll{scale ? ` ${dice}` : ""}{cost ? ` · ${formatValue(cost)} ${scale!.payLabel}` : ""}
+        </button>
+      </>}>
+      {scale && (
+        <div className="space-y-2" data-testid="ag-rollmods-dice">
+          <div className="flex items-center justify-center gap-3">
+            <button type="button" disabled={extra <= 0} onClick={() => setExtra(extra - 1)} className="h-11 w-11 grid place-items-center rounded-lg border border-stone-700 bg-stone-800 text-stone-200 disabled:opacity-30" aria-label="One die fewer" data-testid="ag-rollmods-dice-less"><Minus className="h-5 w-5" /></button>
+            <div className="text-center min-w-[7rem]">
+              <div className="text-3xl font-bold font-mono text-amber-200" data-testid="ag-rollmods-dice-count">{dice}</div>
+              <div className={`text-xs ${cost > scale.have ? "text-red-400" : "text-cyan-300"}`}>{cost ? `${formatValue(cost)} ${scale.payLabel}` : "free"}</div>
+            </div>
+            <button type="button" disabled={nextCost > scale.have || scale.count + extra >= 100} onClick={() => setExtra(extra + 1)} className="h-11 w-11 grid place-items-center rounded-lg border border-stone-700 bg-stone-800 text-stone-200 disabled:opacity-30" aria-label="One die more" data-testid="ag-rollmods-dice-more"><Plus className="h-5 w-5" /></button>
+          </div>
+          <div className="text-[11px] text-stone-400 text-center">
+            {scale.payLabel}: <b className="text-stone-200">{formatValue(scale.have)}</b> · next die {nextCost > scale.have ? <span className="text-red-400">needs {formatValue(nextCost)}</span> : <>costs {formatValue(nextCost - cost)} more</>}
+          </div>
+          <div className="text-[10px] text-stone-500 text-center">Each extra die costs {formatValue(scale.step)} more than the one before.</div>
+          <button type="button" onClick={() => setMore(!more)} className="text-[11px] text-stone-400 hover:text-stone-200 underline-offset-2 hover:underline" data-testid="ag-rollmods-more">{more ? "Hide" : "Advantage, disadvantage or a modifier…"}</button>
+        </div>
+      )}
+      {more && modsUi}
     </AgPanel>
   );
 }

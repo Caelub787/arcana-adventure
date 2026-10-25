@@ -6,7 +6,7 @@
 // be the player's own (or the GM's), and what's used must be in its inventory.
 import { randomUUID } from "crypto";
 import type { AgField, AgNote, AgValue, AgViewer, AgSnapshot, AgFieldType } from "@shared/agnostic/types";
-import { noteDocName, regionDocName } from "@shared/agnostic/types";
+import { noteDocName, regionDocName, defaultScaleStep } from "@shared/agnostic/types";
 import {
   traceAccuracy, stationAllows, metalFits, sellValue, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
@@ -323,7 +323,13 @@ async function patchWeaponRolls(store: ScopeStore, noteId: string, damageDie: nu
   for (const a of store.actionsOf(noteId)) {
     const r = a.options?.roll;
     if (!r) continue;
-    if (/damage/i.test(a.name)) await store.putAction({ ...a, options: { ...a.options, roll: { ...r, die: failed ? "1" : String(damageDie), bonus: failed ? "-1" : "damage_bonus" } } }, cs);
+    if (/damage/i.test(a.name)) {
+      // The blueprint's die, and Damage Die ready to use: the wielder can spend to roll more of it (a failed weapon can't).
+      const { scale: _old, ...rest } = r;
+      const scale = failed ? undefined : { step: String(defaultScaleStep(damageDie)), pay: r.scale?.pay ?? r.costs[0]?.key ?? "energy" };
+      const icon = /^die:d\d+$/.test(a.options?.icon ?? "") && [4, 6, 8, 10, 12, 20].includes(damageDie) ? `die:d${damageDie}` : a.options?.icon;
+      await store.putAction({ ...a, options: { ...a.options, icon, roll: { ...rest, die: failed ? "1" : String(damageDie), bonus: failed ? "-1" : "damage_bonus", ...(scale ? { scale } : {}) } } }, cs);
+    }
     else if (/strike|attack|hit/i.test(a.name)) await store.putAction({ ...a, options: { ...a.options, roll: { ...r, bonus: "accuracy" } } }, cs);
   }
 }

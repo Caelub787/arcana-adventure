@@ -6,6 +6,7 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings2, Pencil, Check, Minus, EyeOff } from "lucide-react";
 import type { AgAction, AgActionOptions, AgField, AgRollSpec } from "@shared/agnostic/types";
+import { scaleCost, defaultScaleStep } from "@shared/agnostic/types";
 import type { AgActionView } from "@shared/agnostic/protocol";
 import { asNumber } from "@shared/agnostic/formula";
 import { useAg, follow, effOf, fieldsOf, resolveRef } from "./hooks";
@@ -66,7 +67,10 @@ export function rollSummary(state: State, action: Pick<AgAction, "noteId" | "opt
     .filter(({ n, c }) => n === null ? !!c.amount.trim() : n !== 0)
     .map(({ c, n }) => `${n ?? c.amount} ${field(c.key)?.label ?? titleCase(c.key)}`)
     .join(" · ");
-  return { roll, cost: cost || null };
+  // Damage Die: more dice for a rising price.
+  const step = spec.scale ? value(spec.scale.step) : null;
+  const more = spec.scale ? `more dice: ${step ?? spec.scale.step}+ ${field(spec.scale.pay)?.label ?? titleCase(spec.scale.pay)}` : "";
+  return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, more].filter(Boolean).join(" · ") || null };
 }
 
 /**
@@ -214,6 +218,11 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
   const costItems: SelItem[] = roller.fields.filter((f) => f.type === "number" && !spec.costs.some((c) => c.key === f.key)).map((f) => ({ id: f.key, name: f.label, sub: f.key }));
   const dieDisplay = dieItems.find((d) => d.id === spec.die)?.name ?? spec.die;
   const costLabel = (key: string) => roller.fields.find((f) => f.key === key)?.label ?? titleCase(key);
+  // Damage Die: paid from one of the roller's numbers (by default what the roll already costs, else Energy).
+  const payItems: SelItem[] = roller.fields.filter((f) => f.type === "number").map((f) => ({ id: f.key, name: f.label, sub: f.key }));
+  const defaultPay = spec.costs[0]?.key ?? (roller.fields.some((f) => f.key === "energy") ? "energy" : payItems[0]?.id ?? "energy");
+  const baseCount = numOrNull(spec.count) ?? 1;
+  const dieShown = numOrNull(spec.die) ?? dieDisplay.replace(/^d/, "");
 
   return (
     <div className="rounded-lg border p-2.5 space-y-2" style={{ borderColor: "#d4a24c55", background: "#1c1917" }} data-testid={`ag-roll-editor-${action.name}`}>
@@ -251,6 +260,25 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
           <div className="text-[10px] text-stone-500">Spent from {spec.via ? <>its <b>{spec.via}</b></> : "this sheet"} before rolling; if they don't have enough, nothing happens and they're told why.</div>
         </div>
       </div>
+
+      {!limited && (
+        <div className="border-t border-stone-800 pt-2 space-y-1.5" data-testid="ag-roll-scale">
+          <Check1 on={!!spec.scale} onChange={(on) => save({ roll: { scale: on ? { step: String(defaultScaleStep(numOrNull(spec.die) ?? 6)), pay: defaultPay } : undefined } })} label="Damage Die — the roller can spend to roll more dice" testId="ag-roll-scale-on" />
+          {spec.scale && (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-stone-400">
+                <span>First extra die costs</span>
+                <Stepper value={spec.scale.step} min={0} max={100000} onChange={(step) => save({ roll: { scale: { ...spec.scale!, step } } })} testId="ag-roll-scale-step" />
+                <span>paid from</span>
+                <div className="w-36"><PickField value={spec.scale.pay} display={costLabel(spec.scale.pay)} items={payItems} onChange={(pay) => pay && save({ roll: { scale: { ...spec.scale!, pay } } })} title="Paid from which of their values?" testId="ag-roll-scale-pay" /></div>
+              </div>
+              <div className="text-[10px] text-stone-500" data-testid="ag-roll-scale-preview">
+                Each extra die costs that much more than the last: {[1, 2, 3, 4, 5, 7].map((m) => { const st = numOrNull(spec.scale!.step); return `${baseCount + m}d${dieShown}${st !== null ? ` ${scaleCost(st, m)}` : ""}`; }).join(" · ")}…
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-stone-800 pt-2">
         <Check1 on={opts.listed !== false} onChange={(listed) => save({ options: { listed } })} label="Button on the character sheet" testId="ag-roll-listed" />

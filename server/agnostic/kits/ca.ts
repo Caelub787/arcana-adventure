@@ -9,7 +9,8 @@
 // effects are modifiers on the character.
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { randomUUID } from "crypto";
-import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue } from "@shared/agnostic/types";
+import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale } from "@shared/agnostic/types";
+import { defaultScaleStep } from "@shared/agnostic/types";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import { copySheet, markAsCopy, syncCopyOwners } from "../copies";
@@ -58,14 +59,112 @@ const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }>
   { key: "survival", name: "Survival", parent: "intelligence", desc: "Tracking, foraging, navigating, and living off the land." },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
-// The Universal Rank ladder: Bronze 1 at 0, then the source table's figures,
-// each rank ten times the last (Silver 100–500, Gold 1,000–5,000 … Livelihood
-// 1,000,000–5,000,000). Lifespan +50 years a rank; absorption ×10 a rank.
-// Add a rank by adding its name here — every number and formula follows.
-export const RANK_NAMES = ["Bronze", "Silver", "Gold", "Obsidian", "Terran", "Livelihood"];
+// The rank ladder: nine ranks of nine Pillars, read off the Energy Pool. A Pillar is a tenth of its rank (Pillar 9
+// holds the last two tenths); Awakened's 900 splits evenly into nine 100s. Health and Lifespan are the rank's own;
+// Usable Energy is the floor of the Pillar you're on; Focus and skill points rise on each rank up and on Pillars 2,
+// 4, 6 and 8 (+5 a rank); attribute points rise once a rank. Absorption is half a Pillar (Mortal: 20).
+export interface RankRung { name: string; start: number; step: number; hp: number; lifespan: number }
+export const RANKS: RankRung[] = [
+  { name: "Mortal", start: 0, step: 10, hp: 50, lifespan: 100 },
+  { name: "Awakened", start: 100, step: 100, hp: 100, lifespan: 200 },
+  { name: "Tempered", start: 1000, step: 100, hp: 150, lifespan: 300 },
+  { name: "Refined", start: 2000, step: 100, hp: 200, lifespan: 400 },
+  { name: "Enlightened", start: 3000, step: 100, hp: 250, lifespan: 500 },
+  { name: "Exalted", start: 4000, step: 100, hp: 300, lifespan: 600 },
+  { name: "Ascendant", start: 5000, step: 500, hp: 500, lifespan: 1000 },
+  { name: "Transcendent", start: 10000, step: 500, hp: 700, lifespan: 1400 },
+  { name: "Paragon", start: 15000, step: 500, hp: 1000, lifespan: 2000 },
+];
+export const PILLARS = 9;
+export const RANK_NAMES = RANKS.map((r) => r.name);
 
-/** Every figure on a ladder of these ranks (five stars each), and the formulas that read it. */
-export function rankLadder(names: string[]) {
+/** Every figure on the ladder, and the formulas that read it. */
+export function rankLadder(ranks: RankRung[] = RANKS) {
+  const thresholds = ranks.flatMap((r) => Array.from({ length: PILLARS }, (_, k) => r.start + r.step * k));
+  const labels = ranks.flatMap((r) => Array.from({ length: PILLARS }, (_, k) => `${r.name} Pillar ${k + 1}`));
+  const hp = ranks.map((r) => r.hp);
+  const lifespan = ranks.map((r) => r.lifespan);
+  const absorb = ranks.map((r, i) => (i === 0 ? 20 : r.step / 2));
+  const usable = thresholds;
+  // +1 on each rank up and on Pillars 2, 4, 6, 8: five a rank.
+  const growth = (idx: number) => 5 * Math.floor(idx / PILLARS) + Math.floor(((idx % PILLARS) + 1) / 2);
+  return {
+    thresholds, hp, labels, lifespan, absorb, usable, growth,
+    formulas: {
+      rank_index: `tier(energy_pool, ${thresholds.join(", ")})`,
+      rank: `concat(choose(floor(rank_index / ${PILLARS}), ${ranks.map((r) => `"${r.name}"`).join(", ")}), " Pillar ", rank_index % ${PILLARS} + 1)`,
+      to_next_rank: `max(0, choose(rank_index + 1, ${thresholds.join(", ")}) - energy_pool)`,
+      lifespan: `choose(floor(rank_index / ${PILLARS}), ${lifespan.join(", ")})`,
+      absorption_limit: `choose(floor(rank_index / ${PILLARS}), ${absorb.join(", ")})`,
+      hp_max: `choose(floor(rank_index / ${PILLARS}), ${hp.join(", ")})`,
+      usable_energy: `choose(rank_index, ${usable.join(", ")})`,
+    } as Record<string, string>,
+  };
+}
+const LADDER = rankLadder();
+const THRESHOLDS = LADDER.thresholds;
+export const LADDER_LABELS = LADDER.labels;
+/** An item's rank is its rarity: Unranked, or one of the ranks (never a Pillar). It colours the item and sets its rune sockets. */
+export const ITEM_RANKS = ["Unranked", ...RANK_NAMES];
+export const ITEM_RANK_COLORS: Record<string, string> = {
+  Unranked: "#78716c", Mortal: "#c2783e", Awakened: "#cbd5e1", Tempered: "#facc15", Refined: "#34d399", Enlightened: "#38bdf8",
+  Exalted: "#a78bfa", Ascendant: "#f472b6", Transcendent: "#f87171", Paragon: "#fde68a",
+};
+/** Rune sockets by rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). */
+export const RUNE_SOCKETS_FORMULA = RANK_NAMES.reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
+export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Use wears it down; a smith can mend it.";
+export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
+export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). A rune takes one; when they're full, no more can be inscribed.";
+/** An item rank from anything (an old rank or a character rank): one of ITEM_RANKS, Unranked if it isn't one. */
+export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : "Unranked"; };
+/** Item kinds that can carry runes (gear, not supplies). */
+export const RUNEABLE_KINDS = ["Weapon", "Armor", "Container", "Miscellaneous"];
+const RANK_LIFESPAN = LADDER.lifespan;
+const RANK_ABSORB = LADDER.absorb;
+export const RANK_FORMULAS = LADDER.formulas;
+/** Max Focus: 6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8 (+5 a rank). */
+export const FOCUS_FORMULA = `6 + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS} + 1) / 2)`;
+const focusAt = (idx: number) => 6 + LADDER.growth(idx);
+/** Usable Energy is the floor of the Pillar you're on (Awakened Pillar 2, 257 in the pool → 200), not the pool's every point. */
+export const USABLE_LADDER = LADDER.usable;
+// Attribute points: +1 per rank. Skill points: +1 on each rank up and on Pillars 2, 4, 6 and 8 (as Focus).
+// Training items add bonus points (and pay for the values they raise directly).
+// C.A. has no levels — characters grow by rank.
+export const ATTR_BUDGET_FORMULA = `4 + floor(rank_index / ${PILLARS}) + bonus_attr_points`;
+export const SKILL_BUDGET_FORMULA = `8 + skill_reclaimed + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS} + 1) / 2) + bonus_skill_points`;
+/** The budgets before levels went (kit levels up to 15), to recognise ones the GM hasn't changed. */
+export const LEVEL_ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + floor(rank_index / 5) + bonus_attr_points";
+export const LEVEL_SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index + bonus_skill_points";
+export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per rank (Awakened, Tempered…) + bonus points from training items.";
+export const SKILL_BUDGET_NOTE = "8 + one on each rank up and on Pillars 2, 4, 6 and 8 (five a rank) + bonus points from training items; up to 6 back from skills below 0.";
+export const ATTR_DIE_NOTE = "Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.";
+export const SKILL_ROLL_NOTE = "Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).";
+export const TEMP_HP_COLOR = "#22c55e";
+export const TEMP_ENERGY_COLOR = "#ec4899";
+export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
+export const USABLE_FORMULA = RANK_FORMULAS.usable_energy;
+export const USABLE_NOTE = " — the floor of your Pillar; it goes up when you break through to the next Pillar, not with every point of the pool";
+
+/** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
+export function rankTooltip(): string {
+  const n = (x: number) => x.toLocaleString("en-US");
+  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. Each rank has nine **Pillars**. **Usable Energy** is what you spend: the floor of the Pillar you're on, so it only goes up when you break through to the next Pillar.", ""];
+  RANKS.forEach((r, ri) => {
+    out.push(`## ${r.name} · Health ${n(r.hp)} · Lifespan ${n(RANK_LIFESPAN[ri])} yrs · Absorbs ${n(RANK_ABSORB[ri])}`);
+    out.push("Pillar | Energy Pool | Usable | Max Focus");
+    for (let k = 0; k < PILLARS; k++) {
+      const idx = ri * PILLARS + k;
+      const top = idx + 1 < THRESHOLDS.length ? n(THRESHOLDS[idx + 1] - 1) : "+";
+      out.push(`${k + 1} | ${n(THRESHOLDS[idx])}${top === "+" ? "+" : `–${top}`} | ${n(USABLE_LADDER[idx])} | ${focusAt(idx)}`);
+    }
+    out.push("");
+  });
+  return out.join("\n").trim();
+}
+
+// ---- The ladder before Pillars (six ranks of five stars), for bringing old campaigns up to date step by step.
+export const LEGACY_RANK_NAMES = ["Bronze", "Silver", "Gold", "Obsidian", "Terran", "Livelihood"];
+export function legacyRankLadder(names: string[]) {
   const thresholds = [0, 20, 30, 40, 50, ...names.slice(1).flatMap((_, r) => [1, 2, 3, 4, 5].map((st) => 10 ** (r + 2) * st))];
   const hp = thresholds.map((_, idx) => { let v = 20; for (let k = 1; k <= idx; k++) v += k % 5 === 0 ? 10 : 5; return v; });
   const labels = thresholds.map((_, idx) => `${names[Math.floor(idx / 5)]} ${idx % 5 + 1}`);
@@ -85,66 +184,9 @@ export function rankLadder(names: string[]) {
     } as Record<string, string>,
   };
 }
-const LADDER = rankLadder(RANK_NAMES);
-const THRESHOLDS = LADDER.thresholds;
-const HP_LADDER = LADDER.hp;
-export const LADDER_LABELS = LADDER.labels;
-/** An item's Rank: most items have a rank but no star ("Gold"); some have a star ("Gold 3"). */
-export const ITEM_RANK_CHOICES = ["Unranked", ...RANK_NAMES.flatMap((r) => [r, ...LADDER_LABELS.filter((l) => l.startsWith(`${r} `))])];
-/** An item's rank is its rarity: whole ranks only (no stars). It colours the item and sets its rune sockets. */
-export const ITEM_RANKS = [...RANK_NAMES];
-export const ITEM_RANK_COLORS: Record<string, string> = Object.fromEntries(RANK_NAMES.map((r, i) => [r, ["#c2783e", "#cbd5e1", "#facc15", "#a78bfa", "#34d399", "#f472b6", "#38bdf8", "#f87171"][i % 8]]));
-/** Rune sockets by rank: none at the lowest, one more each rank up. */
-export const RUNE_SOCKETS_FORMULA = RANK_NAMES.slice(1).reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
-export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Use wears it down; a smith can mend it.";
-export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
-export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.";
-/** The item rank a character rank or an old item rank comes down to ("Gold 3" → "Gold", "Unranked" → the lowest). */
-export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : RANK_NAMES[0]; };
-/** Item kinds that can carry runes (gear, not supplies). */
-export const RUNEABLE_KINDS = ["Weapon", "Armor", "Container", "Miscellaneous"];
-const RANK_LIFESPAN = LADDER.lifespan;
-const RANK_ABSORB = LADDER.absorb;
-export const RANK_FORMULAS = LADDER.formulas;
-/** Max Focus: 6 to start, +1 per star (every step on the ladder, ranks included). */
-export const FOCUS_FORMULA = "6 + rank_index";
-const focusAt = (idx: number) => 6 + idx;
-/** Usable Energy is set by the star you're at (the table's figure for it), not by the pool's every point. */
-export const USABLE_LADDER = LADDER.usable;
-/** Point budgets: every star (rank_index step) adds one attribute point and one skill (modifier) point. */
-// Attribute points: +1 per main rank (Silver, Gold…). Skill points: +1 per star — a rank up is one step, so one point.
-// Training items add bonus points (and pay for the values they raise directly).
-// C.A. has no levels — characters grow by rank.
-export const ATTR_BUDGET_FORMULA = "4 + floor(rank_index / 5) + bonus_attr_points";
-export const SKILL_BUDGET_FORMULA = "8 + skill_reclaimed + rank_index + bonus_skill_points";
-/** The budgets before levels went (kit levels up to 15), to recognise ones the GM hasn't changed. */
-export const LEVEL_ATTR_BUDGET_FORMULA = "4 + floor(level / 3) + floor(rank_index / 5) + bonus_attr_points";
-export const LEVEL_SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + rank_index + bonus_skill_points";
-export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per rank (Silver, Gold…) + bonus points from training items.";
-export const SKILL_BUDGET_NOTE = "8 + one per star (a rank up counts once) + bonus points from training items; up to 6 back from skills below 0.";
-export const ATTR_DIE_NOTE = "Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.";
-export const SKILL_ROLL_NOTE = "Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).";
-export const TEMP_HP_COLOR = "#22c55e";
-export const TEMP_ENERGY_COLOR = "#ec4899";
-export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
-export const USABLE_FORMULA = `choose(rank_index, ${USABLE_LADDER.join(", ")})`;
-export const USABLE_NOTE = " — set by your star; it goes up when you break through, not with every point of the pool";
-
-/** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
-export function rankTooltip(): string {
-  const n = (x: number) => x.toLocaleString("en-US");
-  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. **Usable Energy** is what you spend: a set amount for each star, which only goes up when you break through to the next star or rank.", ""];
-  RANK_NAMES.forEach((name, r) => {
-    out.push(`## ${name} · Lifespan ${n(RANK_LIFESPAN[r])} yrs · Absorbs ${n(RANK_ABSORB[r])}`);
-    out.push("Star | Energy Pool | Usable | Max HP | Max Focus");
-    for (let k = 0; k < 5; k++) {
-      const idx = r * 5 + k;
-      out.push(`${LADDER_LABELS[idx]} | ${n(THRESHOLDS[idx])} | ${n(Math.floor(THRESHOLDS[idx] / 2))} | ${HP_LADDER[idx]} | ${focusAt(idx)}`);
-    }
-    out.push("");
-  });
-  return out.join("\n").trim();
-}
+export const LEGACY_LADDER_LABELS = legacyRankLadder(LEGACY_RANK_NAMES).labels;
+/** Old item ranks, with stars ("Gold 3"). */
+export const LEGACY_ITEM_RANK_CHOICES = ["Unranked", ...LEGACY_RANK_NAMES.flatMap((r) => [r, ...LEGACY_LADDER_LABELS.filter((l) => l.startsWith(`${r} `))])];
 
 // Abilities: each one its own small sheet held by a character (like items).
 const ABILITY_CATEGORIES = ["Attack", "Defense", "Support", "Movement", "Utility", "Passive"];
@@ -189,9 +231,9 @@ export class Sheet {
     return id;
   }
   /** A roll set up with boxes (dice, what's added, costs) — see the Rolls block. */
-  roll(id: string, name: string, roll: { via: string; count?: string; die: string; add?: string; bonus?: string; costs?: Array<{ key: string; amount: string }> }, icon: string, color: string, sortOrder: number) {
+  roll(id: string, name: string, roll: { via: string; count?: string; die: string; add?: string; bonus?: string; costs?: Array<{ key: string; amount: string }>; scale?: AgRollScale }, icon: string, color: string, sortOrder: number) {
     return this.action(id, name, [], color, "owners", {
-      roll: { via: roll.via, count: roll.count ?? "1", die: roll.die, add: roll.add ?? "", bonus: roll.bonus ?? "0", costs: roll.costs ?? [] },
+      roll: { via: roll.via, count: roll.count ?? "1", die: roll.die, add: roll.add ?? "", bonus: roll.bonus ?? "0", costs: roll.costs ?? [], ...(roll.scale ? { scale: roll.scale } : {}) },
       icon, showName: true, showIcon: true, listed: true, sortOrder,
     });
   }
@@ -393,12 +435,16 @@ export function runeSlotNodes(): DocNode[] {
 }
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
-export const RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
+export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank; Focus and skill points rise on each rank up and on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.";
+/** The texts before Pillars, to find and replace on existing sheets. */
+export const LEGACY_RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
 export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds).";
 export const INITIATIVE_HELP = "Rolls **1d20 + Finesse** and puts you in the turn order.";
-export const HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
+export const LEGACY_HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
+export const HEALTH_HELP = "Set by your rank: Mortal 50, Awakened 100, Tempered 150, Refined 200, Enlightened 250, Exalted 300, Ascendant 500, Transcendent 700, Paragon 1,000 — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
 export const POOL_HELP = "All the energy you've cultivated. It sets your Rank; it doesn't run down when you use abilities — that's Energy, below.";
-export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar (the +number). Click the bar to spend or restore, or to set Temp Energy.";
+export const LEGACY_ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is set by your star: it goes up when you break through, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar (the +number). Click the bar to spend or restore, or to set Temp Energy.";
+export const ENERGY_HELP = "What you have to spend on abilities, up to your **Usable Energy** (after the /). Usable Energy is the floor of the Pillar you're on (257 in an Awakened pool → 200): it goes up when you break through to the next Pillar, not with every point of the pool. **Temp Energy** is spent first and shows in pink on the bar (the +number). Click the bar to spend or restore, or to set Temp Energy.";
 export const WOUNDS_HELP = "Minor = 5+ over the DC · Moderate = 10+ · Severe = 15+. A wound's effects change skills and speed while it lasts — open it to Treat it.";
 export const TRAITS_HELP = "Hover a trait (tap it on a phone) to see what it does and use its rolls. Click it (double-tap or hold on a phone) to open it. **Show all** lays every trait out in full — just for you, and it stays that way until you press it again.";
 /** The vitals' boxes: each stat in its own frame, boxes in a row the same height. */
@@ -414,7 +460,7 @@ export function vitalsNodes(initiativeActionId: string | null): DocNode[] {
   const bar = (ref: string, maxRef: string, color: string) => block(ref, { maxRef, display: "bar", showLabel: false, look: { color, track: "#3f3a2a", height: 16, radius: 4, numbers: "fraction", fontSize: 11 } });
   return [
     columns([
-      [title("Star", GILT, "Rank", RANK_HELP), p(big("rank", GILT), "  ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } }))],
+      [title("Landmark", GILT, "Rank", RANK_HELP), p(big("rank", GILT), "  ", val("rank_next", { look: { textColor: "#78716c", fontSize: 11 } }))],
       [title("Zap", GILT, "Energy Pool", POOL_HELP), p(big("energy_pool"))],
       [title("Shield", GILT, "DC", DC_HELP), p(big("dc", GILT))],
       [title("Swords", GILT, "Initiative", INITIATIVE_HELP), ...(initiativeActionId ? [p(button(initiativeActionId, "Roll", { height: 26, fontSize: 12 }))] : [])],
@@ -694,7 +740,8 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     // Crafted weapons (and runes) raise these; the rolls add them.
     s.num("damage_bonus", "Damage bonus", 0, { tooltip: "Added to the Damage roll. Forging and runes raise it." }).num("accuracy", "Accuracy", 0, { tooltip: "Added to the Strike roll. A well-forged handle raises it." });
     s.roll("a_strike", "Strike", { via: "owner", die: "20", bonus: "accuracy" }, "die:d20", "#b45309", 1);
-    s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus" }, "die:d8", "#b91c1c", 2);
+    // Damage Die: the wielder can spend Energy to roll more of the weapon's die.
+    s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, "die:d8", "#b91c1c", 2);
     body.push(p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } }), "    ", muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), "    ", muted("ACCURACY "), val("accuracy", { look: { bold: true } })));
   }
   if (kind === "Training") {
@@ -827,7 +874,8 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
 
 // --------------------------------------------------------------------------- wounds & traits
 /** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
-export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
+export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8. Resets on a long rest. Click the bar to spend or restore it.";
+export const LEGACY_FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
 
@@ -934,7 +982,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,
       cultivation: "Ember", weight_capacity: 50,
     }, cs);
-    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Silver", weight: 3, value: 400, durability: 90, equipped: true, damage_bonus: 6 }, cs);
+    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Awakened", weight: 3, value: 400, durability: 90, equipped: true, damage_bonus: 6 }, cs);
     await setRoll(store, sword, "Strike", { add: "might" }, cs);
     const shield = await createFrom(store, made.Armor, "Bulwark of Veridun", { rarity: "Uncommon", weight: 6, value: 180, armor_dc: 2, equipped: true }, cs);
     const potion = await createFrom(store, made.Consumable, "Minor Health Potion", { rarity: "Uncommon", qty: 2, weight: 0.2, value: 50 }, cs);

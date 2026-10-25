@@ -141,14 +141,15 @@ async function starterSet(store: ScopeStore, cs: ChangeSet, tpl: Record<string, 
   const bp = (name: string, desc: string, config: Omit<ForgeConfig, "kind" | "partTemplate" | "effects">) =>
     make(tpl.forge, name, { description: desc, craft: JSON.stringify({ kind: "forge", partTemplate: tpl.Part.id, effects: [], ...config } satisfies ForgeConfig) }, open);
   const W = weaponTpl?.id ?? null;
-  await bp("Longsword", "A straight two-edged blade on a gripped handle, with a guard and pommel if you like.", { damageDie: 8, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "long_blade" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }, { key: "pommel", label: "Pommel", role: "extra", shape: "pommel", optional: true }] });
-  await bp("Dagger", "A short blade — quick and light.", { damageDie: 4, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "short_blade" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }] });
+  await bp("Longsword", "A straight two-edged blade on a gripped handle, with a guard and pommel if you like.", { damageDie: 10, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "long_blade" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }, { key: "pommel", label: "Pommel", role: "extra", shape: "pommel", optional: true }] });
+  await bp("Dagger", "A short blade — quick and light.", { damageDie: 6, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "short_blade" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }] });
   await bp("Sabre", "A curved, single-edged blade.", { damageDie: 8, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "curved_blade" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }] });
   await bp("Battle Axe", "A heavy axe head on a long haft.", { damageDie: 10, output: W, parts: [{ key: "head", label: "Axe head", role: "blade", shape: "axe_head" }, { key: "haft", label: "Haft", role: "handle", shape: "long_haft" }] });
   await bp("Scythe", "A sweeping blade on a pole.", { damageDie: 10, output: W, parts: [{ key: "blade", label: "Blade", role: "blade", shape: "scythe_blade" }, { key: "haft", label: "Haft", role: "handle", shape: "long_haft" }] });
   await bp("Spear", "A leaf-shaped head on a long haft.", { damageDie: 8, output: W, parts: [{ key: "head", label: "Spear head", role: "blade", shape: "spear_head" }, { key: "haft", label: "Haft", role: "handle", shape: "long_haft" }] });
-  await bp("Warhammer", "A crushing head on a haft.", { damageDie: 10, output: W, parts: [{ key: "head", label: "Hammer head", role: "blade", shape: "hammer_head" }, { key: "haft", label: "Haft", role: "handle", shape: "long_haft" }] });
+  await bp("Warhammer", "A crushing head on a haft.", { damageDie: 12, output: W, parts: [{ key: "head", label: "Hammer head", role: "blade", shape: "hammer_head" }, { key: "haft", label: "Haft", role: "handle", shape: "long_haft" }] });
   await bp("Bow Stave", "The bow's body — a springy stave and a grip.", { damageDie: 8, output: W, parts: [{ key: "stave", label: "Stave", role: "blade", shape: "bow_stave" }, { key: "grip", label: "Grip", role: "handle", shape: "grip", optional: true }] });
+  for (const nb of NEW_BLUEPRINTS) await bp(nb.name, nb.description, { damageDie: nb.damageDie, output: W, parts: nb.parts });
   await bp("Arrowhead", "Arrow tips (with fletching if you like).", { damageDie: 6, output: ammoTpl?.id ?? W, parts: [{ key: "tip", label: "Arrow tip", role: "blade", shape: "arrow_tip" }, { key: "fletching", label: "Fletching", role: "extra", shape: "fletching", optional: true }] });
 
   // A recipe and what it makes.
@@ -287,6 +288,41 @@ export const STARTER_BREW_EFFECTS: Record<string, CraftTierEffect[]> = {
     { key: "heal_dice", mode: "set", values: { weak: "1d2", default: "1d4", slight: "1d6", huge: "2d6" } },
   ],
 };
+
+// ---- Weapons by damage die: Dagger d6, Short Sword d8, Longsword d10, Warhammer d12, Bow d8, Longbow d10, Warbow d12.
+export const NEW_BLUEPRINTS: Array<{ name: string; description: string; damageDie: number; parts: ForgeConfig["parts"] }> = [
+  { name: "Short Sword", description: "A short straight blade — longer than a dagger, quicker than a longsword.", damageDie: 8,
+    parts: [{ key: "blade", label: "Blade", role: "blade", shape: "short_sword" }, { key: "handle", label: "Handle", role: "handle", shape: "grip" }, { key: "guard", label: "Guard", role: "extra", shape: "guard", optional: true }] },
+  { name: "Longbow", description: "A tall bow — a long, springy stave and a grip.", damageDie: 10,
+    parts: [{ key: "stave", label: "Stave", role: "blade", shape: "long_stave" }, { key: "grip", label: "Grip", role: "handle", shape: "grip", optional: true }] },
+  { name: "Warbow", description: "A heavy war bow — a thick stave that takes real strength to draw.", damageDie: 12,
+    parts: [{ key: "stave", label: "Stave", role: "blade", shape: "war_stave" }, { key: "grip", label: "Grip", role: "handle", shape: "grip", optional: true }] },
+];
+/** The old starter dice, to change only blueprints the GM hasn't (Dagger d4 → d6, Longsword d8 → d10, Warhammer d10 → d12). */
+const REDICED: Record<string, [number, number]> = { Dagger: [4, 6], Longsword: [8, 10], Warhammer: [10, 12] };
+/**
+ * Bring a campaign's weapon blueprints to the dice above: the starter ones that still have their old die get the new
+ * one, and Short Sword, Longbow and Warbow are added (made like the Longsword blueprint) if there aren't any by those names.
+ */
+export async function updateWeaponBlueprints(store: ScopeStore, cs: ChangeSet) {
+  const defs = Array.from(store.notes.values()).filter((n) => !n.isTemplate && !n.copyOf && n.type === CRAFT_DEF_TYPE.forge);
+  const configOf = (n: AgNote) => { const f = store.fieldsByNote.get(n.id)?.get("craft"); const c = f ? parseCraftConfig(f.value) : null; return f && c?.kind === "forge" ? { f, c } : null; };
+  for (const n of defs) {
+    const r = REDICED[n.name], fc = configOf(n);
+    if (!r || !fc || fc.c.damageDie !== r[0]) continue;
+    const next = { ...fc.c, damageDie: r[1] };
+    await store.putField({ ...fc.f, value: (typeof fc.f.value === "string" ? JSON.stringify(next) : next) as any }, cs);
+  }
+  const model = defs.find((n) => n.name === "Longsword" && configOf(n)) ?? defs.find((n) => configOf(n));
+  if (!model) return;
+  const base = configOf(model)!.c;
+  for (const nb of NEW_BLUEPRINTS) {
+    if (defs.some((n) => n.name === nb.name)) continue;
+    const made = await snap.createFromSnapshot(store, await snap.takeSnapshot(store, model.id), { name: nb.name, folder: model.folder, ownerIds: [], acl: model.acl }, cs, { fromTemplateId: model.templateId ?? undefined });
+    await fieldVal(store, made, "description", nb.description, cs);
+    await fieldVal(store, made, "craft", JSON.stringify({ ...base, damageDie: nb.damageDie, parts: nb.parts }), cs);
+  }
+}
 
 export const STARTER_SCROLLS = ["scroll:Longsword", "scroll:Dagger", "scroll:Battle Axe", "scroll:Healing Draught Recipe", "scroll:Energy Tonic Recipe", "scroll:Rune of Flame", "scroll:Rune of Frost"];
 /** Give a character a copy of each of these (by key in `made`). */
