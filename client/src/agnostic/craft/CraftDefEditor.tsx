@@ -322,7 +322,7 @@ function ForgeDef({ c, save, editable }: { c: ForgeConfig; save: (c: ForgeConfig
           <select value={c.damageDie} disabled={!editable} onChange={(e) => set({ damageDie: Number(e.target.value) })} className={inputCls}>{[4, 6, 8, 10, 12, 20].map((d) => <option key={d} value={d}>d{d}</option>)}</select>
           <span className="text-[10px] text-stone-500">the blade's quality adds to it; handles add accuracy</span>
         </Row>
-        <OutputEditor label="Makes" id={c.output} editable={editable} onChange={(output) => set({ output })} hint="a plain item — choose a weapon template (its Strike / Damage rolls follow the parts)" />
+        <OutputEditor label="Makes" id={c.output} editable={editable} onChange={(output) => set({ output })} hint="a plain item — choose a weapon template (its Attack / Damage rolls follow the parts)" />
         <OutputEditor label="Parts are made as" id={c.partTemplate} editable={editable} onChange={(partTemplate) => set({ partTemplate })} hint="a plain item — choose a Part template" />
         <StatsEditor kind="forge" effects={c.effects ?? []} editable={editable} onChange={(effects) => set({ effects })} note="the weapon's numbers by how well it was made (without these, they come from the parts as forged)" />
       </div>

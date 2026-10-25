@@ -318,7 +318,7 @@ async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ 
   }
 }
 
-/** A made weapon's rolls follow its numbers: Damage rolls its die + damage bonus, Strike adds accuracy. */
+/** A made weapon's rolls follow its numbers: Damage rolls its die + damage bonus, Attack adds accuracy. */
 async function patchWeaponRolls(store: ScopeStore, noteId: string, damageDie: number, failed: boolean, cs: ChangeSet) {
   for (const a of store.actionsOf(noteId)) {
     const r = a.options?.roll;

@@ -86,8 +86,8 @@ export function rankLadder(ranks: RankRung[] = RANKS) {
   const lifespan = ranks.map((r) => r.lifespan);
   const absorb = ranks.map((r, i) => (i === 0 ? 20 : r.step / 2));
   const usable = thresholds;
-  // +1 on each rank up and on Pillars 2, 4, 6, 8: five a rank.
-  const growth = (idx: number) => 5 * Math.floor(idx / PILLARS) + Math.floor(((idx % PILLARS) + 1) / 2);
+  // Focus: +1 on each rank up and on Pillars 3, 5, 7, 9 (five a rank). Skill points: rank ups and Pillars 2, 4, 6, 8.
+  const growth = (idx: number) => 5 * Math.floor(idx / PILLARS) + Math.floor((idx % PILLARS) / 2);
   return {
     thresholds, hp, labels, lifespan, absorb, usable, growth,
     formulas: {
@@ -112,7 +112,7 @@ export const ITEM_RANK_COLORS: Record<string, string> = {
 };
 /** Rune sockets by rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). */
 export const RUNE_SOCKETS_FORMULA = RANK_NAMES.reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
-export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Use wears it down; a smith can mend it.";
+export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Lower it as the item takes wear or damage.";
 export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
 export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). A rune takes one; when they're full, no more can be inscribed.";
 /** An item rank from anything (an old rank or a character rank): one of ITEM_RANKS, Unranked if it isn't one. */
@@ -128,12 +128,14 @@ export const LEGACY_AMMO: Record<string, string> = { Bullet: "Pistol Round", Sto
 const RANK_LIFESPAN = LADDER.lifespan;
 const RANK_ABSORB = LADDER.absorb;
 export const RANK_FORMULAS = LADDER.formulas;
-/** Max Focus: 6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8 (+5 a rank). */
-export const FOCUS_FORMULA = `6 + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS} + 1) / 2)`;
+/** Max Focus: 6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9 (+5 a rank). */
+export const FOCUS_FORMULA = `6 + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS}) / 2)`;
 const focusAt = (idx: number) => 6 + LADDER.growth(idx);
+/** Skill points the ladder has given by this Pillar (beyond the 8 to start). */
+const skillsAt = (idx: number) => 5 * Math.floor(idx / PILLARS) + Math.floor(((idx % PILLARS) + 1) / 2);
 /** Usable Energy is the floor of the Pillar you're on (Awakened Pillar 2, 257 in the pool → 200), not the pool's every point. */
 export const USABLE_LADDER = LADDER.usable;
-// Attribute points: +1 per rank. Skill points: +1 on each rank up and on Pillars 2, 4, 6 and 8 (as Focus).
+// Attribute points: +1 per rank. Skill points: +1 on each rank up and on Pillars 2, 4, 6 and 8 (Focus: 3, 5, 7, 9).
 // Training items add bonus points (and pay for the values they raise directly).
 // C.A. has no levels — characters grow by rank.
 export const ATTR_BUDGET_FORMULA = `4 + floor(rank_index / ${PILLARS}) + bonus_attr_points`;
@@ -154,14 +156,14 @@ export const USABLE_NOTE = " — the floor of your Pillar; it goes up when you b
 /** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
 export function rankTooltip(): string {
   const n = (x: number) => x.toLocaleString("en-US");
-  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. Each rank has nine **Pillars**. **Usable Energy** is what you spend: the floor of the Pillar you're on, so it only goes up when you break through to the next Pillar.", ""];
+  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. Each rank has nine **Pillars**. **Usable Energy** is what you spend: the floor of the Pillar you're on, so it only goes up when you break through to the next Pillar. Each rank up adds 1 Focus, 1 skill point and 1 attribute point; within a rank, Focus rises on Pillars 3, 5, 7 and 9, skill points on Pillars 2, 4, 6 and 8.", ""];
   RANKS.forEach((r, ri) => {
     out.push(`## ${r.name} · Health ${n(r.hp)} · Lifespan ${n(RANK_LIFESPAN[ri])} yrs · Absorbs ${n(RANK_ABSORB[ri])}`);
-    out.push("Pillar | Energy Pool | Usable | Max Focus");
+    out.push("Pillar | Energy Pool | Usable | Max Focus | Skill points");
     for (let k = 0; k < PILLARS; k++) {
       const idx = ri * PILLARS + k;
       const top = idx + 1 < THRESHOLDS.length ? n(THRESHOLDS[idx + 1] - 1) : "+";
-      out.push(`${k + 1} | ${n(THRESHOLDS[idx])}${top === "+" ? "+" : `–${top}`} | ${n(USABLE_LADDER[idx])} | ${focusAt(idx)}`);
+      out.push(`${k + 1} | ${n(THRESHOLDS[idx])}${top === "+" ? "+" : `–${top}`} | ${n(USABLE_LADDER[idx])} | ${focusAt(idx)} | +${skillsAt(idx)}`);
     }
     out.push("");
   });
@@ -407,7 +409,7 @@ export const CRAFT_SKILL_HELP = {
   alchemy: "Your Alchemy bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
   rune_making: "Your Rune Making bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
 };
-export const CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil onto an item). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
+export const CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto an item with a free rune socket). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
 export const CRAFT_SKILLS_TIP = "Standalone bonuses (not tied to an attribute). Each craft's Quick Craft rolls d20 + its skill.";
 /** The crafting skills box at the bottom of the Skills tab. */
 export function craftingSkillNodes(): DocNode[] {
@@ -441,7 +443,7 @@ export function runeSlotNodes(): DocNode[] {
 }
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
-export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank; Focus and skill points rise on each rank up and on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.";
+export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank. Each rank up adds 1 Focus, 1 skill point and 1 attribute point; within a rank, Focus rises on Pillars 3, 5, 7 and 9 and skill points on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.";
 /** The texts before Pillars, to find and replace on existing sheets. */
 export const LEGACY_RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
 export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds).";
@@ -576,6 +578,7 @@ export function abilityTabContent(): DocNode[] {
 
 export function abilityTemplateSnapshot(): AgSnapshot { return abilityTemplate(); }
 export function aspectTemplateSnapshot(): AgSnapshot { return aspectTemplate(); }
+export function attackAspectTemplateSnapshot(): AgSnapshot { return attackAspectTemplate(); }
 
 export const ABILITY_ASPECTS_HELP = "Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.";
 /** An ability's tag colour (its ? explains it). */
@@ -603,7 +606,7 @@ export function aspectAbilityNode(): DocNode {
   return links("ability", [{ ref: "description", display: "text" }], { layout: "cards", accentBy: "tag_color", emptyText: "Not part of an ability yet — make it from an ability's Aspects, or connect it to one." });
 }
 export const ASPECT_ROLLS_HELP = "Each roll has its own dice, bonus and Energy / Focus cost, rolled and paid by whoever has this aspect's ability. Hold a roll for advantage, disadvantage or a modifier. Double-click any value to change it.";
-export const ASPECT_TEMPLATE_DESCRIPTION = "An aspect: one use of an ability — category, range, duration and as many rolls as it needs, each with its own dice and Energy / Focus cost.";
+export const ASPECT_TEMPLATE_DESCRIPTION = "An aspect: one use of an ability — a Use roll (1d20, costs Energy) to start, and as many more rolls as it needs, each with its own dice and Energy / Focus cost. For one that deals damage, start from CA Attack Aspect.";
 
 /** An aspect's page: its ability, category, description, range / duration, its rolls, effects, GM notes. */
 export function aspectPage(gmRegionId: string | null): DocNode[] {
@@ -626,14 +629,26 @@ function abilityTemplate(): AgSnapshot {
   return s.snapshot({ type: "ability", name: "CA Ability", description: "An ability: a set of aspects (its single uses), each with its own rolls and costs." }, abilityPage("r_gm"));
 }
 
+/** The two kinds of ability aspect: a normal one (a Use roll) and an attack (Attack and Damage). */
+export const ATTACK_ASPECT_DESCRIPTION = "An attack aspect: one use of an ability that deals damage — an Attack roll (1d20, costs Energy) to see if it hits, and a Damage roll the user can spend Energy on to roll more dice (Damage Die).";
 function aspectTemplate(): AgSnapshot {
+  const s = new Sheet();
+  s.choice("category", "Category", ABILITY_CATEGORIES, "Utility", ABILITY_COLORS)
+    .text("range", "Range", "").text("duration", "Duration", "").text("description", "Description", "");
+  // One roll to start (Use: 1d20, paid in Energy); the GM adds more in the Rolls block.
+  s.roll("a_roll", "Use", { via: ASPECT_VIA, die: "20", costs: [{ key: "energy", amount: "10" }, { key: "focus", amount: "0" }] }, "die:d20", "#9f1239", 1);
+  s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this aspect only the GM sees."))], { view: "gm", edit: "gm" });
+  return s.snapshot({ type: "aspect", name: "CA Ability Aspect", description: ASPECT_TEMPLATE_DESCRIPTION }, aspectPage("r_gm"));
+}
+function attackAspectTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("category", "Category", ABILITY_CATEGORIES, "Attack", ABILITY_COLORS)
     .text("range", "Range", "").text("duration", "Duration", "").text("description", "Description", "");
-  // One roll to start; the GM adds more (an attack and its damage, two costs…) in the Rolls block.
-  s.roll("a_roll", "Roll", { via: ASPECT_VIA, die: `@${ASPECT_VIA}.anemos_die`, add: "arcana", costs: [{ key: "energy", amount: "10" }, { key: "focus", amount: "0" }] }, "die:d20", "#9f1239", 1);
+  // Attack (1d20, paid in Energy) to hit, then Damage — the user can spend Energy to roll more of its die.
+  s.roll("a_attack", "Attack", { via: ASPECT_VIA, die: "20", costs: [{ key: "energy", amount: "10" }, { key: "focus", amount: "0" }] }, "die:d20", "#b45309", 1);
+  s.roll("a_damage", "Damage", { via: ASPECT_VIA, die: "6", scale: { step: String(defaultScaleStep(6)), pay: "energy" } }, "die:d6", "#b91c1c", 2);
   s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this aspect only the GM sees."))], { view: "gm", edit: "gm" });
-  return s.snapshot({ type: "aspect", name: "CA Ability Aspect", description: ASPECT_TEMPLATE_DESCRIPTION }, aspectPage("r_gm"));
+  return s.snapshot({ type: "aspect", name: "CA Attack Aspect", description: ATTACK_ASPECT_DESCRIPTION }, aspectPage("r_gm"));
 }
 
 // ---- Before aspects (kit levels 1–7): an ability was one single use, held by the character.
@@ -708,7 +723,7 @@ export const MATERIAL_HELP = "For Blacksmithing. **Heat**: the range the metal m
 export const INGREDIENT_HELP = "For Alchemy and Rune Making: recipes ask for it by name (or by this sheet — copies of it count).";
 export const INK_HELP = "A liquid or ink for Rune Making. A rune drawn or carved with it takes its **colour**, and **glows** as brightly as its glow (0 = none, 100 = blazing) — on the item and its picture.";
 export const TOOL_HELP = "A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.";
-export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; pressing **Craft** puts you at the controls. Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).";
+export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; the first step you take puts you at the controls (only the GM can take over). Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).";
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
 export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
 export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";
@@ -744,8 +759,8 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   if (kind === "Weapon") {
     s.choice("handedness", "Handedness", ["Melee (one-handed)", "Melee (two-handed)", "Ranged"], "Melee (one-handed)");
     // Crafted weapons (and runes) raise these; the rolls add them.
-    s.num("damage_bonus", "Damage bonus", 0, { tooltip: "Added to the Damage roll. Forging and runes raise it." }).num("accuracy", "Accuracy", 0, { tooltip: "Added to the Strike roll. A well-forged handle raises it." });
-    s.roll("a_strike", "Strike", { via: "owner", die: "20", bonus: "accuracy" }, "die:d20", "#b45309", 1);
+    s.num("damage_bonus", "Damage bonus", 0, { tooltip: "Added to the Damage roll. Forging and runes raise it." }).num("accuracy", "Accuracy", 0, { tooltip: "Added to the Attack roll. A well-forged handle raises it." });
+    s.roll("a_attack", "Attack", { via: "owner", die: "20", bonus: "accuracy" }, "die:d20", "#b45309", 1);
     // Damage Die: the wielder can spend Energy to roll more of the weapon's die.
     s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, "die:d8", "#b91c1c", 2);
     body.push(p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } }), "    ", muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), "    ", muted("ACCURACY "), val("accuracy", { look: { bold: true } })));
@@ -872,7 +887,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
       p(muted("PART OF "), val("part_of", { look: { bold: true } }), "    ", muted("MATERIAL "), val("material", { look: { bold: true } })),
       p(muted("QUALITY "), val("quality", { look: { bold: true } }), muted("%    DAMAGE "), val("damage_bonus", { look: { bold: true } }), muted("    ACCURACY "), val("accuracy", { look: { bold: true } })));
   }
-  // Every item can have rolls (a weapon starts with Strike and Damage) and effects on its owner.
+  // Every item can have rolls (a weapon starts with Attack and Damage) and effects on its owner.
   body.push(...itemRollsNodes(), ...effectsNodes("owner", "equipped", ITEM_EFFECTS_HELP));
   if (RUNEABLE_KINDS.includes(kind)) {
     s.calc("rune_sockets", "Rune sockets", RUNE_SOCKETS_FORMULA).tip("rune_sockets", RUNE_SOCKETS_HELP);
@@ -890,13 +905,13 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   ];
   return s.snapshot({
     type: "item", name: kind === "Miscellaneous" ? "CA Item" : kind === "Training" ? "CA Training Item" : `CA ${kind}`, playersCanCreate: true,
-    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", "Ranged Weapon": "A bow, crossbow, blowgun or gun: its Attack uses up one equipped ammunition of its Ammo category from the owner's inventory; Damage roll; runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
+    description: { Weapon: "Handedness, Attack and Damage rolls (add more), runes.", "Ranged Weapon": "A bow, crossbow, blowgun or gun: its Attack uses up one equipped ammunition of its Ammo category from the owner's inventory; Damage roll; runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
   }, page);
 }
 
 // --------------------------------------------------------------------------- wounds & traits
 /** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
-export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8. Resets on a long rest. Click the bar to spend or restore it.";
+export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9. Resets on a long rest. Click the bar to spend or restore it.";
 export const LEGACY_FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
@@ -949,9 +964,6 @@ async function setRoll(store: ScopeStore, note: AgNote, name: string, roll: Part
   const a = store.actionsOf(note.id).find((x) => x.name === name && x.options?.roll);
   if (a) await store.putAction({ ...a, options: { ...a.options, roll: { ...a.options!.roll!, ...roll } } }, cs);
 }
-async function addRoll(store: ScopeStore, note: AgNote, name: string, roll: NonNullable<AgActionOptions["roll"]>, icon: string, color: string, sortOrder: number, cs: ChangeSet) {
-  await store.putAction({ id: randomUUID(), noteId: note.id, name, steps: [], acl: { view: "inherit", edit: "owners" }, color, options: { roll, icon, showName: true, showIcon: true, listed: true, sortOrder } }, cs);
-}
 async function connect(store: ScopeStore, from: AgNote, to: AgNote, label: string, reverseLabel: string, cs: ChangeSet) {
   await store.putLink({ id: randomUUID(), fromNoteId: from.id, toNoteId: to.id, label, reverseLabel, acl: { view: "inherit", edit: "inherit" }, createdAt: Date.now() }, cs);
 }
@@ -991,6 +1003,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
   await add("aspect", aspectTemplate());
+  await add("attackAspect", attackAspectTemplate());
   // Crafting: its item kinds (and a Forge, Alchemist Pot and Runemaking Pen ready to use) and the Blueprint / Recipe /
   // Rune Recipe templates. No items, blueprints or recipes: the GM makes their own from the templates.
   await applyCACrafting(store, cs);
@@ -1019,13 +1032,13 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     const oath = await createFrom(store, made.ability, "Iron Oath", { description: "A sworn guardian's arts: drawing harm onto yourself and holding the line.", tag_color: "#60a5fa" }, cs);
     for (const a of [embers, oath]) await connect(store, a, hero, "holder", "abilities", cs);
     const bulwark = await createFrom(store, made.aspect, "Oathbound Bulwark", { category: "Defense", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
-    await setRoll(store, bulwark, "Roll", { die: `@${ASPECT_VIA}.will_die`, add: "focus_skill", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
-    const lance = await createFrom(store, made.aspect, "Ember Lance", { category: "Attack", range: "30 ft", description: "A spear of burning Anemos: roll to hit, then its fire damage." }, cs);
-    // An attack aspect: an attack roll that pays, and a damage roll.
-    for (const a of store.actionsOf(lance.id)) if (a.options?.roll) await store.putAction({ ...a, name: "Attack", options: { ...a.options, roll: { ...a.options.roll, costs: [{ key: "energy", amount: "30" }, { key: "focus", amount: "0" }] } } }, cs);
-    await addRoll(store, lance, "Fire damage", { via: ASPECT_VIA, count: "2", die: "6", add: "", bonus: "0", costs: [] }, "fa-solid fa-fire", "#c2410c", 2, cs);
+    await setRoll(store, bulwark, "Use", { die: `@${ASPECT_VIA}.will_die`, add: "focus_skill", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
+    // Attack aspects: an Attack roll that pays, and a Damage roll (more dice for Energy).
+    const lance = await createFrom(store, made.attackAspect, "Ember Lance", { category: "Attack", range: "30 ft", description: "A spear of burning Anemos: roll to hit, then its fire damage." }, cs);
+    await setRoll(store, lance, "Attack", { costs: [{ key: "energy", amount: "30" }, { key: "focus", amount: "0" }] }, cs);
+    await setRoll(store, lance, "Damage", { count: "2" }, cs);
     const veil = await createFrom(store, made.aspect, "Cinder Veil", { category: "Defense", range: "Self", duration: "1 minute", description: "Wreathe yourself in embers: attackers within reach take fire damage." }, cs);
-    await setRoll(store, veil, "Roll", { count: "1", die: "4", add: "", costs: [{ key: "energy", amount: "15" }, { key: "focus", amount: "0" }] }, cs);
+    await setRoll(store, veil, "Use", { count: "1", die: "4", add: "", costs: [{ key: "energy", amount: "15" }, { key: "focus", amount: "0" }] }, cs);
     await connect(store, lance, embers, "ability", "aspects", cs);
     await connect(store, veil, embers, "ability", "aspects", cs);
     await connect(store, bulwark, oath, "ability", "aspects", cs);
@@ -1034,8 +1047,9 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     await connect(store, prison, hero, "holder", "abilities", cs);
     const hexer = await createFrom(store, made.ability, "Goblin Shaman (trapped)", { description: "The hexes of the goblin shaman held in the Soul Prison.", tag_color: "#a3e635" }, cs);
     await connect(store, hexer, prison, "holder", "abilities", cs);
-    const hex = await createFrom(store, made.aspect, "Hex Bolt", { category: "Attack", range: "60 ft", description: "A crackling green curse." }, cs);
-    await setRoll(store, hex, "Roll", { count: "2", die: "8", add: "", costs: [{ key: "energy", amount: "25" }, { key: "focus", amount: "1" }] }, cs);
+    const hex = await createFrom(store, made.attackAspect, "Hex Bolt", { category: "Attack", range: "60 ft", description: "A crackling green curse." }, cs);
+    await setRoll(store, hex, "Attack", { costs: [{ key: "energy", amount: "25" }, { key: "focus", amount: "1" }] }, cs);
+    await setRoll(store, hex, "Damage", { count: "2", die: "8", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, cs);
     await connect(store, hex, hexer, "ability", "aspects", cs);
     // What the example character has is theirs (in "Player Owned Copies").
     await adoptCharacterCopies(store, cs);

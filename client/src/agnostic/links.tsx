@@ -212,7 +212,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     if (c.display === "effects") return <EffectsList noteId={id} />;
     if (c.display === "connection") return <ConnectionTags noteId={id} label={c.ref} color={c.color} />;
     if (c.display === "button") {
-      // A button on the connected sheet, found by its name ("Use", "Strike"…).
+      // A button on the connected sheet, found by its name ("Use", "Attack"…).
       const want = c.ref.trim().toLowerCase();
       const a = Array.from(state.actions.values()).find((x) => x.noteId === id && x.name.trim().toLowerCase() === want);
       return a ? <span data-no-open><ActionButton actionId={a.id} label={c.label || a.name} look={{ height: compact ? 28 : 30, fontSize: 12, color: c.color }} /></span> : null;

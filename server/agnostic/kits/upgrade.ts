@@ -29,7 +29,7 @@ import {
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
-  itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO,
+  itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
@@ -40,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 29;
+export const CA_KIT_LEVEL = 30;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -81,6 +81,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 27) await upgrade27(store);
   if (level < 28) await upgrade28(store);
   if (level < 29) await upgrade29(store);
+  if (level < 30) await upgrade30(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1528,17 +1529,18 @@ const LEGACY_TEXTS: Array<[string, string]> = [
   ["6 to start, +1 per star", "6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8"],
 ];
 /** Swap old wordings for new in a page: the tips' text, and the words of its paragraphs (keeping their styling). */
-function retext(frag: Y.XmlFragment) {
+function retext(frag: Y.XmlFragment, texts: Array<[string, string]> = LEGACY_TEXTS) {
+  const LEGACY_TEXTS_ = texts;
   for (const tipEl of findAll(frag, (e) => e.nodeName === "agTip")) {
     let text = String(tipEl.getAttribute("text") ?? "");
-    for (const [from, to] of LEGACY_TEXTS) if (text.includes(from)) text = text.split(from).join(to);
+    for (const [from, to] of LEGACY_TEXTS_) if (text.includes(from)) text = text.split(from).join(to);
     if (text !== tipEl.getAttribute("text")) tipEl.setAttribute("text", text);
   }
   const walk = (node: Y.XmlFragment | Y.XmlElement) => {
     for (const c of node.toArray()) {
       if (c instanceof Y.XmlElement) { walk(c); continue; }
       if (!(c instanceof Y.XmlText)) continue;
-      for (const [from, to] of LEGACY_TEXTS) {
+      for (const [from, to] of LEGACY_TEXTS_) {
         for (let guard = 0; guard < 5; guard++) {
           const delta = c.toDelta() as Array<{ insert: unknown; attributes?: Record<string, unknown> }>;
           const plain = delta.map((d) => (typeof d.insert === "string" ? d.insert : "\u0000")).join("");
@@ -1714,4 +1716,63 @@ async function upgrade29(store: ScopeStore) {
     return { ...c, layout: { ...c.layout, items } };
   });
   if (changed) await store.run((cs) => store.putSettings({ ...st, tracker: { ...st.tracker, cards } }, cs));
+}
+
+// --------------------------------------------------------------------------- level 30
+// Focus rises on each rank up and on Pillars 3, 5, 7 and 9 (skill points stay on 2, 4, 6 and 8). No "Strike" roll:
+// a weapon's are Attack and Damage. Ability aspects come in two templates: a normal one (a Use roll, 1d20) and
+// CA Attack Aspect (Attack and Damage). Help texts put right: Focus and skill points, durability (no mending),
+// stations (the first step takes the controls), Rune Making (freehand too).
+const PREV_TEXTS: Array<[string, string]> = [
+  ["Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank; Focus and skill points rise on each rank up and on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.", RANK_HELP],
+  ["Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 2, 4, 6 and 8. Resets on a long rest. Click the bar to spend or restore it.", FOCUS_NOTE],
+  ["A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; pressing **Craft** puts you at the controls. Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).", STATION_HELP],
+  ["How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Use wears it down; a smith can mend it.", DURABILITY_HELP],
+  ["Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil onto an item). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.", CRAFTING_HELP],
+  ["Added to the Strike roll. A well-forged handle raises it.", "Added to the Attack roll. A well-forged handle raises it."],
+];
+async function upgrade30(store: ScopeStore) {
+  const pages = new Set<string>();
+  await store.run(async (cs) => {
+    if (!Array.from(store.notes.values()).some((n) => n.isTemplate && n.name === "CA Attack Aspect")) await snap.createFromSnapshot(store, attackAspectTemplateSnapshot(), {}, cs);
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      // Focus on the odd Pillars, and the ladder (with its skill points) behind Rank's ?.
+      const fm = fields?.get("focus_max");
+      if (fm && fm.type === "formula" && (fm.formula ?? "").includes("rank_index") && fm.formula !== FOCUS_FORMULA) await store.putField({ ...fm, formula: FOCUS_FORMULA }, cs);
+      const rank = fields?.get("rank");
+      if (rank && fields?.get("rank_index")) { pages.add(n.id); await store.putField({ ...rank, options: { ...rank.options, tooltip: rankTooltip() } }, cs); }
+      // Values' own tooltips.
+      for (const f of Array.from(fields?.values() ?? [])) {
+        const tt = f.options?.tooltip;
+        if (!tt) continue;
+        let next = tt;
+        for (const [from, to] of PREV_TEXTS) if (next.includes(from)) next = next.split(from).join(to);
+        if (next !== tt) { pages.add(n.id); await store.putField({ ...f, options: { ...f.options, tooltip: next } }, cs); }
+      }
+      if (fields?.get("durability") || fields?.get("station_for")) pages.add(n.id);
+      // No Strike: Attack.
+      for (const a of store.actionsOf(n.id)) if (a.name === "Strike") await store.putAction({ ...a, name: "Attack" }, cs);
+      // Ability aspects' one roll is Use (the normal template: a plain 1d20).
+      if (n.type === "aspect") for (const a of store.actionsOf(n.id)) {
+        if (a.name !== "Roll" || !a.options?.roll) continue;
+        const plain = n.isTemplate && n.name === "CA Ability Aspect";
+        await store.putAction({ ...a, name: "Use", options: { ...a.options, roll: { ...a.options.roll, ...(plain ? { die: "20", add: "" } : {}) } } }, cs);
+      }
+      // The normal aspect template starts as Utility (attacks have their own template).
+      if (n.isTemplate && n.type === "aspect" && n.name === "CA Ability Aspect") {
+        const cat = fields?.get("category");
+        if (cat && cat.value === "Attack") await store.putField({ ...cat, value: "Utility" }, cs);
+        await store.putNote({ ...n, templateMeta: { ...(n.templateMeta ?? { version: 1 }), description: ASPECT_TEMPLATE_DESCRIPTION } }, cs);
+      }
+      // Templates' descriptions.
+      if (n.isTemplate && n.templateMeta?.description?.includes("Strike")) await store.putNote({ ...n, templateMeta: { ...n.templateMeta, description: n.templateMeta.description.split("Strike").join("Attack") } }, cs);
+    }
+  });
+  for (const id of Array.from(pages)) {
+    const n = store.notes.get(id);
+    if (!n) continue;
+    await editPage(n, (_doc, frag) => retext(frag, PREV_TEXTS));
+    for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag, PREV_TEXTS));
+  }
 }

@@ -439,7 +439,7 @@ function Anvil({ characterId, bp, s, set, playing, stationId }: { characterId: s
       {playing && (
         <div className="text-[11px] text-stone-500" data-testid="forge-hint">
           {tool === "hammer"
-            ? <>Strike the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Strike the metal itself.</span>}</>
+            ? <>Hit the red stock to knock it off, block by block — down to the gold line. Hammer while the heat is in the green band. <span className="text-stone-400">Blacksmithing {skill}: {SKILL_WORDS[skill]}</span>{miss > 0 && <span className="text-amber-300/90"> Hit the metal itself.</span>}</>
             : <>The grindstone smooths the edge down to the gold line: hold it on the stock near the line and move along it to bring out points and curves. It wears from the outside in, only within about a block of the line — stock farther out is the hammer's. <span className="text-stone-400">Blacksmithing {skill}: {GRIND_WORDS[skill]}</span>{skate && <span className="text-amber-300/90" data-testid="forge-skate"> {skate === "far" ? "That's too far from the line — hammer it away first." : "Grinding there would knock a whole piece off — hammer the stock beyond it first."}</span>}</>}
         </div>
       )}
