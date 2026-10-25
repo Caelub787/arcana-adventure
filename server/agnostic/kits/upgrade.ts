@@ -40,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 28;
+export const CA_KIT_LEVEL = 29;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -80,6 +80,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 26) await upgrade26(store);
   if (level < 27) await upgrade27(store);
   if (level < 28) await upgrade28(store);
+  if (level < 29) await upgrade29(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1695,4 +1696,22 @@ async function upgrade28(store: ScopeStore) {
       }
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 29
+// The tracker card's rank fits on one line ("Transcendent Pillar 9"): wider, with DC narrower beside it.
+async function upgrade29(store: ScopeStore) {
+  const st = store.settings;
+  if (store.scope.kind !== "campaign" || !st) return;
+  let changed = false;
+  const cards = st.tracker.cards.map((c) => {
+    if (c.id !== "ca-card") return c;
+    const items = c.layout.items.map((it) => {
+      if (it.id === "rk" && it.x === 6 && it.w === 90) { changed = true; return { ...it, w: 144 }; }
+      if (it.id === "r" && it.x === 100 && it.w === 94) { changed = true; return { ...it, x: 150, w: 44 }; }
+      return it;
+    });
+    return { ...c, layout: { ...c.layout, items } };
+  });
+  if (changed) await store.run((cs) => store.putSettings({ ...st, tracker: { ...st.tracker, cards } }, cs));
 }
