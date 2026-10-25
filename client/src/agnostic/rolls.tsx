@@ -73,7 +73,7 @@ export function rollSummary(state: State, action: Pick<AgAction, "noteId" | "opt
   // An item it uses up each roll (ammunition).
   const usesQty = spec.uses ? value(spec.uses.qty) : null;
   const usesWhat = spec.uses ? (spec.uses.match ? String(effOf(resolveRef(state, action.noteId, spec.uses.match)[0]) ?? "") : "") || "item" : "";
-  const uses = spec.uses && usesQty !== 0 ? `uses ${usesQty ?? spec.uses.qty} ${usesWhat}` : "";
+  const uses = spec.uses && usesQty !== 0 ? `uses ${usesQty ?? spec.uses.qty} ${spec.uses.only ? `${spec.uses.only.replace(/_/g, " ")} ` : ""}${usesWhat}` : "";
   return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, uses, more].filter(Boolean).join(" · ") || null };
 }
 
@@ -282,7 +282,8 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
                 <span>matching this sheet's</span>
                 <div className="w-36"><PickField value={spec.uses.match} items={matchItems} noneLabel="— any item" onChange={(match) => save({ roll: { uses: { ...spec.uses!, match } } })} title="An item matches when this value is the same on both" testId="ag-roll-uses-match" /></div>
               </div>
-              <div className="text-[10px] text-stone-500">Rolling takes that many off a matching item they carry, and removes it from their inventory when none are left. Without enough, nothing is rolled or spent and they're told why.</div>
+              <Check1 on={spec.uses.only === "equipped"} onChange={(on) => save({ roll: { uses: { ...spec.uses!, only: on ? "equipped" : undefined } } })} label="Only ones they have equipped" testId="ag-roll-uses-equipped" />
+              <div className="text-[10px] text-stone-500">Rolling takes that many off a matching item they carry{spec.uses.only ? ` (${spec.uses.only.replace(/_/g, " ")})` : ""}, and removes it from their inventory when none are left. Without enough, nothing is rolled or spent and they're told why.</div>
             </>
           )}
         </div>

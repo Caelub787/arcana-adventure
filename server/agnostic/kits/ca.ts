@@ -120,9 +120,11 @@ export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")
 /** Item kinds that can carry runes (gear, not supplies). */
 export const RUNEABLE_KINDS = ["Weapon", "Ranged Weapon", "Armor", "Container", "Miscellaneous"];
 /** What a ranged weapon fires: it uses up one of the matching ammunition each Attack. */
-export const AMMO_TYPES = ["Arrow", "Bolt", "Bullet", "Dart", "Stone"];
-export const RANGED_HELP = "A bow, crossbow or sling. Each **Attack** uses up one piece of its ammunition — an item of the same **Ammo** type (Arrow, Bolt…) in its owner's inventory, which goes when the last one is used. With none, it can't attack.";
-export const AMMO_HELP = "Ammunition for ranged weapons: a weapon whose **Ammo** is this type uses one up each Attack. Keep them in a stack (Qty); the last one used is gone from the inventory.";
+export const AMMO_TYPES = ["Arrow", "Bolt", "Dart", "Pistol Round", "Rifle Round"];
+export const RANGED_HELP = "A bow, crossbow, blowgun or gun. Each **Attack** uses up one piece of **equipped** ammunition of its **Ammo** category (Arrow, Bolt, Dart, Pistol Round, Rifle Round) from its owner's inventory — the stack goes when the last one is used. With none of that category equipped, it can't attack.";
+export const AMMO_HELP = "Ammunition for ranged weapons. **Equip** it to have it ready: a weapon of the same **category** uses one up each Attack (unequipped ammunition isn't used). Keep them in a stack (Qty); the last one used is gone from the inventory.";
+/** Ammo categories before Pistol and Rifle Rounds, to bring old values across. */
+export const LEGACY_AMMO: Record<string, string> = { Bullet: "Pistol Round", Stone: "Arrow" };
 const RANK_LIFESPAN = LADDER.lifespan;
 const RANK_ABSORB = LADDER.absorb;
 export const RANK_FORMULAS = LADDER.formulas;
@@ -750,18 +752,18 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   }
   if (kind === "Ranged Weapon") {
     s.choice("handedness", "Handedness", ["Ranged (one-handed)", "Ranged (two-handed)"], "Ranged (two-handed)")
-      .choice("ammo_type", "Ammo", AMMO_TYPES, "Arrow").tip("ammo_type", "Each Attack uses up one ammunition of this type from its owner's inventory.")
+      .choice("ammo_type", "Ammo", AMMO_TYPES, "Arrow").tip("ammo_type", "Each Attack uses up one equipped ammunition of this category from its owner's inventory.")
       .text("range", "Range", "150 ft");
     s.num("damage_bonus", "Damage bonus", 0, { tooltip: "Added to the Damage roll. Crafting and runes raise it." }).num("accuracy", "Accuracy", 0, { tooltip: "Added to the Attack roll." });
     // Attack: d20 + accuracy, and it uses up one matching ammunition (none left: no attack).
-    s.roll("a_attack", "Attack", { via: "owner", die: "20", bonus: "accuracy", uses: { list: "items", match: "ammo_type", qty: "1" } }, "die:d20", "#b45309", 1);
+    s.roll("a_attack", "Attack", { via: "owner", die: "20", bonus: "accuracy", uses: { list: "items", match: "ammo_type", qty: "1", only: "equipped" } }, "die:d20", "#b45309", 1);
     s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, "die:d8", "#b91c1c", 2);
     body.push(h(3, icon("Target", "#fb7185", 16), " Ranged ", tip(RANGED_HELP)),
       p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } }), "    ", muted("AMMO "), val("ammo_type", { display: "badge" }), "    ", muted("RANGE "), val("range", { look: { bold: true } })),
       p(muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), "    ", muted("ACCURACY "), val("accuracy", { look: { bold: true } })));
   }
   if (kind === "Ammunition") {
-    s.choice("ammo_type", "Ammo type", AMMO_TYPES, "Arrow");
+    s.choice("ammo_type", "Ammo category", AMMO_TYPES, "Arrow");
     body.push(h(3, icon("Target", "#fb923c", 16), " Ammunition ", tip(AMMO_HELP)), p(muted("TYPE "), val("ammo_type", { display: "badge" })));
   }
   if (kind === "Training") {
@@ -888,7 +890,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   ];
   return s.snapshot({
     type: "item", name: kind === "Miscellaneous" ? "CA Item" : kind === "Training" ? "CA Training Item" : `CA ${kind}`, playersCanCreate: true,
-    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", "Ranged Weapon": "A bow, crossbow or sling: its Attack uses up one ammunition of its Ammo type from the owner's inventory; Damage roll; runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
+    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", "Ranged Weapon": "A bow, crossbow, blowgun or gun: its Attack uses up one equipped ammunition of its Ammo category from the owner's inventory; Damage roll; runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
   }, page);
 }
 

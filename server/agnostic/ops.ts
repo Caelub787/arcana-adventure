@@ -210,7 +210,10 @@ function cleanActionOptions(raw: unknown): AgActionOptions | undefined {
       ...(r.scale && typeof r.scale === "object" && typeof r.scale.pay === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.scale.pay)
         ? { scale: { step: formula(r.scale.step, "Damage Die step", "20"), pay: r.scale.pay } } : {}),
       ...(r.uses && typeof r.uses === "object" && typeof r.uses.list === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.list)
-        ? { uses: { list: r.uses.list, match: typeof r.uses.match === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.match) ? r.uses.match : "", qty: formula(r.uses.qty, "Uses", "1") } } : {}),
+        ? { uses: {
+          list: r.uses.list, match: typeof r.uses.match === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.match) ? r.uses.match : "", qty: formula(r.uses.qty, "Uses", "1"),
+          ...(typeof r.uses.only === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.only) ? { only: r.uses.only } : {}),
+        } } : {}),
     };
   }
   if (typeof o.icon === "string" && o.icon.trim()) out.icon = o.icon.trim().slice(0, 120);
@@ -1076,13 +1079,16 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
     const qtyOf = (id: string) => { const q = store.fieldsByNote.get(id)?.get("qty"); return q ? Math.max(0, Math.floor(asNumber((q.value as any) ?? 0))) : 1; };
     const matches = comp.follow(rollerId, spec.uses.list).filter((id) => {
       if (id === action.noteId || !store.notes.has(id)) return false;
+      // Only the ones they have ready (equipped), when the roll says so.
+      if (spec.uses!.only) { const on = store.fieldsByNote.get(id)?.get(spec.uses!.only); const v = on ? (comp.effOf(on).eff ?? on.value) : null; if (!(v === true || v === "true" || (typeof v === "number" && v !== 0))) return false; }
       if (!spec.uses!.match) return true;
       const f = store.fieldsByNote.get(id)?.get(spec.uses!.match);
       return !!f && String(comp.effOf(f).eff ?? f.value ?? "").trim().toLowerCase() === want && !!want;
     }).sort((a, b) => qtyOf(a) - qtyOf(b));
     const have = matches.reduce((s, id) => s + qtyOf(id), 0);
     usedName = (own ? String(comp.effOf(own).eff ?? own.value ?? "") : "") || (matches[0] ? store.notes.get(matches[0])!.name : "ammunition");
-    if (need > 0 && have < need) { result.messages.push(have ? `${roller.name} has only ${have} ${usedName} — ${me.name}'s ${action.name} needs ${need}.` : `${roller.name} has no ${usedName} left for ${me.name}'s ${action.name}.`); return false; }
+    const ready = spec.uses.only ? ` ${spec.uses.only.replace(/_/g, " ")}` : "";
+    if (need > 0 && have < need) { result.messages.push(have ? `${roller.name} has only ${have} ${usedName}${ready} — ${me.name}'s ${action.name} needs ${need}.` : `${roller.name} has no ${usedName}${ready}${ready ? "" : " left"} for ${me.name}'s ${action.name}.`); return false; }
     let left = need;
     for (const id of matches) { if (left <= 0) break; const take = Math.min(left, qtyOf(id)); useUp.push({ id, take }); left -= take; }
   }

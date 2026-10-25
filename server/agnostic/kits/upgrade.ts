@@ -29,7 +29,7 @@ import {
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
-  itemTemplate, AMMO_TYPES, AMMO_HELP,
+  itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
@@ -40,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 27;
+export const CA_KIT_LEVEL = 28;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -79,6 +79,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 25) await upgrade24(store);
   if (level < 26) await upgrade26(store);
   if (level < 27) await upgrade27(store);
+  if (level < 28) await upgrade28(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1655,6 +1656,43 @@ async function upgrade27(store: ScopeStore) {
       const parent = (qty?.parent ?? frag) as Y.XmlElement | Y.XmlFragment;
       const at = qty ? parent.toArray().indexOf(qty) + 1 : parent.length;
       insertNodes(parent, at, [hr(), h(3, icon("Target", "#fb923c", 16), " Ammunition ", tip(AMMO_HELP)), p(muted("TYPE "), val("ammo_type", { display: "badge" }))]);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 28
+// Ranged weapons fire the ammunition their owner has equipped, of the weapon's category: Arrow, Bolt, Dart, Pistol
+// Round or Rifle Round (Bullets become Pistol Rounds).
+const OLD_RANGED_HELP = "A bow, crossbow or sling. Each **Attack** uses up one piece of its ammunition — an item of the same **Ammo** type (Arrow, Bolt…) in its owner's inventory, which goes when the last one is used. With none, it can't attack.";
+const OLD_AMMO_HELP = "Ammunition for ranged weapons: a weapon whose **Ammo** is this type uses one up each Attack. Keep them in a stack (Qty); the last one used is gone from the inventory.";
+async function upgrade28(store: ScopeStore) {
+  const touched = new Set<string>();
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const f = store.fieldsByNote.get(n.id)?.get("ammo_type");
+      if (f && f.type === "select") {
+        touched.add(n.id);
+        const v = String(f.value ?? "");
+        const value = AMMO_TYPES.includes(v) ? v : LEGACY_AMMO[v] ?? AMMO_TYPES[0];
+        const label = f.label === "Ammo type" ? "Ammo category" : f.label;
+        const tooltip = f.options.tooltip ? "Each Attack uses up one equipped ammunition of this category from its owner's inventory." : undefined;
+        await store.putField({ ...f, label, value, options: { ...f.options, choices: [...AMMO_TYPES], ...(tooltip ? { tooltip } : {}) } }, cs);
+      }
+      for (const a of store.actionsOf(n.id)) {
+        const u = a.options?.roll?.uses;
+        if (u && u.match === "ammo_type" && !u.only) await store.putAction({ ...a, options: { ...a.options, roll: { ...a.options!.roll!, uses: { ...u, only: "equipped" } } } }, cs);
+      }
+    }
+  });
+  for (const id of Array.from(touched)) {
+    const n = store.notes.get(id);
+    if (!n) continue;
+    await editPage(n, (_doc, frag) => {
+      for (const tipEl of findAll(frag, (e) => e.nodeName === "agTip")) {
+        const text = String(tipEl.getAttribute("text") ?? "");
+        if (text === OLD_RANGED_HELP) tipEl.setAttribute("text", RANGED_HELP);
+        if (text === OLD_AMMO_HELP) tipEl.setAttribute("text", AMMO_HELP);
+      }
     });
   }
 }

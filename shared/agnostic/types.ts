@@ -386,6 +386,8 @@ export interface AgRollUses {
   match: string;
   /** Formula on this sheet: how many each roll ("1"). */
   qty: string;
+  /** Only items with this value on (ticked) count — "equipped": the ammunition they have ready, not all they carry. */
+  only?: string;
 }
 
 /**
