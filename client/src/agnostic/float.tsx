@@ -7,7 +7,7 @@
 //   useAgConfirm — a floating "are you sure?" (replaces window.confirm)
 import React, { useId, useMemo, useRef, useState } from "react";
 import { Search, X, Check, Plus, ChevronRight } from "lucide-react";
-import { FloatingPanel } from "@/components/ui/floating-panel";
+import { FloatingPanel, usePhoneScreen } from "@/components/ui/floating-panel";
 
 let cascade = 0;
 const vw = () => (typeof window !== "undefined" ? window.innerWidth : 1280);
@@ -18,11 +18,13 @@ export function AgPanel({ title, onClose, children, width = 460, height = 560, f
   width?: number; height?: number; footer?: React.ReactNode; testId?: string; panelKey?: string; padded?: boolean; minWidth?: number; minHeight?: number;
 }) {
   const id = useId();
-  const [pos] = useState(() => {
+  // Placed for the screen it opens on; placed again when a foldable opens or closes.
+  const phone = usePhoneScreen();
+  const [step] = useState(() => (cascade++ % 6) * 24);
+  const pos = useMemo(() => {
     const w = Math.min(width, vw() - 24);
-    const step = (cascade++ % 6) * 24;
     return { x: Math.max(12, Math.round((vw() - w) / 2) + step - 48), y: Math.max(56, Math.round((vh() - Math.min(height, vh() - 80)) / 3) + step) };
-  });
+  }, [phone, width, height, step]); // eslint-disable-line react-hooks/exhaustive-deps
   // The panel is portalled, but React still bubbles its events to whatever opened it
   // (a token would start dragging, a player tracker card would open its sheet…). Stop them here,
   // after the panel's own handlers (bring to front, drag) have run.

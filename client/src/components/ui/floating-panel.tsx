@@ -45,17 +45,16 @@ export function viewportFitScale(size: { width: number; height: number }, top = 
 }
 
 /**
- * Phones (either way up) and touch tablets held upright: every floating panel
- * opens full-screen there. Width alone missed a phone turned sideways (844
- * wide), unfolded foldables and upright tablets, which then got a cramped
- * desktop-style window.
+ * Phones, either way up: every floating panel opens full-screen there. Width
+ * alone missed a phone turned sideways (844 wide but only ~390 tall). Bigger,
+ * squarer touch screens - an unfolded foldable, a tablet - keep floating panels.
  */
 export function isPhoneScreen(): boolean {
   if (typeof window === "undefined") return false;
   const w = window.innerWidth, h = window.innerHeight;
   if (w < 768) return true;
   const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
-  return touch && (Math.min(w, h) < 768 || w < 1024);
+  return touch && Math.min(w, h) < 600;
 }
 
 const phoneListeners = new Set<() => void>();

@@ -2,7 +2,7 @@
 // phones via FloatingPanel). Any number can be open; links between sheets
 // open the target in its own window.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { FloatingPanel, viewportFitScale } from "@/components/ui/floating-panel";
+import { FloatingPanel, viewportFitScale, usePhoneScreen } from "@/components/ui/floating-panel";
 import { useAgMaybe } from "./hooks";
 import { AgSheet } from "./AgSheet";
 
@@ -29,6 +29,8 @@ export function AgWindowsProvider({ children }: { children: React.ReactNode }) {
 export function AgWindowStack() {
   const win = useAgWindows();
   const ag = useAgMaybe();
+  // Re-measure when a foldable opens or closes: the windows then reopen sized for the new screen.
+  usePhoneScreen();
   if (!win || !ag) return null;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   return (
