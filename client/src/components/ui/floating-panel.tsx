@@ -44,6 +44,41 @@ export function viewportFitScale(size: { width: number; height: number }, top = 
   return Math.max(0.35, s);
 }
 
+/**
+ * Phones (either way up) and touch tablets held upright: every floating panel
+ * opens full-screen there. Width alone missed a phone turned sideways (844
+ * wide), unfolded foldables and upright tablets, which then got a cramped
+ * desktop-style window.
+ */
+export function isPhoneScreen(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window.innerWidth, h = window.innerHeight;
+  if (w < 768) return true;
+  const touch = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+  return touch && (Math.min(w, h) < 768 || w < 1024);
+}
+
+const phoneListeners = new Set<() => void>();
+let phoneNow = isPhoneScreen();
+if (typeof window !== "undefined") {
+  const recheck = () => {
+    const next = isPhoneScreen();
+    if (next === phoneNow) return;
+    phoneNow = next;
+    phoneListeners.forEach((l) => l());
+  };
+  window.addEventListener("resize", recheck);
+  window.addEventListener("orientationchange", recheck);
+}
+/** isPhoneScreen, kept current as the screen rotates or resizes. */
+export function usePhoneScreen(): boolean {
+  return React.useSyncExternalStore(
+    (l) => { phoneListeners.add(l); return () => { phoneListeners.delete(l); }; },
+    () => phoneNow,
+    () => false,
+  );
+}
+
 export function isAnyPanelFullscreen(): boolean {
   return fullscreenPanelCount > 0;
 }
@@ -287,7 +322,7 @@ export const FloatingPanel = React.memo(function FloatingPanel({
   onFullscreenChange,
   fitToViewport,
 }: FloatingPanelProps) {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const isMobile = usePhoneScreen();
 
   if (!open) return null;
 
@@ -360,8 +395,6 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
   onFullscreenChange?: (isFullscreen: boolean) => void;
 }) {
   const [z, setZ] = React.useState(() => Math.max(zIndex, 10500));
-  const compactPanels = useCompactPanelsEnabled();
-  const compactScale = useCompactPanelScale();
   React.useLayoutEffect(() => {
     setZ(bringFloatingPanelToFront(panelKey, Math.max(zIndex, 10500), true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -385,14 +418,17 @@ const MobileFloatingPanel = React.memo(function MobileFloatingPanel({
       )}
       style={{
         zIndex: z,
-        transform: compactPanels ? `scale(${compactScale})` : undefined,
-        transformOrigin: "center",
+        // Full screen means full screen: the compact-panels shrink is for desktop-style windows.
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
       }}
       data-testid="floating-panel"
       data-floating-panel
       data-panel-key={panelKey}
     >
-      <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
+      <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 [@media(max-height:500px)]:py-1 shrink-0">
         <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
           <span
             className="truncate"

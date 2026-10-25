@@ -7,7 +7,7 @@ import {
   BookOpen, Minus, Rocket, Backpack, Package, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
 } from "lucide-react";
 import type { AgLayout } from "@shared/agnostic/types";
-import { FloatingPanel, bringFloatingPanelToFront, isFloatingPanelOnTop } from "@/components/ui/floating-panel";
+import { FloatingPanel, bringFloatingPanelToFront, isFloatingPanelOnTop, usePhoneScreen } from "@/components/ui/floating-panel";
 import { useToast } from "@/hooks/use-toast";
 import { useAgMaybe } from "./hooks";
 
@@ -592,13 +592,13 @@ const TOPICS: Topic[] = [
 export function AgGuideHost({ primary = true }: { primary?: boolean }) {
   const g = useGuideState();
   const [id] = useState(() => ++hostSeq);
+  const phone = usePhoneScreen();
   useEffect(() => {
     hosts.push({ id, primary });
     setGuide({});
     return () => { hosts.splice(hosts.findIndex((h) => h.id === id), 1); setGuide({}); };
   }, [id, primary]);
   if (!g.open || activeHostId() !== id) return null;
-  const phone = typeof window !== "undefined" && window.innerWidth < 768;
   return phone ? <PhoneGuide /> : (
     <FloatingPanel
       open
@@ -615,9 +615,9 @@ export function AgGuideHost({ primary = true }: { primary?: boolean }) {
   );
 }
 
-/** Phones: a drawer along the bottom (drag its top edge to resize, or shrink it to a tab). */
+/** Phones: opens full-screen; drag its top edge down to follow along beneath it, or shrink it to a tab. */
 function PhoneGuide() {
-  const [h, setH] = useState(() => Math.round(window.innerHeight * 0.45));
+  const [h, setH] = useState(() => window.innerHeight);
   const [small, setSmall] = useState(false);
   const [z, setZ] = useState(() => bringFloatingPanelToFront("ag-guide", 10650, true));
   // Sheets open full-screen on phones: keep the drawer above them so it can be followed along.
@@ -628,7 +628,7 @@ function PhoneGuide() {
   const drag = (e: React.PointerEvent) => {
     e.preventDefault();
     const sy = e.clientY, sh = h;
-    const move = (ev: PointerEvent) => setH(Math.max(140, Math.min(window.innerHeight - 60, sh - (ev.clientY - sy))));
+    const move = (ev: PointerEvent) => setH(Math.max(140, Math.min(window.innerHeight, sh - (ev.clientY - sy))));
     const up = () => { window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true); };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -641,8 +641,8 @@ function PhoneGuide() {
       </button>, document.body);
   }
   return createPortal(
-    <div className="fixed inset-x-0 bottom-0 flex flex-col rounded-t-xl border-t border-x border-stone-700 bg-stone-900 shadow-[0_-8px_30px_rgba(0,0,0,.5)]" style={{ height: h, zIndex: z }} data-testid="ag-guide-drawer">
-      <div className="shrink-0 flex items-center gap-1 pl-3 pr-1 h-11 border-b border-stone-800">
+    <div className={`fixed inset-x-0 bottom-0 flex flex-col bg-stone-900 shadow-[0_-8px_30px_rgba(0,0,0,.5)] ${h >= window.innerHeight ? "" : "rounded-t-xl border-t border-x border-stone-700"}`} style={{ height: Math.min(h, window.innerHeight), zIndex: z, paddingTop: h >= window.innerHeight ? "env(safe-area-inset-top)" : undefined, paddingBottom: "env(safe-area-inset-bottom)" }} data-testid="ag-guide-drawer">
+      <div className="relative shrink-0 flex items-center gap-1 pl-3 pr-1 h-11 border-b border-stone-800">
         <div className="absolute left-1/2 -translate-x-1/2 top-0 h-5 w-24 grid place-items-center touch-none cursor-ns-resize" onPointerDown={drag} title="Drag to resize" data-testid="ag-guide-drawer-handle"><span className="h-1 w-10 rounded-full bg-stone-600" /></div>
         <BookOpen className="h-4 w-4 text-amber-400" /><span className="text-sm text-stone-100 font-medium">Agnostic guide</span>
         <button type="button" onClick={() => setSmall(true)} className="ml-auto h-9 w-9 grid place-items-center rounded text-stone-400 hover:bg-stone-800" title="Shrink to a button"><Minus className="h-4 w-4" /></button>
