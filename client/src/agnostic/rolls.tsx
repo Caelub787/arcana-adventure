@@ -70,7 +70,11 @@ export function rollSummary(state: State, action: Pick<AgAction, "noteId" | "opt
   // Damage Die: more dice for a rising price.
   const step = spec.scale ? value(spec.scale.step) : null;
   const more = spec.scale ? `more dice: ${step ?? spec.scale.step}+ ${field(spec.scale.pay)?.label ?? titleCase(spec.scale.pay)}` : "";
-  return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, more].filter(Boolean).join(" · ") || null };
+  // An item it uses up each roll (ammunition).
+  const usesQty = spec.uses ? value(spec.uses.qty) : null;
+  const usesWhat = spec.uses ? (spec.uses.match ? String(effOf(resolveRef(state, action.noteId, spec.uses.match)[0]) ?? "") : "") || "item" : "";
+  const uses = spec.uses && usesQty !== 0 ? `uses ${usesQty ?? spec.uses.qty} ${usesWhat}` : "";
+  return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, uses, more].filter(Boolean).join(" · ") || null };
 }
 
 /**
@@ -222,6 +226,10 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
   const payItems: SelItem[] = roller.fields.filter((f) => f.type === "number").map((f) => ({ id: f.key, name: f.label, sub: f.key }));
   const defaultPay = spec.costs[0]?.key ?? (roller.fields.some((f) => f.key === "energy") ? "energy" : payItems[0]?.id ?? "energy");
   const baseCount = numOrNull(spec.count) ?? 1;
+  // What a roll can use up: one of the roller's lists, matched on a value of this sheet.
+  const listLabels = roller.id ? Array.from(new Set(Array.from(state.links.values()).flatMap((l) => (l.toNoteId === roller.id ? [l.reverseLabel] : l.fromNoteId === roller.id ? [l.label] : [])).filter(Boolean))) : [];
+  const listItems: SelItem[] = Array.from(new Set(["items", ...listLabels])).map((l) => ({ id: l, name: titleCase(l), sub: l }));
+  const matchItems: SelItem[] = fieldsOf(state, action.noteId).filter((f) => f.type === "select" || f.type === "text").map((f) => ({ id: f.key, name: f.label, sub: `now ${String(effOf(f) ?? "")}` }));
   const dieShown = numOrNull(spec.die) ?? dieDisplay.replace(/^d/, "");
 
   return (
@@ -261,6 +269,24 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
         </div>
       </div>
 
+      {!limited && (
+        <div className="border-t border-stone-800 pt-2 space-y-1.5" data-testid="ag-roll-uses">
+          <Check1 on={!!spec.uses} onChange={(on) => save({ roll: { uses: on ? { list: listItems[0]?.id ?? "items", match: matchItems.find((m) => /ammo/.test(m.id))?.id ?? "", qty: "1" } : undefined } })} label="Uses up an item each roll (ammunition)" testId="ag-roll-uses-on" />
+          {spec.uses && (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-stone-400">
+                <span>Uses</span>
+                <Stepper value={spec.uses.qty} min={0} max={99} onChange={(qty) => save({ roll: { uses: { ...spec.uses!, qty } } })} testId="ag-roll-uses-qty" />
+                <span>from their</span>
+                <div className="w-28"><PickField value={spec.uses.list} items={listItems} onChange={(list) => list && save({ roll: { uses: { ...spec.uses!, list } } })} title="From which of their lists?" testId="ag-roll-uses-list" /></div>
+                <span>matching this sheet's</span>
+                <div className="w-36"><PickField value={spec.uses.match} items={matchItems} noneLabel="— any item" onChange={(match) => save({ roll: { uses: { ...spec.uses!, match } } })} title="An item matches when this value is the same on both" testId="ag-roll-uses-match" /></div>
+              </div>
+              <div className="text-[10px] text-stone-500">Rolling takes that many off a matching item they carry, and removes it from their inventory when none are left. Without enough, nothing is rolled or spent and they're told why.</div>
+            </>
+          )}
+        </div>
+      )}
       {!limited && (
         <div className="border-t border-stone-800 pt-2 space-y-1.5" data-testid="ag-roll-scale">
           <Check1 on={!!spec.scale} onChange={(on) => save({ roll: { scale: on ? { step: String(defaultScaleStep(numOrNull(spec.die) ?? 6)), pay: defaultPay } : undefined } })} label="Damage Die — the roller can spend to roll more dice" testId="ag-roll-scale-on" />

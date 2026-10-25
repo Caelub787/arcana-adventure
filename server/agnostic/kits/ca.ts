@@ -9,12 +9,12 @@
 // effects are modifiers on the character.
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { randomUUID } from "crypto";
-import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale } from "@shared/agnostic/types";
+import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale, AgRollUses } from "@shared/agnostic/types";
 import { defaultScaleStep } from "@shared/agnostic/types";
 import type { ChangeSet, ScopeStore } from "../store";
 import * as snap from "../snapshot";
 import { copySheet, markAsCopy, syncCopyOwners } from "../copies";
-import { applyCACrafting, giveStarterSupplies } from "./caCrafting";
+import { applyCACrafting } from "./caCrafting";
 import {
   buildDocState, type DocNode, p, pAlign, h, hr, b, i, muted, t, icon, tip, val, block, button, columns, section, tabs, links, canvas, table, rolls, effects,
 } from "./doc";
@@ -118,7 +118,11 @@ export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none U
 /** An item rank from anything (an old rank or a character rank): one of ITEM_RANKS, Unranked if it isn't one. */
 export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : "Unranked"; };
 /** Item kinds that can carry runes (gear, not supplies). */
-export const RUNEABLE_KINDS = ["Weapon", "Armor", "Container", "Miscellaneous"];
+export const RUNEABLE_KINDS = ["Weapon", "Ranged Weapon", "Armor", "Container", "Miscellaneous"];
+/** What a ranged weapon fires: it uses up one of the matching ammunition each Attack. */
+export const AMMO_TYPES = ["Arrow", "Bolt", "Bullet", "Dart", "Stone"];
+export const RANGED_HELP = "A bow, crossbow or sling. Each **Attack** uses up one piece of its ammunition — an item of the same **Ammo** type (Arrow, Bolt…) in its owner's inventory, which goes when the last one is used. With none, it can't attack.";
+export const AMMO_HELP = "Ammunition for ranged weapons: a weapon whose **Ammo** is this type uses one up each Attack. Keep them in a stack (Qty); the last one used is gone from the inventory.";
 const RANK_LIFESPAN = LADDER.lifespan;
 const RANK_ABSORB = LADDER.absorb;
 export const RANK_FORMULAS = LADDER.formulas;
@@ -192,8 +196,8 @@ export const LEGACY_ITEM_RANK_CHOICES = ["Unranked", ...LEGACY_RANK_NAMES.flatMa
 const ABILITY_CATEGORIES = ["Attack", "Defense", "Support", "Movement", "Utility", "Passive"];
 const ABILITY_COLORS: Record<string, string> = { Attack: "#f87171", Defense: "#60a5fa", Support: "#34d399", Movement: "#fbbf24", Utility: "#c084fc", Passive: "#a8a29e" };
 
-export const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Ingredient", "Ink", "Material", "Miscellaneous", "Part", "Rune", "Scroll", "Station", "Tool", "Weapon"];
-export const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e", Material: "#d6d3d1", Ingredient: "#86efac", Ink: "#f0abfc", Tool: "#fdba74", Part: "#cbd5e1", Station: "#fb923c", Scroll: "#fcd34d" };
+export const ITEM_TYPES = ["Ammunition", "Armor", "Beast Orb", "Consumable", "Container", "Crafter", "Currency", "Ingredient", "Ink", "Material", "Miscellaneous", "Part", "Ranged Weapon", "Rune", "Scroll", "Station", "Tool", "Weapon"];
+export const ITEM_TYPE_COLORS: Record<string, string> = { Weapon: "#f87171", "Ranged Weapon": "#fb7185", Armor: "#60a5fa", Consumable: "#34d399", Rune: "#c084fc", Container: "#fbbf24", Currency: "#facc15", Ammunition: "#fb923c", "Beast Orb": "#2dd4bf", Crafter: "#a3e635", Miscellaneous: "#a8a29e", Material: "#d6d3d1", Ingredient: "#86efac", Ink: "#f0abfc", Tool: "#fdba74", Part: "#cbd5e1", Station: "#fb923c", Scroll: "#fcd34d" };
 const SEVERITIES = ["Minor", "Moderate", "Severe"];
 const SEVERITY_COLORS: Record<string, string> = { Minor: "#a8a29e", Moderate: "#ea580c", Severe: "#dc2626" };
 const LOCATIONS = ["Body", "Arm", "Leg", "Head"];
@@ -231,9 +235,9 @@ export class Sheet {
     return id;
   }
   /** A roll set up with boxes (dice, what's added, costs) — see the Rolls block. */
-  roll(id: string, name: string, roll: { via: string; count?: string; die: string; add?: string; bonus?: string; costs?: Array<{ key: string; amount: string }>; scale?: AgRollScale }, icon: string, color: string, sortOrder: number) {
+  roll(id: string, name: string, roll: { via: string; count?: string; die: string; add?: string; bonus?: string; costs?: Array<{ key: string; amount: string }>; scale?: AgRollScale; uses?: AgRollUses }, icon: string, color: string, sortOrder: number) {
     return this.action(id, name, [], color, "owners", {
-      roll: { via: roll.via, count: roll.count ?? "1", die: roll.die, add: roll.add ?? "", bonus: roll.bonus ?? "0", costs: roll.costs ?? [], ...(roll.scale ? { scale: roll.scale } : {}) },
+      roll: { via: roll.via, count: roll.count ?? "1", die: roll.die, add: roll.add ?? "", bonus: roll.bonus ?? "0", costs: roll.costs ?? [], ...(roll.scale ? { scale: roll.scale } : {}), ...(roll.uses ? { uses: roll.uses } : {}) },
       icon, showName: true, showIcon: true, listed: true, sortOrder,
     });
   }
@@ -681,7 +685,7 @@ export function effectsNodes(via: string, condition: string, help: string): DocN
 export function itemRollsNodes(): DocNode[] {
   return [h(3, icon("Dices", GILT, 16), " Rolls"), rolls("owner", [], "#b45309", SECTION_LOOK)];
 }
-export const CA_ITEM_TEMPLATE_NAMES = ["CA Weapon", "CA Armor", "CA Consumable", "CA Rune", "CA Container", "CA Currency", "CA Ammunition", "CA Item", "CA Training Item"];
+export const CA_ITEM_TEMPLATE_NAMES = ["CA Weapon", "CA Ranged Weapon", "CA Armor", "CA Consumable", "CA Rune", "CA Container", "CA Currency", "CA Ammunition", "CA Item", "CA Training Item"];
 export function trainingTemplateSnapshot(): AgSnapshot { return itemTemplate("Training"); }
 
 function legacyAbilityTemplate(): AgSnapshot {
@@ -709,7 +713,7 @@ export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. 
 export const consumableLine = (): DocNode => p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }));
 export const RUNE_HELP = "Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).";
 export const CONTAINER_HELP = "A Backpack raises its owner's carry weight by its capacity while equipped. A Storage Ring holds its own items (below).";
-export type ItemKind = "Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training" | "Material" | "Ingredient" | "Ink" | "Tool" | "Part" | "Station" | "Scroll";
+export type ItemKind = "Weapon" | "Ranged Weapon" | "Armor" | "Consumable" | "Rune" | "Container" | "Currency" | "Ammunition" | "Miscellaneous" | "Training" | "Material" | "Ingredient" | "Ink" | "Tool" | "Part" | "Station" | "Scroll";
 /** Crafting supplies and parts (see kits/caCrafting.ts). */
 export const CA_CRAFT_ITEM_KINDS: ItemKind[] = ["Material", "Ingredient", "Ink", "Tool", "Part", "Station", "Scroll"];
 
@@ -743,6 +747,22 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     // Damage Die: the wielder can spend Energy to roll more of the weapon's die.
     s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, "die:d8", "#b91c1c", 2);
     body.push(p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } }), "    ", muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), "    ", muted("ACCURACY "), val("accuracy", { look: { bold: true } })));
+  }
+  if (kind === "Ranged Weapon") {
+    s.choice("handedness", "Handedness", ["Ranged (one-handed)", "Ranged (two-handed)"], "Ranged (two-handed)")
+      .choice("ammo_type", "Ammo", AMMO_TYPES, "Arrow").tip("ammo_type", "Each Attack uses up one ammunition of this type from its owner's inventory.")
+      .text("range", "Range", "150 ft");
+    s.num("damage_bonus", "Damage bonus", 0, { tooltip: "Added to the Damage roll. Crafting and runes raise it." }).num("accuracy", "Accuracy", 0, { tooltip: "Added to the Attack roll." });
+    // Attack: d20 + accuracy, and it uses up one matching ammunition (none left: no attack).
+    s.roll("a_attack", "Attack", { via: "owner", die: "20", bonus: "accuracy", uses: { list: "items", match: "ammo_type", qty: "1" } }, "die:d20", "#b45309", 1);
+    s.roll("a_damage", "Damage", { via: "owner", die: "8", bonus: "damage_bonus", scale: { step: String(defaultScaleStep(8)), pay: "energy" } }, "die:d8", "#b91c1c", 2);
+    body.push(h(3, icon("Target", "#fb7185", 16), " Ranged ", tip(RANGED_HELP)),
+      p(muted("HANDEDNESS "), val("handedness", { look: { bold: true } }), "    ", muted("AMMO "), val("ammo_type", { display: "badge" }), "    ", muted("RANGE "), val("range", { look: { bold: true } })),
+      p(muted("DAMAGE "), val("damage_bonus", { look: { bold: true } }), "    ", muted("ACCURACY "), val("accuracy", { look: { bold: true } })));
+  }
+  if (kind === "Ammunition") {
+    s.choice("ammo_type", "Ammo type", AMMO_TYPES, "Arrow");
+    body.push(h(3, icon("Target", "#fb923c", 16), " Ammunition ", tip(AMMO_HELP)), p(muted("TYPE "), val("ammo_type", { display: "badge" })));
   }
   if (kind === "Training") {
     // Manuals, pills, elixirs: using one raises a value for good, or grants points to spend.
@@ -868,7 +888,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   ];
   return s.snapshot({
     type: "item", name: kind === "Miscellaneous" ? "CA Item" : kind === "Training" ? "CA Training Item" : `CA ${kind}`, playersCanCreate: true,
-    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
+    description: { Weapon: "Handedness, Strike and Damage rolls (add more), runes.", "Ranged Weapon": "A bow, crossbow or sling: its Attack uses up one ammunition of its Ammo type from the owner's inventory; Damage roll; runes.", Armor: "Adds to the owner's DC while equipped; runes.", Consumable: "Use it to heal HP or a wound; the stack goes down.", Rune: "Boosts; attach it to a weapon or armor.", Container: "Backpack (more carry weight) or Storage Ring (its own contents).", Currency: "Coins: quantity × value counts toward Currency.", Ammunition: "Arrows, bolts, shot.", Miscellaneous: "Anything else: crafters, beast orbs, trinkets.", Training: "Manuals, pills, elixirs: using one permanently raises an attribute or skill, or grants points to spend.", Material: "A smithing material: heat range, hardness, colour.", Ingredient: "An alchemy or rune ingredient.", Ink: "A liquid or ink: its colour and glow show on runes drawn with it.", Tool: "A carving tool or pen: runes made with it look carved or drawn.", Part: "A forged weapon part, ready to assemble.", Station: "A crafting station: a forge, an alchemist's pot, a rune pen. Its sheet is where its holder crafts.", Scroll: "Teaches a blueprint, alchemy recipe or rune to whoever carries it." }[kind],
   }, page);
 }
 
@@ -963,13 +983,14 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   const made: Record<string, AgNote> = {};
   const add = async (key: string, s: AgSnapshot) => { made[key] = await snap.createFromSnapshot(store, s, {}, cs); };
   await add("character", characterTemplate());
-  for (const k of ["Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
+  for (const k of ["Weapon", "Ranged Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
   await add("aspect", aspectTemplate());
-  // Crafting: its item kinds, the Blueprint / Recipe / Rune Recipe templates and the starter set.
-  const crafting = await applyCACrafting(store, cs, { starter: true });
+  // Crafting: its item kinds (and a Forge, Alchemist Pot and Runemaking Pen ready to use) and the Blueprint / Recipe /
+  // Rune Recipe templates. No items, blueprints or recipes: the GM makes their own from the templates.
+  await applyCACrafting(store, cs);
 
   await applyCATrackerSettings(store, cs);
 
@@ -982,23 +1003,12 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
       athletics: 2, intimidation: 1, focus_skill: 2, perception: 1, influence: 1, arcana: 1,
       cultivation: "Ember", weight_capacity: 50,
     }, cs);
-    const sword = await createFrom(store, made.Weapon, "Ashen Oath Longsword", { rarity: "Rare", rank_tag: "Awakened", weight: 3, value: 400, durability: 90, equipped: true, damage_bonus: 6 }, cs);
-    await setRoll(store, sword, "Strike", { add: "might" }, cs);
-    const shield = await createFrom(store, made.Armor, "Bulwark of Veridun", { rarity: "Uncommon", weight: 6, value: 180, armor_dc: 2, equipped: true }, cs);
-    const potion = await createFrom(store, made.Consumable, "Minor Health Potion", { rarity: "Uncommon", qty: 2, weight: 0.2, value: 50 }, cs);
-    const rune = await createFrom(store, made.Rune, "Rune of Embers", { rarity: "Uncommon", value: 120, boosts: "Fire Damage +2" }, cs);
-    const pack = await createFrom(store, made.Container, "Traveller's Pack", { weight: 2, value: 15, capacity: 20, equipped: true }, cs);
-    const coins = await createFrom(store, made.Currency, "Silver Marks", { qty: 35, value: 1 }, cs);
-    for (const it of [sword, shield, potion, pack, coins]) await connect(store, it, hero, "owner", "items", cs);
-    await connect(store, rune, sword, "socket", "runes", cs);
     const arrow = await createFrom(store, made.wound, "Goblin arrow", { severity: "Moderate", location: "Body" }, cs);
     const cut = await createFrom(store, made.wound, "Shallow cut", { severity: "Minor", location: "Leg" }, cs);
     await connect(store, arrow, hero, "bearer", "wounds", cs);
     await connect(store, cut, hero, "bearer", "wounds", cs);
     await store.putModifier({ id: randomUUID(), noteId: arrow.id, via: "bearer", targetKey: "athletics", op: "add", amount: "-2", condition: null, label: "Goblin arrow" }, cs);
     await store.putModifier({ id: randomUUID(), noteId: cut.id, via: "bearer", targetKey: "speed", op: "add", amount: "-5", condition: null, label: "Shallow cut" }, cs);
-    const pill = await createFrom(store, made.Training, "Bloodmarrow Pill", { rarity: "Rare", qty: 1, weight: 0.1, value: 300, raises: "Might", raise_by: 1 }, cs);
-    await connect(store, pill, hero, "owner", "items", cs);
     const trait = await createFrom(store, made.trait, "Iron Will", { summary: "Never breaks under fear — the GM may grant advantage on Focus rolls against it." }, cs);
     await connect(store, trait, hero, "holder", "traits", cs);
     // Abilities (sets of aspects) and their aspects (single uses).
@@ -1024,11 +1034,9 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     const hex = await createFrom(store, made.aspect, "Hex Bolt", { category: "Attack", range: "60 ft", description: "A crackling green curse." }, cs);
     await setRoll(store, hex, "Roll", { count: "2", die: "8", add: "", costs: [{ key: "energy", amount: "25" }, { key: "focus", amount: "1" }] }, cs);
     await connect(store, hex, hexer, "ability", "aspects", cs);
-    // Supplies to craft with (copies of the starter set's materials, ingredients, inks and tools).
-    await giveStarterSupplies(store, hero, crafting, cs);
     // What the example character has is theirs (in "Player Owned Copies").
     await adoptCharacterCopies(store, cs);
-    sheets = 19;
+    sheets = 12;
     if (store.scope.kind === "campaign" && store.settings) {
       const st = store.settings;
       if (!st.tracker.pinned.includes(hero.id)) await store.putSettings({ ...st, tracker: { ...st.tracker, pinned: [...st.tracker.pinned, hero.id] } }, cs);

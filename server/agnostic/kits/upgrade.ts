@@ -11,8 +11,8 @@ import * as repo from "../repo";
 import * as docs from "../docs";
 import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
-import { appendNodes, insertNodes, p, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
-import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints } from "./caCrafting";
+import { appendNodes, insertNodes, p, h, icon, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
+import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints, CA_CRAFT_FOLDER } from "./caCrafting";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -29,6 +29,7 @@ import {
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
+  itemTemplate, AMMO_TYPES, AMMO_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
@@ -39,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 26;
+export const CA_KIT_LEVEL = 27;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -77,6 +78,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 23) await upgrade23(store, characterTemplates);
   if (level < 25) await upgrade24(store);
   if (level < 26) await upgrade26(store);
+  if (level < 27) await upgrade27(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1606,5 +1608,53 @@ async function upgrade26(store: ScopeStore) {
       }
     });
     for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag));
+  }
+}
+
+// --------------------------------------------------------------------------- level 27
+// A clean slate of items: every item, blueprint, recipe and rune recipe the kit made (its starter set, the example
+// character's gear, what was crafted from them, scrolls) is deleted — templates stay, one for each kind, ready to use:
+// a Ranged Weapon (its Attack uses up ammunition of its Ammo type), Ammunition with an Ammo type, and a Forge,
+// Alchemist Pot and Runemaking Pen already set to their craft. Items the GM made themselves are kept.
+async function upgrade27(store: ScopeStore) {
+  const kitFolders = new Set([CA_KIT_FOLDER, CA_CRAFT_FOLDER]);
+  const crafted = ["forged_by", "craft_tier", "part_key", "teaches", "blueprint_id", "part_metal"];
+  await store.run(async (cs) => {
+    // The new templates.
+    if (!Array.from(store.notes.values()).some((n) => n.isTemplate && n.name === "CA Ranged Weapon")) await snap.createFromSnapshot(store, itemTemplate("Ranged Weapon"), {}, cs);
+    await applyCACrafting(store, cs);
+    // Ammunition gets its Ammo type.
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (!n.isTemplate || n.name !== "CA Ammunition" || !fields || fields.get("ammo_type")) continue;
+      const order = Math.max(0, ...Array.from(fields.values()).map((f) => f.sortOrder)) + 1;
+      await store.putField({ id: randomUUID(), noteId: n.id, key: "ammo_type", label: "Ammo type", type: "select", value: "Arrow", formula: null, options: { choices: [...AMMO_TYPES] }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+    }
+    // What the kit made: in its folders, or a copy (however many times over) of something it made or of a template,
+    // or made by crafting. Blueprints, recipes and rune recipes all go, and the crafting sessions with them.
+    const rootOf = (n: AgNote) => { let at: AgNote | undefined = n; const seen = new Set<string>(); while (at?.copyOf && !seen.has(at.id)) { seen.add(at.id); const next = store.notes.get(at.copyOf); if (!next) return null; at = next; } return at ?? null; };
+    const doomed = Array.from(store.notes.values()).filter((n) => {
+      if (n.isTemplate) return false;
+      if (n.type === "blueprint" || n.type === "recipe" || n.type === "rune_recipe" || n.type === "craft") return true;
+      if (n.type !== "item") return false;
+      if (kitFolders.has(n.folder ?? "")) return true;
+      const fields = store.fieldsByNote.get(n.id);
+      if (fields && crafted.some((k) => fields.get(k) !== undefined)) return true;
+      if (!n.copyOf) return false;
+      const root = rootOf(n);
+      return !root || root.isTemplate || kitFolders.has(root.folder ?? "") || (store.fieldsByNote.get(root.id) && crafted.some((k) => store.fieldsByNote.get(root.id)!.get(k) !== undefined));
+    });
+    for (const n of doomed) if (store.notes.has(n.id)) await store.removeNote(n.id, cs);
+    console.log(`[agnostic] CA kit: ${store.key} cleared ${doomed.length} kit-made items, blueprints and recipes`);
+  });
+  // The Ammunition template's page shows its type.
+  for (const n of Array.from(store.notes.values()).filter((x) => x.isTemplate && x.name === "CA Ammunition")) {
+    await editPage(n, (_doc, frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "ammo_type").length) return;
+      const qty = findAll(frag, (e) => e.nodeName === "paragraph" && findAll(e, (x) => x.nodeName === "agField" && x.getAttribute("ref") === "qty").length > 0)[0];
+      const parent = (qty?.parent ?? frag) as Y.XmlElement | Y.XmlFragment;
+      const at = qty ? parent.toArray().indexOf(qty) + 1 : parent.length;
+      insertNodes(parent, at, [hr(), h(3, icon("Target", "#fb923c", 16), " Ammunition ", tip(AMMO_HELP)), p(muted("TYPE "), val("ammo_type", { display: "badge" }))]);
+    });
   }
 }

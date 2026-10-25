@@ -370,6 +370,22 @@ export interface AgRollSpec {
   costs: AgRollCost[];
   /** Damage Die: the roller may roll more of the die by spending a value — each extra die costs a step more than the last. */
   scale?: AgRollScale;
+  /** Uses up an item each roll (ammunition): one the roller carries that matches this sheet, taken out of their inventory. */
+  uses?: AgRollUses;
+}
+
+/**
+ * A roll that uses up an item the roller carries — a bow's arrows. Before rolling it needs enough of a matching item
+ * (one whose `match` value equals this sheet's, e.g. ammo type "Arrow"); rolling takes `qty` off its quantity and
+ * removes it from their inventory when none are left. Without enough, nothing is rolled or spent and they're told why.
+ */
+export interface AgRollUses {
+  /** The roller's connection holding what's used ("items"). */
+  list: string;
+  /** Value key that must be the same on the item and this sheet ("ammo_type"); "" = any item on the list. */
+  match: string;
+  /** Formula on this sheet: how many each roll ("1"). */
+  qty: string;
 }
 
 /**

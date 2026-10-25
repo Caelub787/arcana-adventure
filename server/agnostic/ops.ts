@@ -209,6 +209,8 @@ function cleanActionOptions(raw: unknown): AgActionOptions | undefined {
         .map((c: any) => ({ key: c.key, amount: formula(c.amount, "Cost", "0") })),
       ...(r.scale && typeof r.scale === "object" && typeof r.scale.pay === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.scale.pay)
         ? { scale: { step: formula(r.scale.step, "Damage Die step", "20"), pay: r.scale.pay } } : {}),
+      ...(r.uses && typeof r.uses === "object" && typeof r.uses.list === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.list)
+        ? { uses: { list: r.uses.list, match: typeof r.uses.match === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(r.uses.match) ? r.uses.match : "", qty: formula(r.uses.qty, "Uses", "1") } } : {}),
     };
   }
   if (typeof o.icon === "string" && o.icon.trim()) out.icon = o.icon.trim().slice(0, 120);
@@ -1064,6 +1066,26 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
   }
   // Costs: all checked first, so nothing is spent unless everything can be.
   const costs = costList.filter((x) => x.amount !== 0);
+  // Ammunition (or anything a roll uses up): enough matching items in the roller's inventory, checked first too.
+  let useUp: Array<{ id: string; take: number }> = [];
+  let usedName = "";
+  if (spec.uses) {
+    const need = Math.max(0, Math.floor(num(spec.uses.qty, 1)));
+    const own = spec.uses.match ? store.fieldsByNote.get(action.noteId)?.get(spec.uses.match) : undefined;
+    const want = own ? String(comp.effOf(own).eff ?? own.value ?? "").trim().toLowerCase() : "";
+    const qtyOf = (id: string) => { const q = store.fieldsByNote.get(id)?.get("qty"); return q ? Math.max(0, Math.floor(asNumber((q.value as any) ?? 0))) : 1; };
+    const matches = comp.follow(rollerId, spec.uses.list).filter((id) => {
+      if (id === action.noteId || !store.notes.has(id)) return false;
+      if (!spec.uses!.match) return true;
+      const f = store.fieldsByNote.get(id)?.get(spec.uses!.match);
+      return !!f && String(comp.effOf(f).eff ?? f.value ?? "").trim().toLowerCase() === want && !!want;
+    }).sort((a, b) => qtyOf(a) - qtyOf(b));
+    const have = matches.reduce((s, id) => s + qtyOf(id), 0);
+    usedName = (own ? String(comp.effOf(own).eff ?? own.value ?? "") : "") || (matches[0] ? store.notes.get(matches[0])!.name : "ammunition");
+    if (need > 0 && have < need) { result.messages.push(have ? `${roller.name} has only ${have} ${usedName} — ${me.name}'s ${action.name} needs ${need}.` : `${roller.name} has no ${usedName} left for ${me.name}'s ${action.name}.`); return false; }
+    let left = need;
+    for (const id of matches) { if (left <= 0) break; const take = Math.min(left, qtyOf(id)); useUp.push({ id, take }); left -= take; }
+  }
   for (const { c, f, amount } of costs) {
     if (!f || f.type === "formula" || f.type === "dice") { result.messages.push(`⚠ ${roller.name} has no “${c.key}” to spend.`); return false; }
     // Temporary points (Temp Energy…) count, and are spent first.
@@ -1081,6 +1103,14 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
     result.changes.push({ noteId: rollerId, key: cur.key, from, to });
   }
 
+  // Used up: each item's quantity goes down, and it leaves the inventory when none are left.
+  for (const { id, take } of useUp) {
+    const q = store.fieldsByNote.get(id)?.get("qty");
+    const rest = (q ? asNumber((q.value as any) ?? 0) : 1) - take;
+    if (q && rest > 0) { await store.putField({ ...q, value: rest }, cs); result.changes.push({ noteId: id, key: "qty", from: q.value, to: rest }); }
+    else { const was = store.linksOf(id).filter((l) => l.toNoteId === id).map((l) => l.fromNoteId); await store.removeNote(id, cs); for (const o of was) await syncCopyOwners(store, o, cs); }
+  }
+  const usedTotal = useUp.reduce((s, u) => s + u.take, 0);
   const count = Math.max(1, Math.min(100, Math.floor(num(spec.count, 1)) + extra));
   const die = Math.max(1, Math.min(1000, Math.floor(num(spec.die, 20))));
   const after = store.computer();
@@ -1096,7 +1126,7 @@ async function runRollSpec(store: ScopeStore, action: AgAction, spec: AgRollSpec
   if (addField && addVal) { total += addVal; breakdown += ` ${signed(addVal)} ${addField.label}`; }
   if (bonus) { total += bonus; breakdown += ` ${signed(bonus)} bonus`; }
   if (mods.bonus) { total += mods.bonus; breakdown += ` ${signed(mods.bonus)} temp`; }
-  const spent = costs.map(({ f, amount }) => `${round2(amount)} ${f!.label}`).join(", ") + (extra ? ` (${extra} extra ${extra === 1 ? "die" : "dice"})` : "");
+  const spent = [costs.map(({ f, amount }) => `${round2(amount)} ${f!.label}`).join(", ") + (extra ? ` (${extra} extra ${extra === 1 ? "die" : "dice"})` : ""), usedTotal ? `${usedTotal} ${usedName}` : ""].filter(Boolean).join(", ");
   locals.roll = total;
   result.rolls.push({ name: "roll", label: action.name, expr: `${count}d${die}`, total, breakdown: `${breakdown} = ${round2(total)}${spent ? `  · spent ${spent}` : ""}` });
   return true;
