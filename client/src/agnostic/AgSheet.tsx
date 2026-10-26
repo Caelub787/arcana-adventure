@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2, Share2, ZoomIn } from "lucide-react";
 import { agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
-import { AgPanel } from "./float";
+import { AgPanel, useAgPanel } from "./float";
 import { MemberPicker } from "./pickers";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { useAg, usePerms, useDoc, usePrefetchSheetDocs } from "./hooks";
@@ -129,7 +129,7 @@ function SheetHeader({ noteId }: { noteId: string }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [browse, setBrowse] = useState(false);
-  const [menu, setMenu] = useState(false);
+  const portraitPanel = useAgPanel("portrait");
   const [viewing, setViewing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   if (!note) return null;
@@ -140,11 +140,11 @@ function SheetHeader({ noteId }: { noteId: string }) {
     <div className="flex items-center gap-3 px-3 py-2.5 border-b border-stone-800 shrink-0 bg-gradient-to-b from-stone-900 to-stone-950">
       {canEditHeader ? (
         <>
-          <button type="button" onClick={() => setMenu(true)} className="relative shrink-0 group" title="Change portrait" data-testid="ag-portrait">{portrait}<span className="absolute inset-0 rounded-[10px] bg-black/50 opacity-0 group-hover:opacity-100 grid place-items-center">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}</span></button>
-          {menu && (
-            <AgPanel title={`Portrait — ${note.name || "Untitled"}`} onClose={() => setMenu(false)} width={300} height={300} testId="ag-portrait-panel">
+          <button type="button" onClick={portraitPanel.show} className="relative shrink-0 group" title="Change portrait" data-testid="ag-portrait">{portrait}<span className="absolute inset-0 rounded-[10px] bg-black/50 opacity-0 group-hover:opacity-100 grid place-items-center">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}</span></button>
+          {portraitPanel.open && (
+            <AgPanel title={`Portrait — ${note.name || "Untitled"}`} onClose={portraitPanel.hide} panelKey={portraitPanel.panelKey} width={300} height={300} testId="ag-portrait-panel">
               <div className="flex justify-center">{portrait}</div>
-              {note.portrait && <button type="button" onClick={() => { setMenu(false); setViewing(true); }} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2" data-testid="ag-portrait-view"><ZoomIn className="h-4 w-4" /> View larger</button>}
+              {note.portrait && <button type="button" onClick={() => { portraitPanel.hide(); setViewing(true); }} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2" data-testid="ag-portrait-view"><ZoomIn className="h-4 w-4" /> View larger</button>}
               <button type="button" onClick={() => fileRef.current?.click()} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><Upload className="h-4 w-4" /> Upload…</button>
               <button type="button" onClick={() => setBrowse(true)} className="w-full h-9 px-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 text-sm text-stone-200 inline-flex items-center gap-2"><ImageIcon className="h-4 w-4" /> Image library…</button>
               {note.portrait && <button type="button" onClick={() => setPortrait(null)} className="w-full h-9 px-3 rounded-lg text-sm text-red-300 hover:bg-red-950">Remove portrait</button>}

@@ -5,9 +5,35 @@
 //   AgSelector  — an item-selector-style chooser (search, filter chips, rows)
 //   PickField   — a field that shows the current choice and opens an AgSelector
 //   useAgConfirm — a floating "are you sure?" (replaces window.confirm)
-import React, { useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useId, useMemo, useRef, useState } from "react";
 import { Search, X, Check, Plus, ChevronRight } from "lucide-react";
-import { FloatingPanel, usePhoneScreen } from "@/components/ui/floating-panel";
+import { FloatingPanel, usePhoneScreen, bringFloatingPanelToFront } from "@/components/ui/floating-panel";
+
+/**
+ * Open-a-panel state for a control that opens one: a health pip, a value to
+ * double-click, a portrait button.
+ *
+ * Pressing the sheet behind an open editor puts the editor underneath, which
+ * is right - the sheet is what was pressed. Getting it back is this control's
+ * job, and `setOpen(true)` could not do it: the panel was already open, so
+ * nothing re-rendered and nothing rose. Pressing the control again now brings
+ * its panel forward instead of doing nothing at all.
+ */
+export function useAgPanel(name?: string) {
+  const id = useId();
+  const panelKey = useMemo(() => `ag-panel-${name ?? "x"}-${id}`, [name, id]);
+  const [open, setOpen] = useState(false);
+  // Read through a ref, not through `open`: `show` is handed to event
+  // handlers that would otherwise close over a stale value.
+  const openRef = useRef(false);
+  const show = useCallback(() => {
+    if (openRef.current) { bringFloatingPanelToFront(panelKey, undefined, true); return; }
+    openRef.current = true;
+    setOpen(true);
+  }, [panelKey]);
+  const hide = useCallback(() => { openRef.current = false; setOpen(false); }, []);
+  return { open, show, hide, panelKey };
+}
 
 let cascade = 0;
 const vw = () => (typeof window !== "undefined" ? window.innerWidth : 1280);
@@ -68,8 +94,10 @@ export interface SelItem {
 }
 
 /** The chooser: search, filter chips, a scrolling list of rows. Click a row to pick it. */
-export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen, noneLabel, actions, emptyText = "Nothing here yet.", searchPlaceholder = "Search…", freeText, testId = "ag-selector", hint, onHold }: {
+export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen, noneLabel, actions, emptyText = "Nothing here yet.", searchPlaceholder = "Search…", freeText, testId = "ag-selector", hint, onHold, panelKey }: {
   title: React.ReactNode; items: SelItem[]; onPick: (id: string) => void; onClose: () => void;
+  /** Lets the control that opened it bring it forward again when pressed. */
+  panelKey?: string;
   selectedId?: string | null; keepOpen?: boolean;
   /** Adds a first row that clears the choice (onPick("")). */
   noneLabel?: string;
@@ -91,7 +119,7 @@ export function AgSelector({ title, items, onPick, onClose, selectedId, keepOpen
   const pick = (id: string) => { onPick(id); if (!keepOpen) onClose(); };
   const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <AgPanel title={title} onClose={onClose} width={440} height={560} padded={false} testId={testId} footer={actions}>
+    <AgPanel title={title} onClose={onClose} panelKey={panelKey} width={440} height={560} padded={false} testId={testId} footer={actions}>
       <div className="sticky top-0 z-10 bg-stone-900 px-3 pt-3 pb-2 space-y-2 border-b border-stone-800">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
@@ -180,18 +208,18 @@ export function PickField({ value, items, onChange, placeholder = "Choose…", t
   /** How the current value reads when it isn't one of the items (e.g. a typed reference). */
   display?: string | null; className?: string; testId?: string; freeText?: (q: string) => string | null; hint?: React.ReactNode; keepOpen?: boolean; emptyText?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const panel = useAgPanel("pick");
   const current = value ? items.find((i) => i.id === value) : undefined;
   const label = current?.name ?? (value ? display ?? value : null);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={`h-8 sm:h-7 w-full px-2 rounded border border-stone-700 bg-stone-900 hover:border-amber-700 text-xs text-left text-stone-200 inline-flex items-center justify-between gap-1 ${className}`} data-testid={testId}>
+      <button type="button" onClick={panel.show} className={`h-8 sm:h-7 w-full px-2 rounded border border-stone-700 bg-stone-900 hover:border-amber-700 text-xs text-left text-stone-200 inline-flex items-center justify-between gap-1 ${className}`} data-testid={testId}>
         <span className="truncate">{label ?? <span className="text-stone-500">{value === "" && noneLabel ? noneLabel : placeholder}</span>}</span>
         <Search className="h-3 w-3 text-stone-500 shrink-0" />
       </button>
-      {open && (
+      {panel.open && (
         <AgSelector title={title} items={items} selectedId={value ?? null} noneLabel={noneLabel} keepOpen={keepOpen} freeText={freeText} hint={hint} emptyText={emptyText}
-          onPick={onChange} onClose={() => setOpen(false)} actions={actions?.(() => setOpen(false))} testId={testId ? `${testId}-selector` : undefined} />
+          onPick={onChange} onClose={panel.hide} panelKey={panel.panelKey} actions={actions?.(panel.hide)} testId={testId ? `${testId}-selector` : undefined} />
       )}
     </>
   );

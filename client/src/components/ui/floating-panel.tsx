@@ -13,6 +13,34 @@ import { useCompactPanelsEnabled, useCompactPanelScale } from "@/lib/panelScale"
 let sharedZCounter = 10600;
 const sharedZRegistry: Record<string, number> = {};
 
+// --- Raising a panel from outside -------------------------------------------
+// Pressing a sheet puts its open editor underneath, which is what should
+// happen. Getting the editor back is the job of the control that opened it:
+// pressing "health" again brings that editor forward rather than doing
+// nothing because the panel is, as far as the sheet knows, already open.
+// A panel keeps its z in a ref and re-applies it on every render, so one
+// raised from outside has to be told, or it snaps back on its next render.
+const zListeners: Record<string, Set<(z: number) => void>> = {};
+
+function setPanelZ(panelKey: string, z: number) {
+  sharedZRegistry[panelKey] = z;
+  if (typeof document !== "undefined") {
+    const safeKey =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(panelKey)
+        : panelKey.replace(/"/g, '\\"');
+    const el = document.querySelector(`[data-panel-key="${safeKey}"]`) as HTMLElement | null;
+    if (el) el.style.zIndex = String(z);
+  }
+  zListeners[panelKey]?.forEach((fn) => fn(z));
+}
+
+export function subscribeFloatingPanelZ(panelKey: string | undefined, fn: (z: number) => void): () => void {
+  if (!panelKey) return () => {};
+  (zListeners[panelKey] ??= new Set()).add(fn);
+  return () => { zListeners[panelKey]?.delete(fn); };
+}
+
 // Acquire the next-highest z-index and (optionally) record/apply it for a panel.
 // `baseline` lets a panel that was given an explicit high zIndex (e.g. a
 // quick-search panel at 20000) push the counter above that value so subsequent
@@ -106,15 +134,7 @@ export function bringFloatingPanelToFront(panelKey?: string, baseline?: number, 
   sharedZCounter = Math.max(sharedZCounter, baseline ?? 0) + 1;
   const z = sharedZCounter;
   if (panelKey) {
-    sharedZRegistry[panelKey] = z;
-    if (typeof document !== "undefined") {
-      const safeKey =
-        typeof CSS !== "undefined" && typeof CSS.escape === "function"
-          ? CSS.escape(panelKey)
-          : panelKey.replace(/"/g, '\\"');
-      const el = document.querySelector(`[data-panel-key="${safeKey}"]`) as HTMLElement | null;
-      if (el) el.style.zIndex = String(z);
-    }
+    setPanelZ(panelKey, z);
   }
   return z;
 }
@@ -584,6 +604,14 @@ const DesktopFloatingPanel = React.memo(function DesktopFloatingPanel({
     const el = panelRef.current;
     if (el) el.style.zIndex = String(isFullscreen ? Math.max(z, 10500) : z);
   }, [panelKey, isFullscreen]);
+
+  // Raised by the control that opened it rather than by a press on the panel
+  // itself: keep the ref in step, or the next re-render snaps it back down.
+  React.useEffect(() => subscribeFloatingPanelZ(panelKey, (z) => {
+    zIndexRef.current = z;
+    const el = panelRef.current;
+    if (el) el.style.zIndex = String(isFullscreen ? Math.max(z, 10500) : z);
+  }), [panelKey, isFullscreen]);
 
   React.useLayoutEffect(() => {
     zIndexRef.current = Math.max(zIndexRef.current, zIndex);

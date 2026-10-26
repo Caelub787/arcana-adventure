@@ -25,6 +25,27 @@ function db(): Promise<IDBDatabase | null> {
 
 const keyOf = (userId: string, scopeKey: string) => `${userId}|${scopeKey}`;
 
+// Who was signed in last, written where it can be read without waiting for
+// anything. The cached copy is stored per user, so reading it needs a user id
+// - and asking the server who you are is a round trip, which is the very wait
+// the cache exists to avoid. Remembering it here lets the last copy be on
+// screen before the server has said a word. It is only ever used to look up
+// this browser's own cache: the real identity still comes from the server,
+// and if it turns out to be someone else the cached copy is dropped.
+const LAST_USER = "agnostic-last-user";
+
+export function rememberUser(userId: string): void {
+  try { if (userId) localStorage.setItem(LAST_USER, userId); } catch { /* storage off: no cache */ }
+}
+
+export function lastUser(): string {
+  try { return localStorage.getItem(LAST_USER) ?? ""; } catch { return ""; }
+}
+
+export function forgetUser(): void {
+  try { localStorage.removeItem(LAST_USER); } catch { /* ignore */ }
+}
+
 export async function readSnapshot<T>(userId: string, scopeKey: string): Promise<T | null> {
   const d = await db();
   if (!d) return null;
@@ -45,6 +66,7 @@ export async function writeSnapshot(userId: string, scopeKey: string, value: unk
 
 /** Forget everything (signing out). */
 export async function clearSnapshots(): Promise<void> {
+  forgetUser();
   const d = await db();
   if (!d) return;
   try { d.transaction(STORE, "readwrite").objectStore(STORE).clear(); } catch { /* ignore */ }

@@ -26,6 +26,13 @@ vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// The bar asks who is signed in so it can find this browser's saved copy of
+// itself. That is not what these tests are about, and the real hook needs a
+// provider around it.
+vi.mock("@/lib/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user-1" } }),
+}));
+
 // GameComponents is a very large module; the hotbar only needs LazyItemImage.
 vi.mock("./GameComponents", () => ({
   LazyItemImage: () => null,

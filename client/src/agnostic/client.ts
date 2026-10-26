@@ -10,7 +10,7 @@ import type {
   AgCampaignSettings, AgComponentDef, AgField, AgLink, AgModifier, AgNote, AgRegion, AgScope,
 } from "@shared/agnostic/types";
 import { scopeKey } from "@shared/agnostic/types";
-import { readSnapshot, writeSnapshot } from "./snapCache";
+import { readSnapshot, writeSnapshot, rememberUser, lastUser } from "./snapCache";
 import type { AgActionView, AgClientMsg, AgMember, AgOp, AgServerMsg } from "@shared/agnostic/protocol";
 
 export interface ScopeState {
@@ -79,21 +79,29 @@ class AgnosticClient {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   connected = false;
   private _user: { id: string; name: string } = { id: "", name: "" };
-  private userWaiters: Array<() => void> = [];
   private saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
   get user() { return this._user; }
   setUser(u: { id: string; name: string }) {
+    const was = this._user.id;
     this._user = u;
-    if (u.id) { const w = this.userWaiters; this.userWaiters = []; w.forEach((f) => f()); }
-  }
-  private whenUser(ms: number): Promise<boolean> {
-    if (this._user.id) return Promise.resolve(true);
-    return new Promise((resolve) => {
-      const t = setTimeout(() => resolve(false), ms);
-      this.userWaiters.push(() => { clearTimeout(t); resolve(true); });
-    });
+    if (u.id) {
+      rememberUser(u.id);
+      // Opened on a cached copy belonging to whoever was signed in last, and
+      // it turns out to be someone else: drop it rather than show one
+      // person's sheets to another. The server's snapshot is on its way.
+      if (was && was !== u.id) this.dropCachedScopes();
+    }
   }
 
+  /** Forget anything shown from this browser's cache, keeping server data. */
+  private dropCachedScopes() {
+    for (const [key, s] of Array.from(this.scopes.entries())) {
+      if (!s.state.cached) continue;
+      s.state = makeScopeState(s.state.scope);
+      s.listeners.forEach((l) => l());
+      void key;
+    }
+  }
   // --- connection ---------------------------------------------------------------
   private ensure() {
     if (this.ws) return;
@@ -178,8 +186,13 @@ class AgnosticClient {
   // --- this browser's last copy ----------------------------------------------------
   /** Show the last copy at once, unless the server's snapshot beat it here. */
   private async openCached(key: string) {
-    if (!(await this.whenUser(10_000))) return;
-    const userId = this._user.id;
+    // Deliberately does NOT wait to be told who is signed in. That answer is a
+    // round trip, and it was the reason the cache almost never won the race it
+    // exists to win: the hotbar sat empty until the server's snapshot landed.
+    // The id this browser last signed in with is enough to find its own cache,
+    // and setUser drops it if the real identity turns out to be someone else.
+    const userId = this._user.id || lastUser();
+    if (!userId) return;
     const snap = await readSnapshot<Omit<Extract<AgServerMsg, { t: "scope.snapshot" }>, "t" | "scope">>(userId, key);
     const s = this.scopes.get(key);
     if (!snap || !s || s.state.ready || snap.userId !== userId) return;

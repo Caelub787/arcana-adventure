@@ -5,6 +5,7 @@
 // character-sheet hotbars, and GM character hotbar in V3 campaigns only.
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuth } from "@/lib/AuthContext";
+import { lastUser } from "@/agnostic/snapCache";
 import { useKeybindMany } from "@/lib/keybinds";
 
 const HOTBAR_SLOT_ACTIONS = Array.from({ length: 10 }, (_, i) => `hotbar.slot${i + 1}`);
@@ -326,7 +327,13 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   // so its slots are there - and pressable - the moment the page loads; the
   // server's copy replaces it as soon as it arrives.
   const { user: me } = useAuth();
-  const hotbarCacheKey = me?.id ? `free-hotbar-cache:${me.id}:${campaignId}` : null;
+  // Who was signed in last, read straight from storage. `me` arrives a round
+  // trip later, and a query only ever consults `initialData` on its first
+  // render - so keying the cache on `me` meant the saved bar was never once
+  // used on a cold load, and the slots sat unknown until the server replied.
+  const [lastUserId] = useState(() => lastUser());
+  const cacheUserId = me?.id || lastUserId;
+  const hotbarCacheKey = cacheUserId ? `free-hotbar-cache:${cacheUserId}:${campaignId}` : null;
   const { data: entriesData, isFetched: entriesFetched } = useQuery<FreeHotbarEntryView[]>({
     queryKey: ['free-hotbar', campaignId],
     queryFn: () => api.getFreeHotbar(campaignId),
@@ -339,6 +346,13 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   const entries = entriesData ?? [];
   // Until the bar is known, a press can't tell an empty slot from a full one.
   const entriesKnown = entriesData !== undefined;
+  // Opened on a bar belonging to whoever was signed in last, and it turns out
+  // to be someone else: drop it rather than show one person's slots to
+  // another. The server's copy is already on its way.
+  useEffect(() => {
+    if (!me?.id || !lastUserId || me.id === lastUserId) return;
+    queryClient.removeQueries({ queryKey: ['free-hotbar', campaignId] });
+  }, [me?.id, lastUserId, campaignId, queryClient]);
   useEffect(() => {
     if (!hotbarCacheKey || !entriesFetched || !entriesData) return;
     try { localStorage.setItem(hotbarCacheKey, JSON.stringify(entriesData)); } catch { /* storage full or blocked */ }

@@ -11,7 +11,7 @@ import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { useToast } from "@/hooks/use-toast";
-import { AgPanel, AgSelector, PickField } from "./float";
+import { AgPanel, AgSelector, PickField, useAgPanel } from "./float";
 import { api } from "@/lib/api";
 import { pushUndo } from "./undo";
 import { agClient } from "./client";
@@ -124,16 +124,16 @@ export function CommitInput({ value, onCommit, type = "text", className = "", pl
 function NumberEditor({ field, max, children }: { field: AgField; max?: number | null; children: React.ReactNode }) {
   const w = useFieldWriter();
   const v = asNumber(effOf(field) as any);
-  const [open, setOpen] = useState(false);
+  const panel = useAgPanel("number");
   const { state } = useAg();
   const note = state.notes.get(field.noteId);
   // Temp points that soak up losses first (Temp HP): set them here too, under the value.
   const shield = field.options.shield ? Array.from(state.fields.values()).find((f) => f.noteId === field.noteId && f.key === field.options.shield) : undefined;
   return (
     <>
-      <div className="contents" onClick={() => setOpen(true)}>{children}</div>
-      {open && (
-      <AgPanel title={`${field.label}${note?.name ? ` — ${note.name}` : ""}`} onClose={() => setOpen(false)} width={300} height={shield ? 300 : 220} testId="ag-number-panel">
+      <div className="contents" onClick={panel.show}>{children}</div>
+      {panel.open && (
+      <AgPanel title={`${field.label}${note?.name ? ` — ${note.name}` : ""}`} onClose={panel.hide} panelKey={panel.panelKey} width={300} height={shield ? 300 : 220} testId="ag-number-panel">
         <div className="text-xs text-stone-400 mb-1.5">{field.label}{max != null ? ` (max ${formatValue(max)})` : ""}</div>
         <div className="flex items-center gap-1">
           {[-5, -1].map((d) => <button key={d} type="button" onClick={() => w.adjust(field, d)} className="h-9 px-2 rounded bg-stone-800 hover:bg-red-900/60 text-sm text-stone-200">{d}</button>)}
@@ -304,7 +304,7 @@ function Dial({ field, maxField, color = "#38bdf8", size = 56, look }: { field: 
  */
 export function EditOnDoubleClick({ field, children, empty }: { field?: AgField; children: React.ReactNode; empty?: boolean }) {
   const { canEditField, isGM } = usePerms(field?.noteId);
-  const [open, setOpen] = useState(false);
+  const panel = useAgPanel("value");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editable = !!field && field.type !== "formula" && (field.type === "dice" ? isGM : canEditField(field));
   if (!editable) return <>{children}</>;
@@ -313,12 +313,12 @@ export function EditOnDoubleClick({ field, children, empty }: { field?: AgField;
   return (
     <>
       <span className="cursor-pointer" title="Double-click (or long-press) to change"
-        onDoubleClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        onTouchStart={() => { cancel(); timer.current = setTimeout(() => setOpen(true), 500); }}
+        onDoubleClick={(e) => { e.stopPropagation(); panel.show(); }}
+        onTouchStart={() => { cancel(); timer.current = setTimeout(panel.show, 500); }}
         onTouchEnd={cancel} onTouchMove={cancel} onTouchCancel={cancel}
         data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
-      {open && (
-        <AgPanel title={field!.label} onClose={() => setOpen(false)} width={field!.type === "text" && !field!.options.isColor ? 460 : 300} height={field!.type === "text" && !field!.options.isColor ? 320 : field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
+      {panel.open && (
+        <AgPanel title={field!.label} onClose={panel.hide} panelKey={panel.panelKey} width={field!.type === "text" && !field!.options.isColor ? 460 : 300} height={field!.type === "text" && !field!.options.isColor ? 320 : field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
           {field!.type === "dice" ? <DiceFormulaInput field={field!} />
             : field!.type === "text" && !field!.options.isColor ? <TextAreaInput field={field!} />
             : <FieldInput field={field!} className={field!.type === "number" ? "w-full" : ""} />}
