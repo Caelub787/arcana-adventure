@@ -10,12 +10,15 @@ import type {
   AgCampaignSettings, AgComponentDef, AgField, AgLink, AgModifier, AgNote, AgRegion, AgScope,
 } from "@shared/agnostic/types";
 import { scopeKey } from "@shared/agnostic/types";
+import { readSnapshot, writeSnapshot } from "./snapCache";
 import type { AgActionView, AgClientMsg, AgMember, AgOp, AgServerMsg } from "@shared/agnostic/protocol";
 
 export interface ScopeState {
   scope: AgScope;
   key: string;
   ready: boolean;
+  /** Opened on this browser's last copy; the server's snapshot hasn't arrived yet. */
+  cached?: boolean;
   denied: string | null;
   isGM: boolean;
   userId: string;
@@ -75,7 +78,21 @@ class AgnosticClient {
   private connListeners = new Set<Listener>();
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   connected = false;
-  user: { id: string; name: string } = { id: "", name: "" };
+  private _user: { id: string; name: string } = { id: "", name: "" };
+  private userWaiters: Array<() => void> = [];
+  private saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  get user() { return this._user; }
+  setUser(u: { id: string; name: string }) {
+    this._user = u;
+    if (u.id) { const w = this.userWaiters; this.userWaiters = []; w.forEach((f) => f()); }
+  }
+  private whenUser(ms: number): Promise<boolean> {
+    if (this._user.id) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const t = setTimeout(() => resolve(false), ms);
+      this.userWaiters.push(() => { clearTimeout(t); resolve(true); });
+    });
+  }
 
   // --- connection ---------------------------------------------------------------
   private ensure() {
@@ -136,6 +153,7 @@ class AgnosticClient {
       this.scopes.set(key, s);
       this.ensure();
       this.raw({ t: "scope.sub", scope });
+      void this.openCached(key);
     }
     s.refs++;
     return () => {
@@ -157,6 +175,53 @@ class AgnosticClient {
 
   getScope(key: string): ScopeState | undefined { return this.scopes.get(key)?.state; }
 
+  // --- this browser's last copy ----------------------------------------------------
+  /** Show the last copy at once, unless the server's snapshot beat it here. */
+  private async openCached(key: string) {
+    if (!(await this.whenUser(10_000))) return;
+    const userId = this._user.id;
+    const snap = await readSnapshot<Omit<Extract<AgServerMsg, { t: "scope.snapshot" }>, "t" | "scope">>(userId, key);
+    const s = this.scopes.get(key);
+    if (!snap || !s || s.state.ready || snap.userId !== userId) return;
+    s.state = this.stateFrom(s.state, snap, true);
+    s.listeners.forEach((l) => l());
+  }
+  private stateFrom(prev: ScopeState, msg: Omit<Extract<AgServerMsg, { t: "scope.snapshot" }>, "t" | "scope">, cached: boolean): ScopeState {
+    const st = makeScopeState(prev.scope);
+    st.ready = true;
+    st.cached = cached;
+    st.isGM = msg.isGM;
+    st.userId = msg.userId;
+    st.members = msg.members;
+    msg.notes.forEach((n) => st.notes.set(n.id, n));
+    msg.fields.forEach((f) => st.fields.set(f.id, f));
+    msg.regions.forEach((r) => st.regions.set(r.id, r));
+    msg.links.forEach((l) => st.links.set(l.id, l));
+    msg.modifiers.forEach((m) => st.modifiers.set(m.id, m));
+    msg.actions.forEach((a) => st.actions.set(a.id, a));
+    msg.components.forEach((c) => st.components.set(c.id, c));
+    st.settings = msg.settings;
+    st.version = prev.version + 1;
+    return st;
+  }
+  /** Keep the last copy current: a few seconds after changes settle. */
+  private scheduleSave(key: string) {
+    const s = this.scopes.get(key);
+    if (!s || !s.state.ready || s.state.cached || s.state.denied || !s.state.userId) return;
+    if (this.saveTimers.has(key)) return;
+    this.saveTimers.set(key, setTimeout(() => {
+      this.saveTimers.delete(key);
+      const cur = this.scopes.get(key)?.state;
+      if (!cur || !cur.ready || cur.cached || cur.denied) return;
+      void writeSnapshot(cur.userId, key, {
+        isGM: cur.isGM, userId: cur.userId, members: cur.members,
+        notes: Array.from(cur.notes.values()), fields: Array.from(cur.fields.values()), regions: Array.from(cur.regions.values()),
+        links: Array.from(cur.links.values()), modifiers: Array.from(cur.modifiers.values()), actions: Array.from(cur.actions.values()),
+        components: Array.from(cur.components.values()), settings: cur.settings,
+      });
+    }, 4000));
+  }
+
   subscribeScope(key: string, l: Listener) {
     const s = this.scopes.get(key);
     if (!s) return () => {};
@@ -170,6 +235,7 @@ class AgnosticClient {
     // New object identity so useSyncExternalStore consumers re-render.
     s.state = { ...s.state, version: s.state.version + 1 };
     s.listeners.forEach((l) => l());
+    this.scheduleSave(key);
   }
 
   /**
@@ -298,22 +364,9 @@ class AgnosticClient {
       case "scope.snapshot": {
         const s = this.scopes.get(msg.scope);
         if (!s) return;
-        const st = makeScopeState(s.state.scope);
-        st.ready = true;
-        st.isGM = msg.isGM;
-        st.userId = msg.userId;
-        st.members = msg.members;
-        msg.notes.forEach((n) => st.notes.set(n.id, n));
-        msg.fields.forEach((f) => st.fields.set(f.id, f));
-        msg.regions.forEach((r) => st.regions.set(r.id, r));
-        msg.links.forEach((l) => st.links.set(l.id, l));
-        msg.modifiers.forEach((m) => st.modifiers.set(m.id, m));
-        msg.actions.forEach((a) => st.actions.set(a.id, a));
-        msg.components.forEach((c) => st.components.set(c.id, c));
-        st.settings = msg.settings;
-        st.version = s.state.version + 1;
-        s.state = st;
+        s.state = this.stateFrom(s.state, msg, false);
         s.listeners.forEach((l) => l());
+        this.scheduleSave(msg.scope);
         return;
       }
       case "scope.denied": {

@@ -4,7 +4,7 @@
 // right there). The GM can also make a new function — a button with steps —
 // straight from the picker.
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil, Hammer, FlaskConical, PenTool, Package, User } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil, Hammer, FlaskConical, PenTool, Package, User, Loader2 } from "lucide-react";
 import { CRAFT_KIND_LABEL, CRAFT_KIND_OF_STATION, type CraftKind } from "@shared/agnostic/crafting";
 import { agTypeLabel, type AgNote } from "@shared/agnostic/types";
 import { useAg, useAgMaybe, resolveRef } from "./hooks";
@@ -39,9 +39,28 @@ function MiniBars({ note }: { note: AgNote }) {
 export function AgHotbarSlot(props: {
   agRef: string; className: string; onRemove: () => void; registerPress: (fn: (() => void) | null) => void; testId?: string;
 }) {
-  // The bar can show before Agnostic has connected: an empty tile until then.
-  if (!useAgMaybe()) return <button type="button" className={props.className} disabled data-testid={props.testId} />;
-  return <AgHotbarSlotInner {...props} />;
+  const ready = !!useAgMaybe();
+  // Pressed before Agnostic was ready (first visit on this browser): held, then done once it is.
+  const pending = React.useRef(false);
+  const [waiting, setWaiting] = useState(false);
+  const { registerPress } = props;
+  const register = React.useCallback((fn: (() => void) | null) => {
+    registerPress(fn);
+    if (fn && pending.current) { pending.current = false; fn(); }
+  }, [registerPress]);
+  useEffect(() => {
+    if (ready) return;
+    registerPress(() => { pending.current = true; setWaiting(true); });
+    return () => registerPress(null);
+  }, [ready, registerPress]);
+  if (!ready) {
+    return (
+      <button type="button" className={props.className} data-testid={props.testId} title="Loading…" onClick={() => { pending.current = true; setWaiting(true); }}>
+        <Loader2 className={`h-4 w-4 text-amber-500/70 ${waiting ? "animate-spin" : ""}`} />
+      </button>
+    );
+  }
+  return <AgHotbarSlotInner {...props} registerPress={register} />;
 }
 
 function AgHotbarSlotInner({ agRef, className, onRemove, registerPress, testId }: {

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, globalWs, type User, type BanDetails } from './api';
 import { queryClient } from './queryClient';
+import { clearSnapshots } from '@/agnostic/snapCache';
 
 interface AuthContextType {
   user: User | null;
@@ -68,6 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setBanDetails(null);
     queryClient.clear();
+    // This browser's saved copies (Agnostic data, hotbars) belong to whoever just signed out.
+    void clearSnapshots();
+    try { Object.keys(localStorage).filter((k) => k.startsWith('free-hotbar-cache:')).forEach((k) => localStorage.removeItem(k)); } catch { /* storage blocked */ }
   };
 
   const isBanned = banDetails?.isBanned ?? false;

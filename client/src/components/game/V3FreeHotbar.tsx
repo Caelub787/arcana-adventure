@@ -4,6 +4,7 @@
 // GM-assigned admin/My Library item). Replaces the V2-style battle hotbars,
 // character-sheet hotbars, and GM character hotbar in V3 campaigns only.
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useAuth } from "@/lib/AuthContext";
 import { useKeybindMany } from "@/lib/keybinds";
 
 const HOTBAR_SLOT_ACTIONS = Array.from({ length: 10 }, (_, i) => `hotbar.slot${i + 1}`);
@@ -136,6 +137,8 @@ interface V3FreeHotbarProps {
 export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenItem, campaignSystem, agnostic }: V3FreeHotbarProps) {
   // Agnostic slots press themselves (they know their sheet / button); the digit keys reach them here.
   const agPress = useRef<Map<number, () => void>>(new Map());
+  // A slot pressed before the bar had loaded.
+  const pendingSlot = useRef<number | null>(null);
   // Sound slots light up while their loop is in the Soundscape mix.
   const [, setSoundscapeTick] = useState(0);
   useEffect(() => soundscape.subscribe(() => setSoundscapeTick((t) => t + 1)), []);
@@ -319,10 +322,27 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
     };
   }, []);
 
-  const { data: entries = [] } = useQuery<FreeHotbarEntryView[]>({
+  // The bar opens on this browser's last copy of it (per person, per campaign)
+  // so its slots are there - and pressable - the moment the page loads; the
+  // server's copy replaces it as soon as it arrives.
+  const { user: me } = useAuth();
+  const hotbarCacheKey = me?.id ? `free-hotbar-cache:${me.id}:${campaignId}` : null;
+  const { data: entriesData, isFetched: entriesFetched } = useQuery<FreeHotbarEntryView[]>({
     queryKey: ['free-hotbar', campaignId],
     queryFn: () => api.getFreeHotbar(campaignId),
+    initialData: () => {
+      if (!hotbarCacheKey) return undefined;
+      try { const raw = localStorage.getItem(hotbarCacheKey); return raw ? JSON.parse(raw) as FreeHotbarEntryView[] : undefined; } catch { return undefined; }
+    },
+    initialDataUpdatedAt: 0,
   });
+  const entries = entriesData ?? [];
+  // Until the bar is known, a press can't tell an empty slot from a full one.
+  const entriesKnown = entriesData !== undefined;
+  useEffect(() => {
+    if (!hotbarCacheKey || !entriesFetched || !entriesData) return;
+    try { localStorage.setItem(hotbarCacheKey, JSON.stringify(entriesData)); } catch { /* storage full or blocked */ }
+  }, [hotbarCacheKey, entriesFetched, entriesData]);
 
   // Live stat overlay: the campaign characters query is invalidated by the
   // character-update WebSocket flow, so merging its hp/energy/mana values on
@@ -432,6 +452,8 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
 
   const handleSlotClick = (slotIndex: number) => {
     const entry = currentEntries.get(slotIndex);
+    // Pressed before the bar has loaded: do it once it has (never "nothing here").
+    if (!entriesKnown) { pendingSlot.current = slotIndex; return; }
     if (!entry) { setPickerSlot(slotIndex); return; }
     if (entry.agnosticRef) { agPress.current.get(slotIndex)?.(); return; }
     if (entry.soundId) {
@@ -480,7 +502,17 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   // path only: a mouse click on the tile keeps bringing an open sheet to
   // front (handleSlotClick, below), since burying a sheet you clicked on by
   // accident would be surprising.
+  // The bar has loaded: carry out a press made while it was loading - on a slot
+  // that turns out to hold something (an empty one just stays put).
+  useEffect(() => {
+    if (!entriesKnown || pendingSlot.current === null) return;
+    const slot = pendingSlot.current;
+    pendingSlot.current = null;
+    if (currentEntries.get(slot)) handleSlotClick(slot);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+
   openSlotByKeyRef.current = (slotIndex: number) => {
+    if (!entriesKnown) { pendingSlot.current = slotIndex; return; }
     const entry = currentEntries.get(slotIndex);
     if (!entry) return;
     if (entry.characterId && entry.character && entry.character.canEdit !== false) {

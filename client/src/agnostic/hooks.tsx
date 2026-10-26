@@ -60,7 +60,7 @@ export function AgScopeProvider({ scope, children, onOpenNote, blocking = true, 
   const raw = useScopeState(scope);
   const { user } = useAuth() as any;
   useEffect(() => {
-    if (user) { agClient.user = { id: user.id, name: user.username || user.name || "Someone" }; }
+    if (user) agClient.setUser({ id: user.id, name: user.username || user.name || "Someone" });
   }, [user]);
   const key = scopeKey(scope);
   const [previewUserId, setPreviewUserId] = useState<string | null>(null);
