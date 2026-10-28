@@ -67,14 +67,14 @@ export function rollSummary(state: State, action: Pick<AgAction, "noteId" | "opt
     .filter(({ n, c }) => n === null ? !!c.amount.trim() : n !== 0)
     .map(({ c, n }) => `${n ?? c.amount} ${field(c.key)?.label ?? titleCase(c.key)}`)
     .join(" · ");
-  // Damage Die: more dice for a rising price.
-  const step = spec.scale ? value(spec.scale.step) : null;
-  const more = spec.scale ? `more dice: ${step ?? spec.scale.step}+ ${field(spec.scale.pay)?.label ?? titleCase(spec.scale.pay)}` : "";
+  // A Damage Die roll says so with the ⇡ on its dice and nothing else: what
+  // it costs to push is asked at the moment of rolling, and spelling it out
+  // on the chip only crowded the one line the roll itself has to share.
   // An item it uses up each roll (ammunition).
   const usesQty = spec.uses ? value(spec.uses.qty) : null;
   const usesWhat = spec.uses ? (spec.uses.match ? String(effOf(resolveRef(state, action.noteId, spec.uses.match)[0]) ?? "") : "") || "item" : "";
   const uses = spec.uses && usesQty !== 0 ? `uses ${usesQty ?? spec.uses.qty} ${spec.uses.only ? `${spec.uses.only.replace(/_/g, " ")} ` : ""}${usesWhat}` : "";
-  return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, uses, more].filter(Boolean).join(" · ") || null };
+  return { roll: spec.scale ? `${roll} ⇡` : roll, cost: [cost, uses].filter(Boolean).join(" · ") || null };
 }
 
 /**
