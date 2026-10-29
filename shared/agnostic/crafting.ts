@@ -191,8 +191,9 @@ export function parseCraftConfig(raw: unknown): CraftConfig | null {
     return { kind: "alchemy", ingredients: needs(o.ingredients, true), steps, output: id(o.output), effects: effects(o.effects) };
   }
   if (o.kind === "rune") {
-    const sigil = (Array.isArray(o.sigil) ? o.sigil : []).slice(0, 12).map((st: any) => (Array.isArray(st) ? st : []).slice(0, 200)
-      .map((pt: any) => [num(pt?.[0], 50, 0, 100), num(pt?.[1], 50, 0, 100)])).filter((st: number[][]) => st.length > 1);
+    // Room for a sigil built out of pieces: twelve strokes was enough for a
+    // scribble, but a mirrored one lays two down at a time.
+    const sigil = parseSigil(o.sigil);
     const eff = o.effect && key(o.effect.key) ? { key: key(o.effect.key), values: tierValues(o.effect.values) } : null;
     return { kind: "rune", sigil, ingredients: needs(o.ingredients, true), tools: needs(o.tools, false), needsInk: !!o.needsInk, output: id(o.output), effect: eff };
   }
@@ -1076,5 +1077,128 @@ export function moldTraitWords(t: MoldTraits): string[] {
   if (t.speed) out.push(t.speed > 0 ? `${sign(t.speed)} quick` : `${sign(t.speed)} slow`);
   if (t.unwieldy) out.push(`−${t.unwieldy} to handle`);
   if (t.durability) out.push(`${sign(t.durability)} sound`);
+  return out;
+}
+
+// --------------------------------------------------------------------------- making a sigil
+// A rune's sigil is strokes in a 0–100 box. The ones that come with a system are
+// built out of straight lines and arcs, which is why they look deliberate; a
+// sigil scribbled with a mouse never does. So the GM gets the same primitives to
+// build with — a line, an arc, a ring, a polygon, a star — plus a lattice to snap
+// to, a mirror so a rune comes out symmetrical, and smoothing for a freehand
+// stroke. Everything here is points in that same box, so a sigil built this way
+// and one drawn by hand are the same thing to everything downstream.
+
+/** How many squares across the snapping lattice is. */
+export const SIGIL_GRID = 12;
+export const SIGIL_TOOLS = ["pen", "line", "arc", "ring", "poly", "star"] as const;
+export type SigilTool = (typeof SIGIL_TOOLS)[number];
+export const SIGIL_TOOL_LABEL: Record<SigilTool, string> = { pen: "Pen", line: "Line", arc: "Arc", ring: "Ring", poly: "Polygon", star: "Star" };
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const clamp100 = (n: number) => Math.max(0, Math.min(100, n));
+
+/** A point pulled onto the lattice, so strokes meet cleanly instead of nearly. */
+export function snapSigilPoint(p: number[], grid = SIGIL_GRID): number[] {
+  if (!grid) return [round1(clamp100(p[0])), round1(clamp100(p[1]))];
+  const step = 100 / grid;
+  return [round1(clamp100(Math.round(p[0] / step) * step)), round1(clamp100(Math.round(p[1] / step) * step))];
+}
+
+/**
+ * A freehand stroke with the wobble taken out of it: corners cut, again and
+ * again, which is what turns a shaky drag into a curve. The ends stay put so a
+ * stroke still starts and finishes where it was drawn.
+ */
+export function smoothStroke(stroke: number[][], passes = 2): number[][] {
+  let pts = stroke.map((p) => [p[0], p[1]]);
+  for (let k = 0; k < passes && pts.length > 2; k++) {
+    const out: number[][] = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  // Thinned out again: a smooth stroke doesn't need every point it grew.
+  const thin = pts.filter((_, i) => i % 2 === 0 || i === pts.length - 1);
+  return (thin.length > 1 ? thin : pts).map((p) => [round1(p[0]), round1(p[1])]);
+}
+
+/** A stroke and its reflection, for a rune that reads the same both ways. */
+export const mirrorStroke = (stroke: number[][]): number[][] => stroke.map((p) => [round1(100 - p[0]), p[1]]);
+/** Whether a stroke sits on the mirror line already, so reflecting it would only double it. */
+export const onMirrorLine = (stroke: number[][]) => stroke.every((p) => Math.abs(p[0] - 50) < 0.6);
+
+export const sigilLine = (a: number[], b: number[], n = 8): number[][] =>
+  Array.from({ length: n + 1 }, (_, i) => [round1(a[0] + ((b[0] - a[0]) * i) / n), round1(a[1] + ((b[1] - a[1]) * i) / n)]);
+
+export const sigilArc = (cx: number, cy: number, r: number, a0: number, a1: number, n = 16): number[][] =>
+  Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [round1(cx + r * Math.cos(a)), round1(cy + r * Math.sin(a))]; });
+
+export const sigilRing = (cx: number, cy: number, r: number, n = 28): number[][] => sigilArc(cx, cy, r, 0, Math.PI * 2, n);
+
+/** A polygon of `sides`, point up. */
+export function sigilPolygon(cx: number, cy: number, r: number, sides: number, rot = -Math.PI / 2): number[][] {
+  const n = Math.max(3, Math.min(12, Math.round(sides)));
+  const out: number[][] = [];
+  for (let i = 0; i <= n; i++) { const a = rot + (i * Math.PI * 2) / n; out.push([round1(cx + r * Math.cos(a)), round1(cy + r * Math.sin(a))]); }
+  return out;
+}
+
+/** A star of `points`, drawn as one unbroken stroke. */
+export function sigilStar(cx: number, cy: number, r: number, points: number, inner = 0.42, rot = -Math.PI / 2): number[][] {
+  const n = Math.max(3, Math.min(12, Math.round(points)));
+  const out: number[][] = [];
+  for (let i = 0; i <= n * 2; i++) {
+    const a = rot + (i * Math.PI) / n;
+    const rr = i % 2 === 0 ? r : r * inner;
+    out.push([round1(cx + rr * Math.cos(a)), round1(cy + rr * Math.sin(a))]);
+  }
+  return out;
+}
+
+/** The box a sigil's strokes actually fill, or null when there's nothing drawn. */
+export function sigilBounds(strokes: number[][][]): { x0: number; y0: number; x1: number; y1: number } | null {
+  const pts = strokes.flat();
+  if (!pts.length) return null;
+  return {
+    x0: Math.min(...pts.map((p) => p[0])), y0: Math.min(...pts.map((p) => p[1])),
+    x1: Math.max(...pts.map((p) => p[0])), y1: Math.max(...pts.map((p) => p[1])),
+  };
+}
+
+/**
+ * A sigil moved to the middle of its box and grown to fill it, its proportions
+ * kept. This is most of what makes a drawn sigil look made rather than jotted:
+ * the premade ones all use the whole box.
+ */
+export function fitSigil(strokes: number[][][], margin = 6): number[][][] {
+  const b = sigilBounds(strokes);
+  if (!b) return strokes;
+  const w = b.x1 - b.x0, h = b.y1 - b.y0;
+  if (w < 0.5 && h < 0.5) return strokes;
+  const span = 100 - margin * 2;
+  const k = Math.min(span / Math.max(0.5, w), span / Math.max(0.5, h));
+  const ox = margin + (span - w * k) / 2, oy = margin + (span - h * k) / 2;
+  return strokes.map((st) => st.map((p) => [round1(ox + (p[0] - b.x0) * k), round1(oy + (p[1] - b.y0) * k)]));
+}
+
+/** A sigil trimmed to something safe to keep: strokes of real points, in the box. */
+export function parseSigil(raw: unknown, maxStrokes = 40, maxPoints = 400): number[][][] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[][][] = [];
+  for (const st of raw.slice(0, maxStrokes)) {
+    if (!Array.isArray(st)) continue;
+    const pts: number[][] = [];
+    for (const p of st.slice(0, maxPoints)) {
+      if (!Array.isArray(p) || typeof p[0] !== "number" || typeof p[1] !== "number") continue;
+      if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
+      pts.push([round1(clamp100(p[0])), round1(clamp100(p[1]))]);
+    }
+    if (pts.length > 1) out.push(pts);
+  }
   return out;
 }

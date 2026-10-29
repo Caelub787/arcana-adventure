@@ -3,10 +3,11 @@
 // sigil, what it makes and what each tier does); players see what it needs.
 // It's kept as JSON in the sheet's "craft" value.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Package, Eraser, ScrollText } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Package, Eraser, ScrollText, Grid3x3, FlipHorizontal, Undo2, Maximize2 } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
 import {
   parseCraftConfig, emptyCraftConfig, FORGE_SHAPES, SIGILS, ALCHEMY_STEP_LABEL, CRAFT_TIERS, TIER_LABEL, TIER_COLOR, CRAFT_KIND_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice,
+  SIGIL_TOOLS, SIGIL_TOOL_LABEL, SIGIL_GRID, snapSigilPoint, smoothStroke, mirrorStroke, onMirrorLine, sigilLine, sigilRing, sigilPolygon, sigilStar, fitSigil, type SigilTool,
   type CraftConfig, type CraftKind, type CraftNeed, type CraftTierEffect, type ForgeConfig, type AlchemyConfig, type RuneConfig, type AlchemyStepType, type CraftTier,
 } from "@shared/agnostic/crafting";
 import { useAg, usePerms } from "../hooks";
@@ -397,27 +398,197 @@ function RuneDef({ c, save, editable }: { c: RuneConfig; save: (c: RuneConfig) =
   );
 }
 
-/** Draw the sigil (the GM), or see it. */
+/**
+ * The sigil maker. A rune's sigil is strokes in a 0–100 box, and the ones a
+ * system ships with look deliberate because they are built out of straight
+ * lines and arcs. A sigil scribbled with a mouse never does, so the GM gets the
+ * same pieces to build with: a line, an arc, a ring, a polygon, a star, and a
+ * pen whose wobble is smoothed out. Points snap to a lattice so strokes meet
+ * cleanly, the mirror draws both halves of a symmetrical rune at once, and
+ * Fit centres the whole thing and grows it to fill the box — which is most of
+ * what makes a sigil look made rather than jotted.
+ */
 function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; editable: boolean; onChange: (s: number[][][]) => void }) {
+  const S = 200;
   const ref = useRef<HTMLCanvasElement>(null);
-  const cur = useRef<number[][] | null>(null);
-  const [local, setLocal] = useState(strokes);
-  useEffect(() => setLocal(strokes), [strokes]);
+  const [tool, setTool] = useState<SigilTool>("pen");
+  const [snap, setSnap] = useState(true);
+  const [mirror, setMirror] = useState(false);
+  const [sides, setSides] = useState(5);
+  const [bow, setBow] = useState(55);
+  const drag = useRef<null | { from: number[]; to: number[] }>(null);
+  const [, redraw] = useState(0);
+  // The chord of the last arc laid down, so the Bow slider can re-bend it.
+  const lastArc = useRef<null | { from: number[]; to: number[]; at: number }>(null);
+
+  /** The stroke a drag would lay down, with the tool in hand. */
+  const strokeOf = (from: number[], to: number[], b = bow): number[][] | null => {
+    const r = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    switch (tool) {
+      case "line": return sigilLine(from, to);
+      case "arc": return arcThrough(from, to, b);
+      case "ring": return r < 2 ? null : sigilRing(from[0], from[1], r);
+      case "poly": return r < 2 ? null : sigilPolygon(from[0], from[1], r, sides);
+      case "star": return r < 2 ? null : sigilStar(from[0], from[1], r, sides);
+      default: return null;
+    }
+  };
+  /** An arc from a to b, bowed to one side — the same bend the mold's curve uses. */
+  const arcThrough = (a: number[], b: number[], bowPct: number): number[][] => {
+    const k = bowPct / 100;
+    const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+    const nx = -(b[1] - a[1]), ny = b[0] - a[0];
+    const len = Math.hypot(nx, ny) || 1;
+    const cx = mx + (nx / len) * k * len * 0.5, cy = my + (ny / len) * k * len * 0.5;
+    return Array.from({ length: 17 }, (_, i) => { const t = i / 16, u = 1 - t; return [u * u * a[0] + 2 * u * t * cx + t * t * b[0], u * u * a[1] + 2 * u * t * cy + t * t * b[1]]; });
+  };
+
+  const pending = (): number[][][] => {
+    const d = drag.current;
+    if (!d) return [];
+    const st = tool === "pen" ? null : strokeOf(d.from, d.to);
+    if (!st) return [];
+    return mirror && !onMirrorLine(st) ? [st, mirrorStroke(st)] : [st];
+  };
+  const penPts = useRef<number[][] | null>(null);
+
   useEffect(() => {
     const ctx = ref.current?.getContext("2d"); if (!ctx) return;
-    ctx.clearRect(0, 0, 200, 200);
-    ctx.strokeStyle = "rgba(167,139,250,0.15)"; for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(k * 50, 0); ctx.lineTo(k * 50, 200); ctx.moveTo(0, k * 50); ctx.lineTo(200, k * 50); ctx.stroke(); }
-    drawSigil(ctx, cur.current ? [...local, cur.current] : local, 100, 100, 180, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 4 });
+    ctx.clearRect(0, 0, S, S);
+    // The lattice points snap to, so it's clear where a stroke will land.
+    if (editable && snap) {
+      ctx.strokeStyle = "rgba(167,139,250,0.10)";
+      for (let k = 1; k < SIGIL_GRID; k++) { const v = (k * S) / SIGIL_GRID; ctx.beginPath(); ctx.moveTo(v, 0); ctx.lineTo(v, S); ctx.moveTo(0, v); ctx.lineTo(S, v); ctx.stroke(); }
+    }
+    ctx.strokeStyle = "rgba(167,139,250,0.22)";
+    for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo((k * S) / 4, 0); ctx.lineTo((k * S) / 4, S); ctx.moveTo(0, (k * S) / 4); ctx.lineTo(S, (k * S) / 4); ctx.stroke(); }
+    if (editable && mirror) { ctx.strokeStyle = "rgba(56,189,248,0.45)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.stroke(); ctx.setLineDash([]); }
+    const live = [...strokes, ...(penPts.current ? [penPts.current] : []), ...pending()];
+    drawSigil(ctx, live, S / 2, S / 2, S * 0.9, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 4 });
   });
-  // The pad draws the sigil's 0–100 box at 180 px round its centre: undo that.
-  const pt = (e: React.PointerEvent<HTMLCanvasElement>) => { const r = e.currentTarget.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height].map((f) => Math.max(0, Math.min(100, Math.round(((f * 200 - 100) / 1.8 + 50) * 10) / 10))); };
+
+  // The pad draws the sigil's 0–100 box at 0.9 of the canvas round its centre: undo that.
+  const pt = (e: React.PointerEvent<HTMLCanvasElement>): number[] => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const raw = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height].map((f) => ((f * S - S / 2) / (S * 0.009)) + 50);
+    return snapSigilPoint(raw, snap ? SIGIL_GRID : 0);
+  };
+  const add = (st: number[][]) => {
+    const next = [...strokes, st, ...(mirror && !onMirrorLine(st) ? [mirrorStroke(st)] : [])];
+    onChange(next);
+  };
+
+  const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!editable) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const p = pt(e);
+    if (tool === "pen") { penPts.current = [p]; redraw((n) => n + 1); return; }
+    drag.current = { from: p, to: p };
+    redraw((n) => n + 1);
+  };
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!editable) return;
+    if (penPts.current) { penPts.current.push(pt(e)); redraw((n) => n + 1); return; }
+    if (!drag.current) return;
+    drag.current.to = pt(e);
+    redraw((n) => n + 1);
+  };
+  const up = () => {
+    if (penPts.current) {
+      const raw = penPts.current;
+      penPts.current = null;
+      // A freehand stroke comes out smoothed, with its ends on the lattice so it
+      // joins what's already drawn.
+      if (raw.length > 1) {
+        const sm = smoothStroke(raw, 3);
+        if (snap) { sm[0] = snapSigilPoint(sm[0]); sm[sm.length - 1] = snapSigilPoint(sm[sm.length - 1]); }
+        add(sm);
+      }
+      redraw((n) => n + 1);
+      return;
+    }
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    const st = strokeOf(d.from, d.to);
+    if (st) { add(st); if (tool === "arc") lastArc.current = { ...d, at: Date.now() }; }
+    redraw((n) => n + 1);
+  };
+  /** The Bow slider re-bends the arc just laid down, instead of making you undo it. */
+  const rebow = (b: number) => {
+    setBow(b);
+    const la = lastArc.current;
+    if (!la || tool !== "arc" || Date.now() - la.at > 120000 || !strokes.length) return;
+    const st = arcThrough(la.from, la.to, b).map((p) => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]);
+    const mirrored = mirror && !onMirrorLine(st);
+    const keep = strokes.slice(0, Math.max(0, strokes.length - (mirrored ? 2 : 1)));
+    onChange([...keep, st, ...(mirrored ? [mirrorStroke(st)] : [])]);
+  };
+
+  const undo = () => onChange(strokes.slice(0, -1));
+  const sidesLabel = tool === "star" ? "Points" : "Sides";
+
+  if (!editable) {
+    return (
+      <div className="space-y-1">
+        <canvas ref={ref} width={S} height={S} className="w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)]" data-testid="craft-def-sigil-pad" />
+      </div>
+    );
+  }
   return (
-    <div className="space-y-1">
-      <canvas ref={ref} width={200} height={200} className={`w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)] touch-none ${editable ? "cursor-crosshair" : ""}`} data-testid="craft-def-sigil-pad"
-        onPointerDown={(e) => { if (!editable) return; e.currentTarget.setPointerCapture(e.pointerId); cur.current = [pt(e)]; setLocal([...local]); }}
-        onPointerMove={(e) => { if (!cur.current) return; cur.current.push(pt(e)); setLocal([...local]); }}
-        onPointerUp={() => { if (!cur.current) return; const st = cur.current; cur.current = null; if (st.length > 1) { const next = [...local, st.filter((_, k) => k % 2 === 0 || k === st.length - 1)]; setLocal(next); onChange(next); } }} />
-      {editable && <button type="button" onClick={() => onChange([])} className="h-7 px-2 rounded border border-stone-700 text-[11px] text-stone-300 inline-flex items-center gap-1"><Eraser className="h-3 w-3" /> Clear and draw your own</button>}
+    <div className="space-y-1.5" data-testid="craft-def-sigil-maker">
+      <canvas ref={ref} width={S} height={S} className="w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)] touch-none cursor-crosshair" data-testid="craft-def-sigil-pad"
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} />
+      <div className="flex flex-wrap gap-1" data-testid="craft-def-sigil-tools">
+        {SIGIL_TOOLS.map((k) => (
+          <button key={k} type="button" onClick={() => setTool(k)} data-testid={`craft-def-sigil-tool-${k}`}
+            className={`h-7 px-2 rounded border text-[11px] ${tool === k ? "border-violet-400 bg-violet-900/50 text-violet-100" : "border-stone-700 text-stone-300 hover:border-violet-700"}`}>
+            {SIGIL_TOOL_LABEL[k]}
+          </button>
+        ))}
+      </div>
+      {(tool === "poly" || tool === "star") && (
+        <label className="flex items-center gap-2 text-[11px] text-stone-300">
+          <span className="w-12 shrink-0 text-stone-400">{sidesLabel}</span>
+          <input type="range" min={3} max={12} value={sides} onChange={(e) => setSides(Number(e.target.value))} className="flex-1 accent-violet-500 h-5" data-testid="craft-def-sigil-sides" />
+          <span className="w-4 text-right font-mono">{sides}</span>
+        </label>
+      )}
+      {tool === "arc" && (
+        <label className="flex items-center gap-2 text-[11px] text-stone-300">
+          <span className="w-12 shrink-0 text-stone-400">Bow</span>
+          <input type="range" min={-100} max={100} value={bow} onChange={(e) => rebow(Number(e.target.value))} className="flex-1 accent-violet-500 h-5" data-testid="craft-def-sigil-bow" />
+          <span className="w-8 text-right font-mono">{bow}</span>
+        </label>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <button type="button" onClick={() => setSnap(!snap)} data-testid="craft-def-sigil-snap"
+          className={`h-7 px-2 rounded border inline-flex items-center gap-1 ${snap ? "border-violet-400 bg-violet-900/40 text-violet-100" : "border-stone-700 text-stone-400"}`}><Grid3x3 className="h-3 w-3" />Snap</button>
+        <button type="button" onClick={() => setMirror(!mirror)} data-testid="craft-def-sigil-mirror"
+          className={`h-7 px-2 rounded border inline-flex items-center gap-1 ${mirror ? "border-sky-400 bg-sky-900/40 text-sky-100" : "border-stone-700 text-stone-400"}`}><FlipHorizontal className="h-3 w-3" />Mirror</button>
+        <button type="button" onClick={undo} disabled={!strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-undo"><Undo2 className="h-3 w-3" />Undo</button>
+        <button type="button" onClick={() => onChange(fitSigil(strokes))} disabled={!strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-fit"><Maximize2 className="h-3 w-3" />Fit</button>
+        <button type="button" onClick={() => onChange([])} disabled={!strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-clear"><Eraser className="h-3 w-3" />Clear</button>
+        <SigilChip strokes={strokes} />
+      </div>
+      <div className="text-[10px] text-stone-500">
+        {tool === "pen" ? "Drag to draw; the wobble is smoothed out and the ends land on the grid."
+          : tool === "line" ? "Drag from one end to the other."
+          : tool === "arc" ? "Drag the two ends; Bow bends it, and keeps bending the last arc you drew."
+          : `Drag out from the middle: that sets the ${tool === "ring" ? "ring's" : tool === "star" ? "star's" : "polygon's"} size.`}
+        {" "}Mirror draws both halves at once. Fit centres the sigil and fills the box, which is what makes it read like the ones that came with the system.
+      </div>
     </div>
   );
+}
+
+/** The sigil at the size it'll actually be cut, so the GM can see it still reads. */
+function SigilChip({ strokes }: { strokes: number[][][] }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = ref.current?.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, 44, 44);
+    drawSigil(ctx, strokes, 22, 22, 36, { color: "#e7e5e4", glow: 10, style: "Carved", width: 1.5 });
+  }, [strokes]);
+  return <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-stone-500" title="How big it really is on an item"><canvas ref={ref} width={44} height={44} className="h-7 w-7 rounded border border-stone-800" data-testid="craft-def-sigil-chip" />at size</span>;
 }

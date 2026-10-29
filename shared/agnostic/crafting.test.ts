@@ -36,6 +36,19 @@ import {
   moldPointAt,
   moldPath,
   moldControl,
+  snapSigilPoint,
+  smoothStroke,
+  mirrorStroke,
+  onMirrorLine,
+  sigilLine,
+  sigilRing,
+  sigilPolygon,
+  sigilStar,
+  sigilBounds,
+  fitSigil,
+  parseSigil,
+  parseCraftConfig,
+  traceAccuracy,
   shapeMask,
   startingStock,
   shapeScore,
@@ -456,5 +469,132 @@ describe("drawing with the pen", () => {
 
   it("has nothing to draw with fewer than two points", () => {
     expect(moldPath({ points: [{ x: 1, y: 1 }] })).toBe("");
+  });
+});
+
+describe("making a sigil", () => {
+  it("pulls a point onto the lattice so strokes meet cleanly", () => {
+    // A twelfth of the box is 8.33…; 30 is nearest the fourth line in.
+    expect(snapSigilPoint([30, 30], 12)).toEqual([33.3, 33.3]);
+    expect(snapSigilPoint([49, 51], 4)).toEqual([50, 50]);
+  });
+
+  it("leaves a point alone when there's no lattice to snap to", () => {
+    expect(snapSigilPoint([30.44, 70.66], 0)).toEqual([30.4, 70.7]);
+  });
+
+  it("never lets a point out of the box", () => {
+    expect(snapSigilPoint([-40, 400], 12)).toEqual([0, 100]);
+  });
+
+  it("takes the wobble out of a shaky stroke", () => {
+    const shaky = [[10, 50], [20, 46], [30, 54], [40, 46], [50, 54], [60, 50]];
+    const wobble = (st: number[][]) => st.slice(1, -1).reduce((a, p, i) => a + Math.abs(p[1] - (st[i][1] + st[i + 2][1]) / 2), 0) / Math.max(1, st.length - 2);
+    expect(wobble(smoothStroke(shaky, 3))).toBeLessThan(wobble(shaky));
+  });
+
+  it("leaves the ends of a stroke where they were drawn", () => {
+    const st = [[10, 10], [50, 80], [90, 20]];
+    const out = smoothStroke(st, 2);
+    expect(out[0]).toEqual([10, 10]);
+    expect(out[out.length - 1]).toEqual([90, 20]);
+  });
+
+  it("has nothing to smooth on a stroke of two points", () => {
+    expect(smoothStroke([[10, 10], [90, 90]], 3)).toEqual([[10, 10], [90, 90]]);
+  });
+
+  it("reflects a stroke for a rune that reads the same both ways", () => {
+    expect(mirrorStroke([[20, 30], [40, 60]])).toEqual([[80, 30], [60, 60]]);
+  });
+
+  it("knows a stroke already on the mirror line, which reflecting would only double", () => {
+    expect(onMirrorLine([[50, 10], [50, 90]])).toBe(true);
+    expect(onMirrorLine([[50, 10], [70, 90]])).toBe(false);
+  });
+
+  it("builds the same kinds of shapes the premade sigils are made of", () => {
+    expect(sigilLine([10, 10], [90, 10]).every((p) => p[1] === 10)).toBe(true);
+    const ring = sigilRing(50, 50, 30);
+    expect(ring.every((p) => Math.abs(Math.hypot(p[0] - 50, p[1] - 50) - 30) < 0.2)).toBe(true);
+    // A closed polygon comes back to where it started.
+    const tri = sigilPolygon(50, 50, 30, 3);
+    expect(tri[0]).toEqual(tri[tri.length - 1]);
+    expect(tri).toHaveLength(4);
+  });
+
+  it("draws a star with a point for every point asked for", () => {
+    const star = sigilStar(50, 50, 40, 5);
+    const far = star.filter((p) => Math.hypot(p[0] - 50, p[1] - 50) > 38);
+    // Five outer points, and the last one closes back onto the first.
+    expect(far.length).toBe(6);
+  });
+
+  it("keeps a polygon or star inside the box however many sides are asked for", () => {
+    for (const n of [-5, 0, 3, 7, 40]) {
+      for (const p of [...sigilPolygon(50, 50, 45, n), ...sigilStar(50, 50, 45, n)]) {
+        expect(p[0]).toBeGreaterThanOrEqual(0); expect(p[0]).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it("centres a sigil drawn in one corner and grows it to fill the box", () => {
+    const corner = [[[10, 10], [25, 10], [25, 25], [10, 10]]];
+    const b = sigilBounds(fitSigil(corner))!;
+    expect(b.x0).toBeCloseTo(6, 0);
+    expect(b.x1).toBeCloseTo(94, 0);
+    expect(b.y0).toBeCloseTo(6, 0);
+  });
+
+  it("keeps a sigil's proportions when it fills the box, rather than stretching it", () => {
+    const tall = [[[48, 10], [52, 10], [52, 90], [48, 90], [48, 10]]];
+    const b = sigilBounds(fitSigil(tall))!;
+    expect(b.x1 - b.x0).toBeLessThan(b.y1 - b.y0);
+  });
+
+  it("has nothing to centre when nothing is drawn", () => {
+    expect(fitSigil([])).toEqual([]);
+    expect(sigilBounds([])).toBeNull();
+  });
+
+  it("leaves a single point alone rather than blowing it up to fill the box", () => {
+    expect(fitSigil([[[50, 50], [50, 50]]])).toEqual([[[50, 50], [50, 50]]]);
+  });
+
+  it("takes a sigil off the wire and drops what isn't a stroke", () => {
+    const got = parseSigil([[[10, 10], [90, 90]], "nope", [[1, 1]], [[5, 5], ["x", 2], [95, 95]], null]);
+    expect(got).toHaveLength(2);
+    expect(got[1]).toEqual([[5, 5], [95, 95]]);
+  });
+
+  it("pulls a sigil off the wire back into the box", () => {
+    expect(parseSigil([[[-10, 500], [50, 50]]])[0][0]).toEqual([0, 100]);
+  });
+
+  it("refuses a sigil that isn't strokes at all", () => {
+    expect(parseSigil("flame")).toEqual([]);
+    expect(parseSigil(null)).toEqual([]);
+  });
+
+  it("is still traceable after being built this way — the game reads it the same", () => {
+    // What matters downstream: a built sigil scores against itself like any other.
+    const built = fitSigil([sigilRing(50, 50, 30), sigilLine([50, 20], [50, 80])]);
+    expect(traceAccuracy(built, built)).toBe(100);
+    expect(traceAccuracy(built, [sigilLine([0, 0], [10, 10])])).toBeLessThan(60);
+  });
+});
+
+describe("a rune recipe's setup", () => {
+  it("keeps a sigil built out of many pieces, not just a scribble's worth", () => {
+    // Seven mirrored pieces is fourteen strokes: the old cap was twelve.
+    const many = Array.from({ length: 14 }, (_, i) => sigilLine([10 + i * 5, 10], [10 + i * 5, 90]));
+    const cfg = parseCraftConfig({ kind: "rune", sigil: many, ingredients: [], tools: [] });
+    expect(cfg?.kind).toBe("rune");
+    expect((cfg as any).sigil).toHaveLength(14);
+  });
+
+  it("still drops rubbish out of a sigil off the wire", () => {
+    const cfg = parseCraftConfig({ kind: "rune", sigil: [[[10, 10], [90, 90]], "no", [[1, 1]]] });
+    expect((cfg as any).sigil).toHaveLength(1);
   });
 });

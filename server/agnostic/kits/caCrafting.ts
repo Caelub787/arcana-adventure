@@ -20,7 +20,7 @@ export const CA_CRAFT_ITEM_TEMPLATE_NAMES: Record<string, string> = { Material: 
 const DEF_HELP = {
   forge: "A blueprint: the parts a weapon is forged from, each part's shape, and what it makes. Players pick it at the forge, choose a material for each part, then hammer each part to shape (or Quick Craft the lot).",
   alchemy: "A recipe: its ingredients, its steps in order, and what it makes. Players follow it at the cauldron, scored step by step; the better they follow it, the more potent the result. Share it with players who know it — others can discover it by experimenting.",
-  rune: "A rune recipe: its sigil, the ingredients and tools it needs, and what it does to the item it's set into (by how well it was traced).",
+  rune: "A rune recipe: its sigil, the ingredients and tools it needs, and what it does to the item it's set into (by how well it was traced). Build the sigil with the pen, line, arc, ring, polygon and star tools — snap to the grid so strokes meet, turn the mirror on for a symmetrical rune, and press Fit to centre it and fill the box.",
 };
 
 /** A definition template's page: what it is, its setup, the GM's notes. */
