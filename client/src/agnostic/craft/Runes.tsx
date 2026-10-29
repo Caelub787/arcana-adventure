@@ -5,10 +5,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
-import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole } from "@shared/agnostic/crafting";
+import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, runeFit, findRuneSpot, RUNE_FIT_WORDS, RUNE_SIZE_MAX, toolEffectWords, CRAFT_KIND_LABEL, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole, type RunePlacement } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
-import { valueOn, hasValue, runesOn, qtyOf, type CraftState } from "./session";
+import { valueOn, hasValue, runesOn, qtyOf, toolEffectsOn, craftHand, runeSpaceOn, type CraftState } from "./session";
 import { ItemTile, ResultBanner, QuickCraftButton, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
 import { drawSigil, loadImage, runePortrait, weaponPortrait, type MarkStyle, type RuneLook } from "./render";
 
@@ -28,13 +28,6 @@ export function runeLookOf(state: ScopeState, rune: AgNote): RuneLook {
     style: (valueOn(state, rune.id, "rune_style") === "Drawn" ? "Drawn" : "Carved") as MarkStyle,
     placement: parse(valueOn(state, rune.id, "placement"), { x: 50, y: 50, s: 30, r: 0 }),
   };
-}
-/** An item's rune sockets (its "rune_sockets" value, if it has one) and how many are used. */
-export function socketsOn(state: ScopeState, itemId: string): { used: number; max: number | null; full: boolean; label: string } {
-  const used = runesOn(state, itemId).length;
-  if (!hasValue(state, itemId, "rune_sockets")) return { used, max: null, full: false, label: `${used} rune${used === 1 ? "" : "s"}` };
-  const max = Math.max(0, Math.floor(numOf(valueOn(state, itemId, "rune_sockets"))));
-  return { used, max, full: used >= max, label: max === 0 ? "no sockets" : `${used}/${max} sockets` };
 }
 /**
  * The item's picture without its runes. A forged weapon keeps how it was built, so it's drawn fresh from that (always
@@ -77,14 +70,21 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
   const ink = s.ink ? state.notes.get(s.ink) : undefined;
   const tool = s.tool ? state.notes.get(s.tool) : undefined;
   const look = { color: ink ? colorOf(state, ink.id, "ink_color", "#a78bfa") : "", glow: ink ? numOf(valueOn(state, ink.id, "ink_glow")) : 0, style: (tool && valueOn(state, tool.id, "mark_style") === "Drawn" ? "Drawn" : "Carved") as MarkStyle };
-  const placement = s.placement ?? { x: 50, y: 50, s: 34, r: 0 };
+  // What the tool in hand can do: how fine a mark it cuts, and the points it
+  // lends (or costs) the hand. A plain tool does neither.
+  const kit = toolEffectsOn(state, tool?.id);
+  const placement: RunePlacement = s.placement ?? { x: 50, y: 50, s: Math.max(34, kit.minRuneSize) };
   const guide = s.guide !== false;
   const strokes: number[][][] = s.strokes ?? [];
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => n.id !== s.target && itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const toolOk = !rune?.config.tools.length || (!!tool && rune.config.tools.some((t) => itemMatches(tool, t)));
-  const sockets = target ? socketsOn(state, target.id) : null;
-  const socketMsg: string | false = !!target && !!sockets?.full && (sockets.max === 0 ? `${target.name} has no rune sockets — its rank is too low` : `${target.name}'s rune sockets are full (${sockets.used} of ${sockets.max})`);
+  // Room, not sockets: what stops a rune is the surface it would be cut into.
+  const space = target ? runeSpaceOn(state, target.id, kit.minRuneSize) : null;
+  const problem = target && space ? runeFit(placement, space.taken, kit.minRuneSize) : null;
+  const socketMsg: string | false = !!target && !!space?.full
+    ? `${target.name} has no room left for a rune this tool can cut`
+    : !!problem && RUNE_FIT_WORDS[problem];
   const missing = rune ? [
     !target && "Pick the item to inscribe",
     socketMsg,
@@ -109,7 +109,8 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
     finally { setBusy(false); }
   };
 
-  const handSkill = Math.max(0, Math.min(4, Math.floor(numOf(valueOn(state, characterId, "rune_making")))));
+  const hand = craftHand(state, characterId, "rune_making", [tool?.id]);
+  const handSkill = hand.skill;
   if (s.stage === "trace" && (rune || freehand) && target) {
     const useGuide = !freehand && guide;
     return (
@@ -121,7 +122,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
           {!playing && <span className="text-[10px] px-2 py-0.5 rounded-full border border-stone-600 text-stone-300">Watching live</span>}
         </div>
         <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={(st) => set({ strokes: st })} skill={handSkill} />
-        {playing && <div className="text-[11px] text-stone-400" data-testid="rune-hand">Rune Making {handSkill}: {HAND_WORDS[handSkill]}</div>}
+        {playing && <div className="text-[11px] text-stone-400" data-testid="rune-hand">Rune Making {handSkill}{hand.tool ? ` (${hand.own} ${hand.tool > 0 ? "+" : "−"} ${Math.abs(hand.tool)} from ${tool!.name})` : ""}: {HAND_WORDS[handSkill]}</div>}
         {playing && (
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => set({ strokes: strokes.slice(0, -1) })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Undo2 className="h-4 w-4" /> Undo</button>
@@ -151,10 +152,10 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
         <>
           <div className="rounded-lg border border-stone-700 bg-stone-900/60 p-2 space-y-1.5">
             <ChoiceRow label="On" empty="Nothing to inscribe in the inventory." testId="rune-targets">
-              {targets.map((n) => { const k = socketsOn(state, n.id); return <ItemTile key={n.id} compact note={n} selected={s.target === n.id} disabled={!playing || k.full} onClick={() => set({ target: n.id })} sub={k.label} testId={`rune-target-${n.name}`} />; })}
+              {targets.map((n) => { const k = runeSpaceOn(state, n.id, kit.minRuneSize); return <ItemTile key={n.id} compact note={n} selected={s.target === n.id} disabled={!playing || k.full} onClick={() => set({ target: n.id })} sub={k.label} testId={`rune-target-${n.name}`} />; })}
             </ChoiceRow>
             <ChoiceRow label="Tool" empty="No carving tools or pens.">
-              {tools.map((n) => <ItemTile key={n.id} compact note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={String(valueOn(state, n.id, "mark_style") ?? "Carved")} testId={`rune-tool-${n.name}`} />)}
+              {tools.map((n) => { const e = toolEffectsOn(state, n.id); return <ItemTile key={n.id} compact note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={[String(valueOn(state, n.id, "mark_style") ?? "Carved"), ...toolEffectWords(e, CRAFT_KIND_LABEL.rune)].join(" · ")} testId={`rune-tool-${n.name}`} />; })}
             </ChoiceRow>
             <ChoiceRow label="Ink" empty="No inks — the rune will be plain.">
               {inks.map((n) => <ItemTile key={n.id} compact note={n} selected={s.ink === n.id} disabled={!playing} color={colorOf(state, n.id, "ink_color", "#a78bfa")} onClick={() => set({ ink: s.ink === n.id ? undefined : n.id })} sub={`glow ${numOf(valueOn(state, n.id, "ink_glow"))}`} testId={`rune-ink-${n.name}`} />)}
@@ -172,13 +173,14 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
                 <span className="text-[10px] uppercase tracking-wide text-stone-500">Where it goes</span>
                 {!freehand && <label className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-stone-300"><input type="checkbox" checked={guide} disabled={!playing} onChange={(e) => set({ guide: e.target.checked })} data-testid="rune-guide" />{guide ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />} Guide <span className="text-stone-500 hidden sm:inline">(off: harder, bonuses come easier)</span></label>}
               </div>
-              <PlacementEditor base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} playing={playing} onChange={(p) => set({ placement: p })} />
+              <PlacementEditor base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? FREEHAND_MARK} placement={placement} look={look} playing={playing} onChange={(p) => set({ placement: p })}
+                taken={space?.taken ?? []} minSize={kit.minRuneSize} toolName={tool?.name} />
             </div>
           )}
           {playing && (<>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" disabled={!ready} onClick={() => start({ stage: "trace", strokes: [], result: undefined })} className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="rune-start"><PenTool className="h-4 w-4" /> {freehand ? "Start drawing" : "Start tracing"}</button>
-              {rune && <QuickCraftButton kind="rune" characterId={characterId} busy={busy} disabled={!ready} onClick={() => inscribe("quick")} />}
+              {rune && <QuickCraftButton kind="rune" characterId={characterId} busy={busy} disabled={!ready} onClick={() => inscribe("quick")} tools={[tool?.id]} />}
             </div>
             <Needs items={missing} />
           </>)}
@@ -229,8 +231,13 @@ function ZoomButtons({ zoom, setZoom, testId }: { zoom: number; setZoom: (z: num
   );
 }
 
-/** Where the rune goes: drag it about on the item's picture (zoom in for small items); size and turn below. */
-function PlacementEditor({ base, name, existing, sigil, placement, look, playing, onChange }: { base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">; playing: boolean; onChange: (p: RuneLook["placement"]) => void }) {
+/**
+ * Where the rune goes: drag it about on the item's picture (zoom in for small
+ * items); size and turn below. A rune has to sit on the item and clear of every
+ * rune already cut there, and it can be no finer than the tool can cut, so the
+ * ring turns red and says what's wrong rather than letting it be inscribed.
+ */
+function PlacementEditor({ base, name, existing, sigil, placement, look, playing, onChange, taken, minSize, toolName }: { base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">; playing: boolean; onChange: (p: RuneLook["placement"]) => void; taken: RunePlacement[]; minSize: number; toolName?: string }) {
   const S = 360;
   const ref = useRef<HTMLCanvasElement>(null);
   const img = useImage(base);
@@ -246,9 +253,17 @@ function PlacementEditor({ base, name, existing, sigil, placement, look, playing
     paintItem(ctx, S, img, name);
     for (const r of existing) placeSigil(ctx, S, r);
     placeSigil(ctx, S, { strokes: sigil, ...look, color: look.color || "#c4b5fd", style: "Drawn", glow: 30, placement: pl }, 0.7);
-    ctx.strokeStyle = "rgba(251,191,36,0.8)"; ctx.setLineDash([4 / view.z, 4 / view.z]); ctx.lineWidth = 1.5 / view.z;
+    // The room each rune already there takes up, so it's clear what's in the way.
+    ctx.setLineDash([3 / view.z, 5 / view.z]); ctx.lineWidth = 1 / view.z; ctx.strokeStyle = "rgba(168,162,158,0.5)";
+    for (const t of taken) { ctx.beginPath(); ctx.arc((t.x / 100) * S, (t.y / 100) * S, (t.s / 100) * S * 0.5, 0, Math.PI * 2); ctx.stroke(); }
+    const bad = runeFit(pl, taken, minSize);
+    ctx.strokeStyle = bad ? "rgba(248,113,113,0.95)" : "rgba(251,191,36,0.8)"; ctx.setLineDash([4 / view.z, 4 / view.z]); ctx.lineWidth = 1.5 / view.z;
     ctx.beginPath(); ctx.arc((pl.x / 100) * S, (pl.y / 100) * S, (pl.s / 100) * S * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
   });
+  const bad = runeFit(pl, taken, minSize);
+  // Somewhere it would fit, when where it's been put won't do. A rune too fine
+  // for the tool is grown to what the tool can cut first, then found room for.
+  const room = bad ? findRuneSpot(bad === "tooSmall" ? { ...pl, s: minSize } : pl, taken, minSize) : null;
   const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!dragging.current) return;
     const [x, y] = unview(e, S, { ...view, cx: zoom <= 1 ? S / 2 : view.cx, cy: zoom <= 1 ? S / 2 : view.cy });
@@ -269,7 +284,16 @@ function PlacementEditor({ base, name, existing, sigil, placement, look, playing
       <div className="space-y-1.5 text-xs max-w-[360px] mx-auto">
         {(["s", "r"] as const).map((k) => (
           <label key={k} className="flex items-center gap-2"><span className="w-10 text-stone-400">{k === "s" ? "Size" : "Turn"}</span>
-            <input type="range" min={k === "s" ? 4 : -180} max={k === "s" ? 80 : 180} value={pl[k]} disabled={!playing} onChange={(e) => onChange({ ...pl, [k]: Number(e.target.value) })} className="flex-1 accent-amber-500 h-6" data-testid={`rune-placement-${k}`} /></label>
+            <input type="range" min={k === "s" ? minSize : -180} max={k === "s" ? RUNE_SIZE_MAX : 180} value={Math.max(pl[k] ?? 0, k === "s" ? minSize : -180)} disabled={!playing} onChange={(e) => onChange({ ...pl, [k]: Number(e.target.value) })} className="flex-1 accent-amber-500 h-6" data-testid={`rune-placement-${k}`} />
+            <span className="w-8 text-right text-stone-500">{Math.round(pl[k] ?? 0)}{k === "s" ? "%" : "°"}</span></label>
+        ))}
+        {playing && (bad ? (
+          <div className="flex items-center gap-2 text-[11px] text-red-300" data-testid="rune-placement-problem">
+            <span>{RUNE_FIT_WORDS[bad]}{bad === "tooSmall" && toolName ? ` — ${toolName} can't go finer than ${minSize}%` : ""}</span>
+            {room && <button type="button" onClick={() => onChange(room)} className="ml-auto h-6 px-2 rounded-md border border-stone-600 text-stone-200 shrink-0" data-testid="rune-placement-findroom">{bad === "tooSmall" ? `Cut it at ${minSize}%` : "Find room"}</button>}
+          </div>
+        ) : (
+          <div className="text-[11px] text-stone-500" data-testid="rune-placement-ok">It fits here{minSize > 4 && toolName ? ` · ${toolName} cuts down to ${minSize}%` : ""}</div>
         ))}
       </div>
     </div>

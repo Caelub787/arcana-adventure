@@ -1,6 +1,6 @@
 // Drawing for the crafting tools: glowing metal, finished weapons, sigils —
 // and the pictures crafted items get as their portraits.
-import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, FINE_COLS, FINE_ROWS, PART_SCALE, assemblyOrder, shapeMask, metalBounds, type ForgePart, type Metal } from "@shared/agnostic/crafting";
+import { FORGE_SHAPES, FORGE_COLS, FORGE_ROWS, FINE_COLS, FINE_ROWS, PART_SCALE, assemblyOrder, shapeMask, metalBounds, type ForgePart, type Metal, type RunePlacement } from "@shared/agnostic/crafting";
 
 /** Metal colour by heat (0 cold … 1 white-hot), tinted toward the material's own colour when cool. */
 export function heatColor(t: number, base = "#9ca3af"): string {
@@ -242,7 +242,7 @@ function crack(ctx: CanvasRenderingContext2D, size: number) {
 
 // --------------------------------------------------------------------------- runes
 export type MarkStyle = "Carved" | "Drawn";
-export interface RuneLook { strokes: number[][][]; color: string; glow: number; style: MarkStyle; placement: { x: number; y: number; s: number; r: number } }
+export interface RuneLook { strokes: number[][][]; color: string; glow: number; style: MarkStyle; placement: RunePlacement }
 
 /** A sigil in a box: carved (a groove with a lit edge) or drawn (ink, glowing if the ink does). */
 export function drawSigil(ctx: CanvasRenderingContext2D, strokes: number[][][], cx: number, cy: number, size: number, look: { color: string; glow: number; style: MarkStyle; alpha?: number; width?: number }) {

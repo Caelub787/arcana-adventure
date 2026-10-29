@@ -31,7 +31,7 @@ import {
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
   itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
-  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_FORMULA, RUNE_SOCKETS_HELP, RUNEABLE_KINDS, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
+  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
@@ -40,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 30;
+export const CA_KIT_LEVEL = 31;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -82,6 +82,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 28) await upgrade28(store);
   if (level < 29) await upgrade29(store);
   if (level < 30) await upgrade30(store);
+  if (level < 31) await upgrade31(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1398,13 +1399,8 @@ async function upgrade22(store: ScopeStore, characterTemplates: AgNote[]) {
       const rarity = fields.get("rarity");
       if (rarity) await store.removeField(rarity.id, cs);
       const kind = String(fields.get("item_type")?.value ?? "");
-      if (RUNEABLE_KINDS.includes(kind) || fields.get("handedness")) {
-        runeable.add(n.id);
-        if (!fields.get("rune_sockets")) {
-          const order = Math.max(0, ...Array.from(fields.values()).map((f) => f.sortOrder)) + 1;
-          await store.putField({ id: randomUUID(), noteId: n.id, key: "rune_sockets", label: "Rune sockets", type: "formula", value: null, formula: RUNE_SOCKETS_FORMULA, options: { resultType: "number", tooltip: RUNE_SOCKETS_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
-        }
-      }
+      // (Sockets were given here once; level 31 took them out again — runes go by room now.)
+      if (RUNEABLE_KINDS.includes(kind) || fields.get("handedness")) runeable.add(n.id);
     }
   });
   // Pages: no Rarity badge; gear gets its sockets line by its runes (or the whole Runes section).
@@ -1415,12 +1411,8 @@ async function upgrade22(store: ScopeStore, characterTemplates: AgNote[]) {
         const idx = parent ? parent.toArray().indexOf(el) : -1;
         if (parent && idx >= 0) parent.delete(idx, 1);
       }
-      if (!runeable.has(n.id) || findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "rune_sockets").length) return;
-      const list = findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "runes")[0];
-      if (!list) { appendNodes(frag, runeSlotNodes()); return; }
-      const parent = list.parent as Y.XmlElement | Y.XmlFragment;
-      const idx = parent.toArray().indexOf(list);
-      insertNodes(parent, idx, [p(muted("SOCKETS "), val("rune_sockets", { look: { bold: true } }), muted(" (from its rank)"))]);
+      if (!runeable.has(n.id)) return;
+      if (!findAll(frag, (e) => e.nodeName === "agLinks" && e.getAttribute("label") === "runes").length) appendNodes(frag, runeSlotNodes());
     });
   }
   // Inventories: cards coloured by rank, no Rarity badge.
@@ -1586,8 +1578,6 @@ async function upgrade26(store: ScopeStore) {
         touched.add(n.id);
         await store.putField({ ...tag, value: "Unranked", options: { ...tag.options, choices: [...ITEM_RANKS], choiceColors: { ...ITEM_RANK_COLORS } } }, cs);
       }
-      const sockets = fields.get("rune_sockets");
-      if (sockets && sockets.type === "formula") await store.putField({ ...sockets, formula: RUNE_SOCKETS_FORMULA, options: { ...sockets.options, tooltip: RUNE_SOCKETS_HELP } }, cs);
       // Weapons: Damage Die on their Damage roll (paid with Energy), for the die they roll.
       if (n.type === "item") {
         for (const a of store.actionsOf(n.id)) {
@@ -1774,5 +1764,67 @@ async function upgrade30(store: ScopeStore) {
     if (!n) continue;
     await editPage(n, (_doc, frag) => retext(frag, PREV_TEXTS));
     for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag, PREV_TEXTS));
+  }
+}
+
+// --------------------------------------------------------------------------- level 31
+// Rune sockets go. How many runes an item takes was its rank; now it is how much
+// room is left on its face — two runes can't be cut across one another, and a
+// rune can be no finer than the tool cutting it. Tools have a say in the work:
+// Skill points lent to whoever holds them (on every craft) and, for a rune
+// tool, the finest mark it can manage.
+const SOCKET_TEXTS: Array<[string, string]> = [
+  [RUNE_SOCKETS_HELP, RUNE_SPACE_HELP],
+  [LEGACY_CRAFTING_HELP, CRAFTING_HELP],
+  ["Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.", RUNE_SPACE_HELP],
+  ["A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.", TOOL_HELP],
+];
+async function upgrade31(store: ScopeStore) {
+  const pages = new Set<string>();
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields) continue;
+      const sockets = fields.get("rune_sockets");
+      if (sockets) { pages.add(n.id); await store.removeField(sockets.id, cs); }
+      // Rune tools: what they lend to the hand, and how fine they cut.
+      if (fields.get("mark_style")) {
+        pages.add(n.id);
+        const order = Math.max(0, ...Array.from(fields.values()).map((f) => f.sortOrder)) + 1;
+        if (!fields.get("tool_skill")) await store.putField({ id: randomUUID(), noteId: n.id, key: "tool_skill", label: "Skill points", type: "number", value: 0, formula: null, options: { min: -5, max: 5, tooltip: TOOL_SKILL_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+        if (!fields.get("tool_min_rune")) await store.putField({ id: randomUUID(), noteId: n.id, key: "tool_min_rune", label: "Finest rune", type: "number", value: 4, formula: null, options: { min: 4, max: 80, tooltip: TOOL_MIN_RUNE_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order + 1, templateFieldId: null }, cs);
+      }
+    }
+  });
+  for (const id of Array.from(pages)) {
+    const n = store.notes.get(id);
+    if (!n) continue;
+    await editPage(n, (_doc, frag) => {
+      retext(frag, SOCKET_TEXTS);
+      // The SOCKETS line on an item's Runes section: there is no count any more.
+      for (const el of findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "rune_sockets")) {
+        const parent = el.parent as Y.XmlElement | null;
+        const row = parent && parent.nodeName === "paragraph" ? parent : null;
+        const grand = row ? (row.parent as Y.XmlElement | Y.XmlFragment | null) : null;
+        const idx = grand ? grand.toArray().indexOf(row!) : -1;
+        if (grand && idx >= 0) { grand.delete(idx, 1); continue; }
+        const at = parent ? parent.toArray().indexOf(el) : -1;
+        if (parent && at >= 0) parent.delete(at, 1);
+      }
+      // A tool's page gets its two new values beside the mark style.
+      const marks = findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "mark_style")[0];
+      if (marks && !findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "tool_skill").length) {
+        const row = marks.parent as Y.XmlElement | null;
+        if (row && row.nodeName === "paragraph") {
+          const grand = row.parent as Y.XmlElement | Y.XmlFragment | null;
+          const idx = grand ? grand.toArray().indexOf(row) : -1;
+          if (grand && idx >= 0) {
+            grand.delete(idx, 1);
+            insertNodes(grand, idx, [p(muted("MARKS "), val("mark_style", { display: "input" }), muted("    SKILL "), val("tool_skill", { display: "input" }), muted("    FINEST RUNE "), val("tool_min_rune", { display: "input" }), muted("%"))]);
+          }
+        }
+      }
+    });
+    for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag, SOCKET_TEXTS));
   }
 }

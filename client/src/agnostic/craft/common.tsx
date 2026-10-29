@@ -7,7 +7,7 @@ import { TIER_COLOR, TIER_LABEL, parseCraftConfig, stationAllows, CRAFT_DEF_TYPE
 import { useAg } from "../hooks";
 import { Portrait } from "../widgets";
 import { triggerRollNotification } from "@/components/game/RollNotification";
-import { inventoryOf, qtyOf, valueOn } from "./session";
+import { inventoryOf, qtyOf, valueOn, toolEffectsOn } from "./session";
 
 export const SKILL_KEY: Record<CraftKind, string> = { forge: "blacksmithing", alchemy: "alchemy", rune: "rune_making" };
 
@@ -140,9 +140,12 @@ export function announceRoll(characterName: string, roll: CraftOutcome["roll"], 
   } as any, broadcast);
 }
 
-export function QuickCraftButton({ kind, characterId, disabled, busy, onClick, title }: { kind: CraftKind; characterId: string; disabled?: boolean; busy?: boolean; onClick: () => void; title?: string }) {
+export function QuickCraftButton({ kind, characterId, disabled, busy, onClick, title, tools = [] }: { kind: CraftKind; characterId: string; disabled?: boolean; busy?: boolean; onClick: () => void; title?: string; /** The tools in hand: their points count on the roll. */ tools?: Array<string | null | undefined> }) {
   const { state } = useAg();
-  const skill = Number(valueOn(state, characterId, SKILL_KEY[kind]) ?? 0) || 0;
+  // What the roll will actually be, tools and all, so the button doesn't promise
+  // one number and the roll come back another.
+  const own = Number(valueOn(state, characterId, SKILL_KEY[kind]) ?? 0) || 0;
+  const skill = own + tools.reduce((a, id) => a + toolEffectsOn(state, id).skill, 0);
   return (
     <button type="button" disabled={disabled || busy} onClick={onClick}
       className="h-9 px-3 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 text-stone-100 text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"

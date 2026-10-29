@@ -31,6 +31,9 @@ function Plan({ characterId, defs, s, set, start, playing, stationId }: { charac
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const ready = !!recipe && recipe.config.ingredients.every((i) => have(i) >= i.qty);
+  // The tools a recipe calls for but doesn't use up: their points count on the roll.
+  const kitIds = (recipe?.config.ingredients ?? []).filter((i) => i.consumed === false)
+    .flatMap((i) => inventory.filter((n) => itemMatches(n, i)).slice(0, i.qty).map((n) => n.id));
   const chosen: Array<{ itemId: string; qty: number }> = s.ingredients ?? [];
   const quick = async () => {
     if (!recipe || !character) return;
@@ -92,7 +95,7 @@ function Plan({ characterId, defs, s, set, start, playing, stationId }: { charac
               className="h-9 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-40" data-testid="alchemy-start">
               <Play className="h-4 w-4" /> {s.experiment ? "Start experimenting" : "Start brewing"}
             </button>
-            {recipe && !s.experiment && <QuickCraftButton kind="alchemy" characterId={characterId} busy={busy} disabled={!ready} onClick={quick} />}
+            {recipe && !s.experiment && <QuickCraftButton kind="alchemy" characterId={characterId} busy={busy} disabled={!ready} onClick={quick} tools={kitIds} />}
           </div>
           <Needs items={recipe && !s.experiment ? recipe.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`) : s.experiment && !chosen.length ? ["Pick something to put in"] : []} />
         </div>

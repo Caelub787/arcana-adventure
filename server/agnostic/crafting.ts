@@ -10,7 +10,8 @@ import { noteDocName, regionDocName, defaultScaleStep } from "@shared/agnostic/t
 import {
   traceAccuracy, stationAllows, metalFits, sellValue, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
-  type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed,
+  toolEffects, runeFit, RUNE_FIT_WORDS, RUNE_SIZE_MIN, RUNE_SIZE_MAX,
+  type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed, type RunePlacement,
 } from "@shared/agnostic/crafting";
 import { asNumber } from "@shared/agnostic/formula";
 import { rollDie } from "@shared/agnostic/compute";
@@ -167,16 +168,33 @@ async function setPortrait(ctx: Ctx, noteId: string, dataUrl: string | null | un
   if (ctx.store.scope.kind === "campaign") void ctx.host.refreshNoteTokens?.(ctx.store.scope.id, noteId, url).catch(() => {});
 }
 
-/** Quick Craft: d20 + the craft's skill on the character. */
-function quickRoll(store: ScopeStore, character: AgNote, kind: CraftKind, station: AgNote | undefined) {
+/** What a tool lends to the work: its tool_skill, as temporary points on the craft's skill. */
+export function toolPoints(store: ScopeStore, tools: Array<AgNote | null | undefined>): { points: number; from: AgNote[] } {
+  const from: AgNote[] = [];
+  let points = 0;
+  for (const t of tools) {
+    if (!t || from.some((f) => f.id === t.id)) continue;
+    const n = toolEffects((k) => valueOf(store, t.id, k)).skill;
+    if (!n) continue;
+    points += n;
+    from.push(t);
+  }
+  return { points: Math.max(-10, Math.min(10, points)), from };
+}
+
+/** Quick Craft: d20 + the craft's skill on the character, and whatever the tools in hand are worth. */
+function quickRoll(store: ScopeStore, character: AgNote, kind: CraftKind, station: AgNote | undefined, tools: Array<AgNote | null | undefined> = []) {
   const natural = rollDie(20);
-  const skill = Math.round(numOf(valueOf(store, character.id, CRAFT_SKILL[kind])));
+  const own = Math.round(numOf(valueOf(store, character.id, CRAFT_SKILL[kind])));
+  const kit = toolPoints(store, tools);
+  const skill = own + kit.points;
   const bonus = station ? Math.round(numOf(valueOf(store, station.id, "station_bonus"))) : 0;
   const total = natural + skill + bonus;
   const tier = quickCraftTier(natural, total);
   const label = `Quick Craft (${CRAFT_KIND_LABEL[kind]})`;
   const sign = (n: number) => `${n >= 0 ? "+" : "−"} ${Math.abs(n)}`;
-  return { tier, roll: { natural, skill, total, label, breakdown: `1d20 [${natural}]${skill ? ` ${sign(skill)} ${CRAFT_KIND_LABEL[kind]}` : ""}${bonus ? ` ${sign(bonus)} ${station!.name}` : ""} = ${total} → ${TIER_LABEL[tier]}` } };
+  const kitWords = kit.from.map((f) => ` ${sign(toolEffects((k) => valueOf(store, f.id, k)).skill)} ${f.name}`).join("");
+  return { tier, roll: { natural, skill, total, label, breakdown: `1d20 [${natural}]${own ? ` ${sign(own)} ${CRAFT_KIND_LABEL[kind]}` : ""}${kitWords}${bonus ? ` ${sign(bonus)} ${station!.name}` : ""} = ${total} → ${TIER_LABEL[tier]}` } };
 }
 
 // --------------------------------------------------------------------------- stations
@@ -265,16 +283,39 @@ export async function syncScrolls(store: ScopeStore, defId: string, cs: ChangeSe
   }
 }
 
-/** An item with "rune_sockets" takes that many runes (its rank decides); one with no such value, any number. */
-export function socketsOf(store: ScopeStore, itemId: string): { max: number | null; used: number } {
-  const used = store.linksOf(itemId).filter((l) => l.toNoteId === itemId && fieldsOf(store, l.fromNoteId).has("sigil")).length;
-  return fieldsOf(store, itemId).has("rune_sockets") ? { max: Math.max(0, Math.floor(numOf(valueOf(store, itemId, "rune_sockets")))), used } : { max: null, used };
+/**
+ * Where the runes already cut into an item sit. How many an item takes is not a
+ * number on its sheet: a rune is a mark on a surface, so what decides is the
+ * room left on it. An item of any rank takes runes until there is nowhere left
+ * to put one without cutting across a mark already there.
+ */
+export function runesPlacedOn(store: ScopeStore, itemId: string): RunePlacement[] {
+  const out: RunePlacement[] = [];
+  for (const l of store.linksOf(itemId)) {
+    if (l.toNoteId !== itemId || !fieldsOf(store, l.fromNoteId).has("sigil")) continue;
+    const raw = valueOf(store, l.fromNoteId, "placement");
+    let p: RunePlacement = { x: 50, y: 50, s: 30 };
+    if (typeof raw === "string" && raw) { try { const j = JSON.parse(raw); if (j && typeof j.x === "number" && typeof j.y === "number" && typeof j.s === "number") p = j; } catch {} }
+    out.push(p);
+  }
+  return out;
 }
-function needSocket(store: ScopeStore, item: AgNote) {
-  const { max, used } = socketsOf(store, item.id);
-  if (max === null) return;
-  if (max === 0) fail(`${item.name} has no rune sockets — its rank is too low`);
-  if (used >= max) fail(`${item.name}'s rune sockets are full (${used} of ${max})`);
+
+/** A rune's place, off the wire and trimmed to the picture. */
+function placementOf(raw: unknown, minSize: number): RunePlacement {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const n = (v: unknown, d: number, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  return {
+    x: n(o.x, 50, 0, 100), y: n(o.y, 50, 0, 100),
+    s: n(o.s, Math.max(30, minSize), RUNE_SIZE_MIN, RUNE_SIZE_MAX),
+    r: n(o.r, 0, -180, 180),
+  };
+}
+
+/** A rune can only be cut where there is room for it, and no finer than the tool manages. */
+function needRoom(store: ScopeStore, item: AgNote, p: RunePlacement, minSize: number) {
+  const problem = runeFit(p, runesPlacedOn(store, item.id), minSize);
+  if (problem) fail(`${RUNE_FIT_WORDS[problem]} on ${item.name}`);
 }
 
 async function announce(ctx: Ctx, text: string) {
@@ -475,7 +516,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       needMakeAt(store, station, defId, recipeName);
       const recipe = { name: recipeName };
       const use = gather(store, inv, config.ingredients);
-      const quick = body.mode === "quick" ? quickRoll(store, character, "alchemy", station) : null;
+      const quick = body.mode === "quick" ? quickRoll(store, character, "alchemy", station, use.filter((u) => !u.consumed).map((u) => u.item)) : null;
       const tier = quick ? quick.tier : accuracyTier(Math.max(0, Math.min(100, body.accuracy ?? 0)));
       return store.run(async (cs) => {
         for (const u of use) if (u.consumed) await consume(store, u.item, u.qty, cs);
@@ -576,7 +617,6 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const rune = { name: def.name };
       const target = inInventory(inv, body.targetId, "The item to inscribe");
       if (target.id === body.inkId || target.id === body.toolId) fail("Pick a different item to inscribe");
-      needSocket(store, target);
       const use = gather(store, inv.filter((n) => n.id !== target.id), config.ingredients);
       let tool = body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
       // Freehand: nobody knew which rune it would be, so any fitting tool they carry will do.
@@ -585,7 +625,12 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const ink = body.inkId ? inInventory(inv, body.inkId, "That ink") : null;
       if (ink && valueOf(store, ink.id, "ink_color") === undefined) fail(`${ink.name} isn't a liquid or ink`);
       if (config.needsInk && !ink) fail("This rune needs a liquid or ink");
-      const quick = body.mode === "quick" ? quickRoll(store, character, "rune", station) : null;
+      // The tool decides how fine a mark can be cut, so where it goes is only
+      // settled once we know which tool is doing the cutting.
+      const kit = toolEffects((k) => (tool ? valueOf(store, tool.id, k) : undefined));
+      const placement = placementOf(body.placement, kit.minRuneSize);
+      needRoom(store, target, placement, kit.minRuneSize);
+      const quick = body.mode === "quick" ? quickRoll(store, character, "rune", station, [tool]) : null;
       const accuracy = freehand ? freehand.score : Math.max(0, Math.min(100, body.accuracy ?? 0));
       // Freehand counts like tracing with the guide; tracing a known rune without it is easier to excel at.
       const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
@@ -613,8 +658,8 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         const amount = config.effect ? config.effect.values[tier] : undefined;
         const vals: Record<string, AgValue> = {
           item_type: "Rune", rune_tier: TIER_LABEL[tier], rune_color: color, rune_glow: glow, rune_style: style,
-          sigil: JSON.stringify(config.sigil), rune_drawn: JSON.stringify((body.strokes ?? []).slice(0, 40)), placement: JSON.stringify(body.placement ?? { x: 50, y: 50, s: 30, r: 0 }),
-          boosts: tier === "fail" || amount === undefined || !config.effect ? "No effect (socket spent)" : `${config.effect.key.replace(/_/g, " ")} ${amount >= 0 ? "+" : ""}${amount}`,
+          sigil: JSON.stringify(config.sigil), rune_drawn: JSON.stringify((body.strokes ?? []).slice(0, 40)), placement: JSON.stringify(placement),
+          boosts: tier === "fail" || amount === undefined || !config.effect ? "No effect (a spoiled mark)" : `${config.effect.key.replace(/_/g, " ")} ${amount >= 0 ? "+" : ""}${amount}`,
           rune_accuracy: quick ? 0 : accuracy,
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, r.id, k, v, cs);
@@ -627,7 +672,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         if (fieldsOf(store, target.id).get("base_portrait") === undefined) await setValue(store, target.id, "base_portrait", target.portrait ?? "", cs, "Picture without runes");
         await setPortrait(ctx, target.id, body.portrait, cs);
         await announce(ctx, `✦ ${character.name} inscribed ${name} on ${target.name} (${TIER_LABEL[tier]}).`);
-        return { tier, tierLabel: TIER_LABEL[tier], noteId: r.id, name, roll: quick?.roll, message: tier === "fail" ? `The rune didn't take — the socket on ${target.name} is spent.` : `${name} on ${target.name}: ${vals.boosts} (${TIER_LABEL[tier]}).` } satisfies CraftResult;
+        return { tier, tierLabel: TIER_LABEL[tier], noteId: r.id, name, roll: quick?.roll, message: tier === "fail" ? `The rune didn't take — a spoiled mark on ${target.name}, and the room it took with it.` : `${name} on ${target.name}: ${vals.boosts} (${TIER_LABEL[tier]}).` } satisfies CraftResult;
       });
     }
   }

@@ -104,16 +104,16 @@ export function rankLadder(ranks: RankRung[] = RANKS) {
 const LADDER = rankLadder();
 const THRESHOLDS = LADDER.thresholds;
 export const LADDER_LABELS = LADDER.labels;
-/** An item's rank is its rarity: Unranked, or one of the ranks (never a Pillar). It colours the item and sets its rune sockets. */
+/** An item's rank is its rarity: Unranked, or one of the ranks (never a Pillar). It colours the item's card. */
 export const ITEM_RANKS = ["Unranked", ...RANK_NAMES];
 export const ITEM_RANK_COLORS: Record<string, string> = {
   Unranked: "#78716c", Mortal: "#c2783e", Awakened: "#cbd5e1", Tempered: "#facc15", Refined: "#34d399", Enlightened: "#38bdf8",
   Exalted: "#a78bfa", Ascendant: "#f472b6", Transcendent: "#f87171", Paragon: "#fde68a",
 };
-/** Rune sockets by rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). */
-export const RUNE_SOCKETS_FORMULA = RANK_NAMES.reduceRight((acc, r, i) => `if(rank_tag == "${r}", ${i + 1}, ${acc})`, "0");
 export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Lower it as the item takes wear or damage.";
 export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
+export const RUNE_SPACE_HELP = "Runes are marks cut into the item, so what limits them is room, not rank: any item takes runes until there is nowhere left to put one. Two runes can't be cut across one another, and a rune can be no finer than the tool cutting it. Place each one on the item's picture — a big rune leaves less room for the next.";
+/** What the sockets help used to say, to find and replace on sheets that still carry it. */
 export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). A rune takes one; when they're full, no more can be inscribed.";
 /** An item rank from anything (an old rank or a character rank): one of ITEM_RANKS, Unranked if it isn't one. */
 export const itemRankOf = (v: unknown) => { const r = String(v ?? "").split(" ")[0]; return RANK_NAMES.includes(r) ? r : "Unranked"; };
@@ -409,7 +409,8 @@ export const CRAFT_SKILL_HELP = {
   alchemy: "Your Alchemy bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
   rune_making: "Your Rune Making bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
 };
-export const CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto an item with a free rune socket). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
+export const LEGACY_CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto an item with a free rune socket). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
+export const CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto any item with room left for it). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
 export const CRAFT_SKILLS_TIP = "Standalone bonuses (not tied to an attribute). Each craft's Quick Craft rolls d20 + its skill.";
 /** The crafting skills box at the bottom of the Skills tab. */
 export function craftingSkillNodes(): DocNode[] {
@@ -433,11 +434,10 @@ export function scrollNodes(): DocNode[] {
   return [h(3, icon("ScrollText", "#fcd34d", 16), " Scroll ", tip(SCROLL_HELP)), p(muted("TEACHES "), val("teaches_name", { look: { bold: true } })), { type: "agCraftDef" }];
 }
 
-/** An item's rune slots: how many its rank gives, and the runes set into them. */
+/** The runes cut into an item. How many it takes is how much room is left on it, so there is no count to show. */
 export function runeSlotNodes(): DocNode[] {
   return [
-    h(3, icon("Gem", "#c084fc", 16), " Runes ", tip(RUNE_SOCKETS_HELP)),
-    p(muted("SOCKETS "), val("rune_sockets", { look: { bold: true } }), muted(" (from its rank)")),
+    h(3, icon("Gem", "#c084fc", 16), " Runes ", tip(RUNE_SPACE_HELP)),
     links("runes", [{ ref: "boosts", display: "value", label: "" }, { ref: "rune_tier", display: "badge" }], { layout: "cards", add: { types: ["item"], reverse: "socket", existing: true }, remove: "disconnect", emptyText: "No runes yet — a rune maker inscribes them." }),
   ];
 }
@@ -722,7 +722,9 @@ export const HEAL_VALUE = "if(inert, 0, max(0, $heal + potency))";
 export const MATERIAL_HELP = "For Blacksmithing. **Heat**: the range the metal must be kept in while hammering (set “to” 0 for materials that aren't heated — wood, leather). **Hardness**: harder metal moves less per blow but lasts longer. **Colour**: how it looks forged.";
 export const INGREDIENT_HELP = "For Alchemy and Rune Making: recipes ask for it by name (or by this sheet — copies of it count).";
 export const INK_HELP = "A liquid or ink for Rune Making. A rune drawn or carved with it takes its **colour**, and **glows** as brightly as its glow (0 = none, 100 = blazing) — on the item and its picture.";
-export const TOOL_HELP = "A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.";
+export const TOOL_HELP = "A tool for a craft — a carving needle, a pen, a smith's hammer, an alchemist's knife. For Rune Making, **Carved** means the rune is cut into the item and **Drawn** that it's drawn on; the tool used sets the look. Its **Skill** points are lent to whoever works with it, and its **Finest rune** is the smallest mark it can manage.";
+export const TOOL_SKILL_HELP = "Temporary points on the craft's skill while this tool is the one in hand — a masterwork set lends a point or two, something improvised costs them. They count on Quick Craft rolls and on how steady the hand is in the minigame.";
+export const TOOL_MIN_RUNE_HELP = "Rune Making: the smallest rune this tool can cut, as a share of the item it's cut into. A broad chisel can't do fine work (set it high); a jeweller's needle can (leave it at 4%). A finer tool fits more runes on one item.";
 export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; the first step you take puts you at the controls (only the GM can take over). Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).";
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
 export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
@@ -868,8 +870,11 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     body.push(h(3, icon("Droplet", "#f0abfc", 16), " Ink ", tip(INK_HELP)), p(muted("COLOUR "), val("ink_color", { display: "input" }), muted("    GLOW "), val("ink_glow", { display: "input" })));
   }
   if (kind === "Tool") {
-    s.choice("mark_style", "Mark style", ["Carved", "Drawn"], "Carved", { Carved: "#d6d3d1", Drawn: "#c4b5fd" });
-    body.push(h(3, icon("PenTool", "#fdba74", 16), " Tool ", tip(TOOL_HELP)), p(muted("MARKS "), val("mark_style", { display: "input" })));
+    s.choice("mark_style", "Mark style", ["Carved", "Drawn"], "Carved", { Carved: "#d6d3d1", Drawn: "#c4b5fd" })
+      .num("tool_skill", "Skill points", 0, { min: -5, max: 5, tooltip: TOOL_SKILL_HELP })
+      .num("tool_min_rune", "Finest rune", 4, { min: 4, max: 80, tooltip: TOOL_MIN_RUNE_HELP });
+    body.push(h(3, icon("PenTool", "#fdba74", 16), " Tool ", tip(TOOL_HELP)),
+      p(muted("MARKS "), val("mark_style", { display: "input" }), muted("    SKILL "), val("tool_skill", { display: "input" }), muted("    FINEST RUNE "), val("tool_min_rune", { display: "input" }), muted("%")));
   }
   if (kind === "Station") {
     s.choice("station_for", "Station for", ["Blacksmithing", "Alchemy", "Rune Making"], "Blacksmithing", { Blacksmithing: "#f97316", Alchemy: "#34d399", "Rune Making": "#a78bfa" })
@@ -889,10 +894,7 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
   }
   // Every item can have rolls (a weapon starts with Attack and Damage) and effects on its owner.
   body.push(...itemRollsNodes(), ...effectsNodes("owner", "equipped", ITEM_EFFECTS_HELP));
-  if (RUNEABLE_KINDS.includes(kind)) {
-    s.calc("rune_sockets", "Rune sockets", RUNE_SOCKETS_FORMULA).tip("rune_sockets", RUNE_SOCKETS_HELP);
-    body.push(...runeSlotNodes());
-  }
+  if (RUNEABLE_KINDS.includes(kind)) body.push(...runeSlotNodes());
 
   s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this item only the GM sees."))], { view: "gm", edit: "gm" });
   const page: DocNode[] = [
