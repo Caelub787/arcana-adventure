@@ -99,16 +99,16 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
   // Room, not sockets: what stops a rune is the surface it would be cut into.
   const space = target ? runeSpaceOn(state, target.id, kit.minRuneSize) : null;
   const problem = target && space ? runeFit(placement, space.taken, kit.minRuneSize) : null;
-  const socketMsg: string | false = !!target && !!space?.full
+  const roomMsg: string | false = !!target && !!space?.full
     ? `${target.name} has no room left for a rune this tool can cut`
     : !!problem && RUNE_FIT_WORDS[problem];
   const missing = rune ? [
     !target && "Pick the item to inscribe",
-    socketMsg,
+    roomMsg,
     !toolOk && `Needs a tool: ${rune.config.tools.map((t) => t.name).join(" or ")}`,
     rune.config.needsInk && !ink && "Needs a liquid or ink",
     ...rune.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`),
-  ] : freehand ? [!target && "Pick the item to inscribe", socketMsg] : [];
+  ] : freehand ? [!target && "Pick the item to inscribe", roomMsg] : [];
   const ready = (!!rune || freehand) && !missing.some(Boolean);
 
   const inscribe = async (mode: "quick" | "game" | "freehand") => {
@@ -147,7 +147,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
             <button type="button" disabled={busy || !strokes.length} onClick={() => inscribe(freehand ? "freehand" : "game")} className="ml-auto h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40" data-testid="rune-inscribe"><Sparkles className="h-4 w-4" /> Inscribe</button>
           </div>
         )}
-        <div className="text-[11px] text-stone-500">{freehand ? "Draw freely. If your marks come close enough to any rune (60%+) it takes as that rune: 80%+ is fine, 95%+ masterwork. Under 60% nothing takes and nothing is used up." : <>Trace the sigil{guide ? " over the guide" : " from memory"}. {guide ? "With the guide: 60%+ takes, 80%+ is fine, 95%+ masterwork." : "Without the guide: 40%+ takes, 65%+ is fine, 85%+ masterwork."} Under that, the socket is spent with no effect.</>}</div>
+        <div className="text-[11px] text-stone-500">{freehand ? "Draw freely. If your marks come close enough to any rune (60%+) it takes as that rune: 80%+ is fine, 95%+ masterwork. Under 60% nothing takes and nothing is used up." : <>Trace the sigil{guide ? " over the guide" : " from memory"}. {guide ? "With the guide: 60%+ takes, 80%+ is fine, 95%+ masterwork." : "Without the guide: 40%+ takes, 65%+ is fine, 85%+ masterwork."} Under that the mark is spoiled: it takes up room on the item and does nothing.</>}</div>
       </div>
     );
   }
