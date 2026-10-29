@@ -432,7 +432,6 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
   const [sides, setSides] = useState(5);
   const [bow, setBow] = useState(55);
   const drag = useRef<null | { from: number[]; to: number[] }>(null);
-  const [, redraw] = useState(0);
   // The chord of the last arc laid down, so the Bow slider can re-bend it.
   const lastArc = useRef<null | { from: number[]; to: number[]; at: number }>(null);
 
@@ -467,7 +466,12 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
   };
   const penPts = useRef<number[][] | null>(null);
 
-  useEffect(() => {
+  // Drawing the pad is not cheap (a glow pass over every stroke), so while a
+  // stroke is being dragged out it is repainted once a frame rather than once
+  // per pointer move — otherwise the browser starts dropping the moves and the
+  // stroke ends up where it started.
+  const paint = useRef<() => void>(() => {});
+  paint.current = () => {
     const ctx = ref.current?.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0, 0, S, S);
     // The lattice points snap to, so it's clear where a stroke will land.
@@ -480,7 +484,14 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
     if (editable && mirror) { ctx.strokeStyle = "rgba(56,189,248,0.45)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.stroke(); ctx.setLineDash([]); }
     const shown = [...live, ...(penPts.current ? [penPts.current] : []), ...pending()];
     drawSigil(ctx, shown, S / 2, S / 2, S * 0.9, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 4 });
-  });
+  };
+  useEffect(() => { paint.current(); });
+  const queued = useRef(false);
+  const repaint = () => {
+    if (queued.current) return;
+    queued.current = true;
+    requestAnimationFrame(() => { queued.current = false; paint.current(); });
+  };
 
   // The pad draws the sigil's 0–100 box at 0.9 of the canvas round its centre: undo that.
   const pt = (e: React.PointerEvent<HTMLCanvasElement>): number[] => {
@@ -492,18 +503,22 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
 
   const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!editable) return;
+    // The pad sits inside the sheet's page, whose blocks can be dragged about.
+    // Without this the browser takes a drag across the pad for a drag of the
+    // block, cancels the pointer two moves in, and the stroke is never drawn.
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = pt(e);
-    if (tool === "pen") { penPts.current = [p]; redraw((n) => n + 1); return; }
+    if (tool === "pen") { penPts.current = [p]; repaint(); return; }
     drag.current = { from: p, to: p };
-    redraw((n) => n + 1);
+    repaint();
   };
   const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!editable) return;
-    if (penPts.current) { penPts.current.push(pt(e)); redraw((n) => n + 1); return; }
+    if (penPts.current) { penPts.current.push(pt(e)); repaint(); return; }
     if (!drag.current) return;
     drag.current.to = pt(e);
-    redraw((n) => n + 1);
+    repaint();
   };
   const up = () => {
     if (penPts.current) {
@@ -516,7 +531,7 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
         if (snap) { sm[0] = snapSigilPoint(sm[0]); sm[sm.length - 1] = snapSigilPoint(sm[sm.length - 1]); }
         add(sm);
       }
-      redraw((n) => n + 1);
+      repaint();
       return;
     }
     const d = drag.current;
@@ -524,7 +539,7 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
     if (!d) return;
     const st = strokeOf(d.from, d.to);
     if (st) { add(st); if (tool === "arc") lastArc.current = { ...d, at: Date.now() }; }
-    redraw((n) => n + 1);
+    repaint();
   };
   /** The Bow slider re-bends the arc just laid down, instead of making you undo it. */
   const rebow = (b: number) => {
@@ -549,7 +564,8 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
   }
   return (
     <div className="space-y-1.5" data-testid="craft-def-sigil-maker">
-      <canvas ref={ref} width={S} height={S} className="w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)] touch-none cursor-crosshair" data-testid="craft-def-sigil-pad"
+      <canvas ref={ref} width={S} height={S} draggable={false} onDragStart={(e) => e.preventDefault()}
+        className="w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)] touch-none select-none cursor-crosshair" data-testid="craft-def-sigil-pad"
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} />
       <div className="flex flex-wrap gap-1" data-testid="craft-def-sigil-tools">
         {SIGIL_TOOLS.map((k) => (
