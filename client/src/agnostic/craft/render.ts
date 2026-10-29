@@ -242,9 +242,34 @@ function crack(ctx: CanvasRenderingContext2D, size: number) {
 
 // --------------------------------------------------------------------------- runes
 export type MarkStyle = "Carved" | "Drawn";
-export interface RuneLook { strokes: number[][][]; color: string; glow: number; style: MarkStyle; placement: RunePlacement }
+export interface RuneLook {
+  strokes: number[][][]; color: string; glow: number; style: MarkStyle; placement: RunePlacement;
+  /** A rune drawn in parts: the ink each stroke was laid down in, where it differs from the rune's own. */
+  parts?: Array<{ color: string; glow: number } | null>;
+}
 
 /** A sigil in a box: carved (a groove with a lit edge) or drawn (ink, glowing if the ink does). */
+/**
+ * A sigil whose strokes were not all laid down in the same ink. Each ink's
+ * strokes are drawn together, so every part keeps its own colour and glow —
+ * which is the whole point of a rune that takes two inks.
+ */
+export function drawSigilParts(
+  ctx: CanvasRenderingContext2D, strokes: number[][][], parts: Array<{ color: string; glow: number } | null> | undefined,
+  cx: number, cy: number, size: number, look: { color: string; glow: number; style: MarkStyle; alpha?: number; width?: number },
+) {
+  if (!parts?.some(Boolean)) { drawSigil(ctx, strokes, cx, cy, size, look); return; }
+  const groups = new Map<string, { look: { color: string; glow: number }; strokes: number[][][] }>();
+  strokes.forEach((st, i) => {
+    const ink = parts[i] ?? { color: look.color, glow: look.glow };
+    const key = `${ink.color}|${ink.glow}`;
+    const g = groups.get(key) ?? { look: ink, strokes: [] };
+    g.strokes.push(st);
+    groups.set(key, g);
+  });
+  for (const g of Array.from(groups.values())) drawSigil(ctx, g.strokes, cx, cy, size, { ...look, color: g.look.color, glow: g.look.glow });
+}
+
 export function drawSigil(ctx: CanvasRenderingContext2D, strokes: number[][][], cx: number, cy: number, size: number, look: { color: string; glow: number; style: MarkStyle; alpha?: number; width?: number }) {
   const s = size / 100;
   const path = (dx = 0, dy = 0) => {
@@ -301,7 +326,7 @@ export async function runePortrait(base: string | null, name: string, runes: Run
     ctx.save();
     ctx.translate((r.placement.x / 100) * size, (r.placement.y / 100) * size);
     ctx.rotate(((r.placement.r ?? 0) * Math.PI) / 180);
-    drawSigil(ctx, r.strokes, 0, 0, (r.placement.s / 100) * size, { color: r.color, glow: r.glow, style: r.style });
+    drawSigilParts(ctx, r.strokes, r.parts, 0, 0, (r.placement.s / 100) * size, { color: r.color, glow: r.glow, style: r.style });
     ctx.restore();
   }
   try { return c.toDataURL("image/png"); } catch { return ""; }

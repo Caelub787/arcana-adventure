@@ -7,13 +7,14 @@ import { Plus, Trash2, ArrowUp, ArrowDown, Hammer, FlaskConical, PenTool, Packag
 import type { AgNote } from "@shared/agnostic/types";
 import {
   parseCraftConfig, emptyCraftConfig, FORGE_SHAPES, SIGILS, ALCHEMY_STEP_LABEL, CRAFT_TIERS, TIER_LABEL, TIER_COLOR, CRAFT_KIND_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice,
-  SIGIL_TOOLS, SIGIL_TOOL_LABEL, SIGIL_GRID, snapSigilPoint, smoothStroke, mirrorStroke, onMirrorLine, sigilLine, sigilRing, sigilPolygon, sigilStar, fitSigil, type SigilTool,
+  SIGIL_TOOLS, SIGIL_TOOL_LABEL, SIGIL_GRID, snapSigilPoint, smoothStroke, mirrorStroke, onMirrorLine, sigilLine, sigilRing, sigilPolygon, sigilStar, fitSigil,
+  inkSlotColor, inkStrokeCounts, type SigilTool,
   type CraftConfig, type CraftKind, type CraftNeed, type CraftTierEffect, type ForgeConfig, type AlchemyConfig, type RuneConfig, type AlchemyStepType, type CraftTier,
 } from "@shared/agnostic/crafting";
 import { useAg, usePerms } from "../hooks";
 import { AgSelector, type SelItem } from "../float";
 import { useToast } from "@/hooks/use-toast";
-import { drawSigil, weaponPortrait } from "./render";
+import { drawSigil, drawSigilParts, weaponPortrait } from "./render";
 
 const KIND_OF_TYPE: Record<string, CraftKind> = { blueprint: "forge", recipe: "alchemy", rune_recipe: "rune" };
 
@@ -366,11 +367,21 @@ function AlchemyDef({ c, save, editable }: { c: AlchemyConfig; save: (c: Alchemy
 
 // --------------------------------------------------------------------------- rune
 function RuneDef({ c, save, editable }: { c: RuneConfig; save: (c: RuneConfig) => void; editable: boolean }) {
+  const { state } = useAg();
   const set = (p: Partial<RuneConfig>) => save({ ...c, ...p });
+  // Each ink the rune is drawn in, with the colour it will really be drawn in
+  // when one has been named — so the pad shows the rune as it will look.
+  const inkSlots = (c.inks ?? []).map((need, i) => {
+    const note = need.noteId ? state.notes.get(need.noteId) : undefined;
+    const own = note ? Array.from(state.fields.values()).find((f) => f.noteId === note.id && f.key === "ink_color") : undefined;
+    const col = String((own?.eff ?? own?.value) ?? "");
+    return { name: need.name || `Ink ${i + 1}`, color: /^#[0-9a-f]{3,8}$/i.test(col) ? col : inkSlotColor(i) };
+  });
   return (
     <div className="space-y-3">
       <div className="grid sm:grid-cols-[200px_1fr] gap-3">
-        <SigilPad strokes={c.sigil} editable={editable} onChange={(sigil) => set({ sigil })} />
+        <SigilPad strokes={c.sigil} strokeInk={c.sigilInk ?? []} inks={inkSlots} editable={editable}
+          onChange={(sigil, sigilInk) => set({ sigil, sigilInk })} />
         <div className="space-y-2">
           {editable && (
             <div className="flex flex-wrap gap-1">
@@ -393,6 +404,15 @@ function RuneDef({ c, save, editable }: { c: RuneConfig; save: (c: RuneConfig) =
         <NeedsEditor label="Ingredients" list={c.ingredients} onChange={(ingredients) => set({ ingredients })} editable={editable} consumed />
         <NeedsEditor label="Tools" list={c.tools} onChange={(tools) => set({ tools })} editable={editable} consumed={false} />
       </div>
+      <div className="space-y-1">
+        <NeedsEditor label="Inks" list={c.inks ?? []} editable={editable} consumed
+          onChange={(inks) => set({ inks, sigilInk: (c.sigilInk ?? []).map((v) => (typeof v === "number" && v < inks.length ? v : null)) })} />
+        <div className="text-[11px] text-stone-500">
+          {(c.inks?.length ?? 0) > 1
+            ? <>Pick an ink above the pad before drawing a stroke and that stroke is cut in that ink. The crafter has to change ink in the same places — {inkStrokeCounts(c).map((n, i) => `${n} in ${inkSlots[i]?.name ?? "?"}`).join(", ")}.</>
+            : <>Add two or more and the rune is drawn in parts: you say which strokes want which ink, and the crafter has to change ink part-way to get it right.</>}
+        </div>
+      </div>
       <OutputEditor label="Makes" id={c.output} editable={editable} onChange={(output) => set({ output })} hint="a plain rune item — choose a Rune template" />
     </div>
   );
@@ -408,24 +428,36 @@ function RuneDef({ c, save, editable }: { c: RuneConfig; save: (c: RuneConfig) =
  * Fit centres the whole thing and grows it to fill the box — which is most of
  * what makes a sigil look made rather than jotted.
  */
-function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; editable: boolean; onChange: (s: number[][][]) => void }) {
+function SigilPad({ strokes, strokeInk = [], inks = [], editable, onChange }: {
+  strokes: number[][][]; strokeInk?: Array<number | null>; inks?: Array<{ name: string; color: string }>;
+  editable: boolean; onChange: (s: number[][][], ink: Array<number | null>) => void;
+}) {
   const S = 200;
   const ref = useRef<HTMLCanvasElement>(null);
+  // Which ink the next stroke belongs to. Drawing a rune in parts is done the
+  // same way the crafter will draw it: pick a pen up, draw, pick the other up.
+  const [slot, setSlot] = useState<number | null>(null);
+  useEffect(() => { if (slot !== null && slot >= inks.length) setSlot(null); }, [inks.length, slot]);
+  const inkLook = (v: number | null | undefined) => (typeof v === "number" && inks[v] ? { color: inks[v].color, glow: 40 } : null);
   // What is on the pad right now. The setup it saves into round-trips through the
   // server, so if the prop were the only truth a GM drawing faster than that
   // would watch strokes vanish. The pad leads; a sigil coming back is only taken
   // when it is one this pad did not send — a preset, another GM, a reopened
   // sheet — and the pad's own saves are let through as they come home.
-  const [live, setLive] = useState<number[][][]>(strokes);
+  const [live, setLive] = useState<{ strokes: number[][][]; ink: Array<number | null> }>({ strokes, ink: strokeInk });
   const inFlight = useRef<string[]>([]);
   useEffect(() => {
-    const key = JSON.stringify(strokes);
+    const key = JSON.stringify([strokes, strokeInk]);
     const at = inFlight.current.indexOf(key);
     if (at >= 0) { inFlight.current = inFlight.current.slice(at + 1); return; }
     if (inFlight.current.length) return;
-    setLive(strokes);
-  }, [strokes]);
-  const put = (next: number[][][]) => { inFlight.current.push(JSON.stringify(next)); setLive(next); onChange(next); };
+    setLive({ strokes, ink: strokeInk });
+  }, [strokes, strokeInk]);
+  const put = (next: number[][][], ink: Array<number | null>) => {
+    inFlight.current.push(JSON.stringify([next, ink]));
+    setLive({ strokes: next, ink });
+    onChange(next, ink);
+  };
   const [tool, setTool] = useState<SigilTool>("pen");
   const [snap, setSnap] = useState(true);
   const [mirror, setMirror] = useState(false);
@@ -482,8 +514,10 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
     ctx.strokeStyle = "rgba(167,139,250,0.22)";
     for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo((k * S) / 4, 0); ctx.lineTo((k * S) / 4, S); ctx.moveTo(0, (k * S) / 4); ctx.lineTo(S, (k * S) / 4); ctx.stroke(); }
     if (editable && mirror) { ctx.strokeStyle = "rgba(56,189,248,0.45)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.stroke(); ctx.setLineDash([]); }
-    const shown = [...live, ...(penPts.current ? [penPts.current] : []), ...pending()];
-    drawSigil(ctx, shown, S / 2, S / 2, S * 0.9, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 4 });
+    const pend = pending();
+    const shown = [...live.strokes, ...(penPts.current ? [penPts.current] : []), ...pend];
+    const looks = [...live.ink.map(inkLook), ...(penPts.current ? [inkLook(slot)] : []), ...pend.map(() => inkLook(slot))];
+    drawSigilParts(ctx, shown, looks, S / 2, S / 2, S * 0.9, { color: "#c4b5fd", glow: 40, style: "Drawn", width: 4 });
   };
   useEffect(() => { paint.current(); });
   const queued = useRef(false);
@@ -499,7 +533,10 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
     const raw = [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height].map((f) => ((f * S - S / 2) / (S * 0.009)) + 50);
     return snapSigilPoint(raw, snap ? SIGIL_GRID : 0);
   };
-  const add = (st: number[][]) => put([...live, st, ...(mirror && !onMirrorLine(st) ? [mirrorStroke(st)] : [])]);
+  const add = (st: number[][]) => {
+    const extra = mirror && !onMirrorLine(st) ? [mirrorStroke(st)] : [];
+    put([...live.strokes, st, ...extra], [...live.ink, slot, ...extra.map(() => slot)]);
+  };
 
   const down = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!editable) return;
@@ -545,14 +582,16 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
   const rebow = (b: number) => {
     setBow(b);
     const la = lastArc.current;
-    if (!la || tool !== "arc" || Date.now() - la.at > 120000 || !live.length) return;
+    if (!la || tool !== "arc" || Date.now() - la.at > 120000 || !live.strokes.length) return;
     const st = arcThrough(la.from, la.to, b).map((p) => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]);
     const mirrored = mirror && !onMirrorLine(st);
-    const keep = live.slice(0, Math.max(0, live.length - (mirrored ? 2 : 1)));
-    put([...keep, st, ...(mirrored ? [mirrorStroke(st)] : [])]);
+    const drop = mirrored ? 2 : 1;
+    const keep = live.strokes.slice(0, Math.max(0, live.strokes.length - drop));
+    const keepInk = live.ink.slice(0, Math.max(0, live.ink.length - drop));
+    put([...keep, st, ...(mirrored ? [mirrorStroke(st)] : [])], [...keepInk, slot, ...(mirrored ? [slot] : [])]);
   };
 
-  const undo = () => put(live.slice(0, -1));
+  const undo = () => put(live.strokes.slice(0, -1), live.ink.slice(0, -1));
   const sidesLabel = tool === "star" ? "Points" : "Sides";
 
   if (!editable) {
@@ -567,6 +606,20 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
       <canvas ref={ref} width={S} height={S} draggable={false} onDragStart={(e) => e.preventDefault()}
         className="w-full aspect-square rounded-lg border border-violet-900 bg-[radial-gradient(circle,#1e1b4b,#0c0a09_75%)] touch-none select-none cursor-crosshair" data-testid="craft-def-sigil-pad"
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} />
+      {inks.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1" data-testid="craft-def-sigil-inks">
+          <span className="text-[10px] uppercase tracking-wide text-stone-500 mr-0.5">Draw in</span>
+          <button type="button" onClick={() => setSlot(null)} data-testid="craft-def-sigil-ink-any"
+            className={`h-7 px-2 rounded border text-[11px] ${slot === null ? "border-stone-300 bg-stone-700 text-stone-100" : "border-stone-700 text-stone-400"}`}>Any</button>
+          {inks.map((k, i) => (
+            <button key={i} type="button" onClick={() => setSlot(i)} data-testid={`craft-def-sigil-ink-${i}`}
+              className={`h-7 px-2 rounded border text-[11px] inline-flex items-center gap-1 ${slot === i ? "text-stone-100" : "text-stone-400"}`}
+              style={{ borderColor: slot === i ? k.color : "#44403c", background: slot === i ? `${k.color}33` : undefined }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: k.color }} />{k.name}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1" data-testid="craft-def-sigil-tools">
         {SIGIL_TOOLS.map((k) => (
           <button key={k} type="button" onClick={() => setTool(k)} data-testid={`craft-def-sigil-tool-${k}`}
@@ -594,10 +647,10 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
           className={`h-7 px-2 rounded border inline-flex items-center gap-1 ${snap ? "border-violet-400 bg-violet-900/40 text-violet-100" : "border-stone-700 text-stone-400"}`}><Grid3x3 className="h-3 w-3" />Snap</button>
         <button type="button" onClick={() => setMirror(!mirror)} data-testid="craft-def-sigil-mirror"
           className={`h-7 px-2 rounded border inline-flex items-center gap-1 ${mirror ? "border-sky-400 bg-sky-900/40 text-sky-100" : "border-stone-700 text-stone-400"}`}><FlipHorizontal className="h-3 w-3" />Mirror</button>
-        <button type="button" onClick={undo} disabled={!live.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-undo"><Undo2 className="h-3 w-3" />Undo</button>
-        <button type="button" onClick={() => put(fitSigil(live))} disabled={!live.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-fit"><Maximize2 className="h-3 w-3" />Fit</button>
-        <button type="button" onClick={() => put([])} disabled={!live.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-clear"><Eraser className="h-3 w-3" />Clear</button>
-        <SigilChip strokes={live} />
+        <button type="button" onClick={undo} disabled={!live.strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-undo"><Undo2 className="h-3 w-3" />Undo</button>
+        <button type="button" onClick={() => put(fitSigil(live.strokes), live.ink)} disabled={!live.strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-fit"><Maximize2 className="h-3 w-3" />Fit</button>
+        <button type="button" onClick={() => put([], [])} disabled={!live.strokes.length} className="h-7 px-2 rounded border border-stone-700 text-stone-300 inline-flex items-center gap-1 disabled:opacity-40" data-testid="craft-def-sigil-clear"><Eraser className="h-3 w-3" />Clear</button>
+        <SigilChip strokes={live.strokes} looks={live.ink.map(inkLook)} />
       </div>
       <div className="text-[10px] text-stone-500">
         {tool === "pen" ? "Drag to draw; the wobble is smoothed out and the ends land on the grid."
@@ -611,12 +664,12 @@ function SigilPad({ strokes, editable, onChange }: { strokes: number[][][]; edit
 }
 
 /** The sigil at the size it'll actually be cut, so the GM can see it still reads. */
-function SigilChip({ strokes }: { strokes: number[][][] }) {
+function SigilChip({ strokes, looks }: { strokes: number[][][]; looks?: Array<{ color: string; glow: number } | null> }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const ctx = ref.current?.getContext("2d"); if (!ctx) return;
     ctx.clearRect(0, 0, 44, 44);
-    drawSigil(ctx, strokes, 22, 22, 36, { color: "#e7e5e4", glow: 10, style: "Carved", width: 1.5 });
-  }, [strokes]);
+    drawSigilParts(ctx, strokes, looks, 22, 22, 36, { color: "#e7e5e4", glow: 10, style: "Carved", width: 1.5 });
+  }, [strokes, looks]);
   return <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-stone-500" title="How big it really is on an item"><canvas ref={ref} width={44} height={44} className="h-7 w-7 rounded border border-stone-800" data-testid="craft-def-sigil-chip" />at size</span>;
 }

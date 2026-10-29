@@ -70,7 +70,7 @@ export type AgOp =
   | { op: "craft.resolveExperiment"; experimentId: string; outputId: string | null }
   | { op: "craft.makeScroll"; defId: string; characterId?: string | null }
   | { op: "craft.forgeMold"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; materialId: string; toolId?: string | null; mold: Mold; /** What the smith calls what they made. */ name?: string; mode: "quick" | "game"; /** How close the worked metal came to the mold, 0–100 (the played forge). */ shape?: number; metal?: string | null; portrait?: string | null }
-  | { op: "craft.rune"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: RunePlacement; portrait?: string | null };
+  | { op: "craft.rune"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; /** The ink each stroke was drawn with, for a rune drawn in parts. */ strokeInks?: Array<string | null>; placement?: RunePlacement; portrait?: string | null };
 
 export type AgOpResult =
   | { noteId: string }

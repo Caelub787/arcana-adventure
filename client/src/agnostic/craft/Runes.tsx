@@ -5,12 +5,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
-import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, parseMold, registerMold, runeFit, findRuneSpot, RUNE_FIT_WORDS, RUNE_SIZE_MAX, toolEffectWords, CRAFT_KIND_LABEL, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole, type RunePlacement, type Mold } from "@shared/agnostic/crafting";
+import { traceAccuracy, traceAccuracyInk, inkPartWords, runeInParts, inkSlotColor, runeTier, itemMatches, numOf, unpackMetal, parseMold, registerMold, runeFit, findRuneSpot, RUNE_FIT_WORDS, RUNE_SIZE_MAX, toolEffectWords, CRAFT_KIND_LABEL, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole, type RunePlacement, type Mold } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, runesOn, qtyOf, toolEffectsOn, craftHand, runeSpaceOn, type CraftState } from "./session";
 import { ItemTile, ResultBanner, QuickCraftButton, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
-import { drawSigil, loadImage, runePortrait, weaponPortrait, partPortrait, type MarkStyle, type RuneLook } from "./render";
+import { drawSigil, drawSigilParts, loadImage, runePortrait, weaponPortrait, partPortrait, type MarkStyle, type RuneLook } from "./render";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 type ScopeState = ReturnType<typeof useAg>["state"];
@@ -22,12 +22,21 @@ const parse = <T,>(v: unknown, d: T): T => { if (typeof v !== "string" || !v) re
 /** How an existing rune on an item looks (from its values). */
 export function runeLookOf(state: ScopeState, rune: AgNote): RuneLook {
   const drawn = parse<number[][][]>(valueOn(state, rune.id, "rune_drawn"), []);
+  const parts = parse<Array<{ color: string; glow: number } | null>>(valueOn(state, rune.id, "rune_parts"), []);
   return {
     strokes: drawn.length ? drawn : parse<number[][][]>(valueOn(state, rune.id, "sigil"), []),
     color: String(valueOn(state, rune.id, "rune_color") ?? ""), glow: numOf(valueOn(state, rune.id, "rune_glow")),
     style: (valueOn(state, rune.id, "rune_style") === "Drawn" ? "Drawn" : "Carved") as MarkStyle,
     placement: parse(valueOn(state, rune.id, "placement"), { x: 50, y: 50, s: 30, r: 0 }),
+    ...(parts.length ? { parts } : {}),
   };
+}
+
+/** The colour an ink really lays down, for showing a rune's parts before it is cut. */
+function inkLookOf(state: ScopeState, note: AgNote | undefined, fallback: string) {
+  if (!note) return { color: fallback, glow: 40 };
+  const col = colorOf(state, note.id, "ink_color", fallback);
+  return { color: col, glow: numOf(valueOn(state, note.id, "ink_glow"), 40) };
 }
 /**
  * The item's picture without its runes. A forged weapon keeps how it was built, so it's drawn fresh from that (always
@@ -93,6 +102,34 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
   const placement: RunePlacement = s.placement ?? { x: 50, y: 50, s: Math.max(34, kit.minRuneSize) };
   const guide = s.guide !== false;
   const strokes: number[][][] = s.strokes ?? [];
+  // Which ink each stroke went down in. What is already drawn keeps its ink, so
+  // changing pens part-way through is how a rune in two inks gets made.
+  const strokeInks: Array<string | null> = (s.strokeInks ?? []).slice(0, strokes.length);
+  const inkNeeds = rune?.config.inks ?? [];
+  const inParts = !!rune && runeInParts(rune.config);
+  /** Which of the recipe's inks an ink in hand counts as, or null for none of them. */
+  const slotOf = (inkId: string | null | undefined): number | null => {
+    const n = inkId ? state.notes.get(inkId) : undefined;
+    if (!n) return null;
+    const at = inkNeeds.findIndex((need) => itemMatches(n, need));
+    return at < 0 ? null : at;
+  };
+  /** The ink each of the recipe's parts wants, and what it looks like. */
+  const slotLooks = inkNeeds.map((need, i) => {
+    const owned = inventory.find((n) => itemMatches(n, need));
+    return { name: need.name, ...inkLookOf(state, owned, inkSlotColor(i)) };
+  });
+  const guideLooks = rune ? rune.config.sigil.map((_, i) => {
+    const slot = rune.config.sigilInk?.[i];
+    return typeof slot === "number" && slotLooks[slot] ? { color: slotLooks[slot].color, glow: 30 } : null;
+  }) : [];
+  const drawnLooks = strokeInks.map((id) => (id ? inkLookOf(state, state.notes.get(id), look.color || "#c4b5fd") : null));
+  /** A stroke is tagged with the ink in hand as it is finished; the rest keep theirs. */
+  const setStrokes = (st: number[][][]) => {
+    const inks = strokeInks.slice(0, st.length);
+    while (inks.length < st.length) inks.push(ink?.id ?? null);
+    set({ strokes: st, strokeInks: inks });
+  };
   const [busy, setBusy] = useState(false);
   const have = (need: { noteId?: string | null; name: string; qty: number }) => inventory.filter((n) => n.id !== s.target && itemMatches(n, need)).reduce((a, n) => a + qtyOf(state, n.id), 0);
   const toolOk = !rune?.config.tools.length || (!!tool && rune.config.tools.some((t) => itemMatches(tool, t)));
@@ -106,7 +143,8 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
     !target && "Pick the item to inscribe",
     roomMsg,
     !toolOk && `Needs a tool: ${rune.config.tools.map((t) => t.name).join(" or ")}`,
-    rune.config.needsInk && !ink && "Needs a liquid or ink",
+    rune.config.needsInk && !ink && !inkNeeds.length && "Needs a liquid or ink",
+    ...inkNeeds.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} — part of it is drawn in that`),
     ...rune.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`),
   ] : freehand ? [!target && "Pick the item to inscribe", roomMsg] : [];
   const ready = (!!rune || freehand) && !missing.some(Boolean);
@@ -116,12 +154,27 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
     setBusy(true);
     try {
       const drawn = mode === "quick" ? rune!.config.sigil : strokes;
-      const accuracy = mode === "game" ? traceAccuracy(rune!.config.sigil, strokes) : 0;
+      // A rune drawn in parts is scored part by part: each one counts only what
+      // was laid down in the ink it asked for.
+      const scored = mode === "game" && inParts
+        ? traceAccuracyInk(rune!.config.sigil, rune!.config.sigilInk ?? [], strokes, strokeInks.map(slotOf))
+        : null;
+      const accuracy = mode === "game" ? (scored ? scored.accuracy : traceAccuracy(rune!.config.sigil, strokes)) : 0;
+      const inkMiss = scored ? inkPartWords(scored.parts, (i) => inkNeeds[i]?.name ?? "that") : null;
       const existing = runesOn(state, target.id).map((r) => runeLookOf(state, r));
-      const portrait = await runePortrait(baseOf(state, target), target.name, [...existing, { strokes: drawn, ...look, placement }]);
-      const res: CraftOutcome = await request({ op: "craft.rune", characterId, stationId, runeId: rune?.id ?? null, targetId: target.id, inkId: ink?.id ?? null, toolId: tool?.id ?? null, mode, accuracy, guide, strokes: drawn, placement, portrait: portrait || null });
+      const parts = mode === "quick"
+        ? (rune?.config.sigilInk ?? []).map((slot) => (typeof slot === "number" && slotLooks[slot] ? { color: slotLooks[slot].color, glow: slotLooks[slot].glow } : null))
+        : drawnLooks;
+      const portrait = await runePortrait(baseOf(state, target), target.name, [...existing, { strokes: drawn, ...look, placement, ...(parts.some(Boolean) ? { parts } : {}) }]);
+      const res: CraftOutcome = await request({
+        op: "craft.rune", characterId, stationId, runeId: rune?.id ?? null, targetId: target.id,
+        inkId: ink?.id ?? null, toolId: tool?.id ?? null, mode, accuracy, guide, strokes: drawn,
+        strokeInks: mode === "quick" ? (rune?.config.sigilInk ?? []).map((slot) => (typeof slot === "number" ? inventory.find((n) => inkNeeds[slot] && itemMatches(n, inkNeeds[slot]))?.id ?? null : null)) : strokeInks,
+        placement, portrait: portrait || null,
+      });
       announceRoll(character.name, res.roll, scope.kind === "campaign");
-      start({ stage: "plan", strokes: [], result: { ...res, message: mode === "game" ? `${res.message} (traced ${accuracy}%)` : res.message } });
+      const note = mode === "game" ? ` (traced ${accuracy}%${inkMiss ? ` — ${inkMiss}` : ""})` : "";
+      start({ stage: "plan", strokes: [], strokeInks: [], result: { ...res, message: `${res.message}${note}` } });
     } catch (e: any) { toast({ title: "Couldn't inscribe it", description: e.message, variant: "destructive" }); }
     finally { setBusy(false); }
   };
@@ -138,13 +191,40 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
           <span className="text-[11px] text-stone-400">{look.style}{ink ? ` · ${ink.name}` : " · no ink"} · {freehand ? "no guide" : `guide ${guide ? "on" : "off"}`}</span>
           {!playing && <span className="text-[10px] px-2 py-0.5 rounded-full border border-stone-600 text-stone-300">Watching live</span>}
         </div>
-        <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={(st) => set({ strokes: st })} skill={handSkill} />
+        {inParts && (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="rune-trace-inks">
+            <span className="text-[10px] uppercase tracking-wide text-stone-500">Pen in hand</span>
+            {inks.map((n) => {
+              const slot = slotOf(n.id);
+              const on = ink?.id === n.id;
+              const col = colorOf(state, n.id, "ink_color", "#a78bfa");
+              return (
+                <button key={n.id} type="button" disabled={!playing} onClick={() => set({ ink: n.id })} data-testid={`rune-trace-ink-${n.name}`}
+                  className={`h-8 px-2 rounded-md border text-[11px] inline-flex items-center gap-1.5 disabled:opacity-50 ${on ? "text-stone-100" : "text-stone-400"}`}
+                  style={{ borderColor: on ? col : "#44403c", background: on ? `${col}33` : undefined }}>
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: col }} />{n.name}
+                  {slot !== null && inkNeeds[slot].name !== n.name && <span className="text-[10px] text-stone-500">· {inkNeeds[slot].name}</span>}
+                  {slot === null && <span className="text-[10px] text-stone-600">· no part</span>}
+                </button>
+              );
+            })}
+            <span className="text-[11px] text-stone-500 w-full">Change pen as you go: what is already drawn keeps the ink it was drawn in.</span>
+          </div>
+        )}
+        <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guideLooks={guideLooks} drawnLooks={drawnLooks} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={setStrokes} skill={handSkill} />
         {playing && <div className="text-[11px] text-stone-400" data-testid="rune-hand">Rune Making {handSkill}{hand.tool ? ` (${hand.own} ${hand.tool > 0 ? "+" : "−"} ${Math.abs(hand.tool)} from ${tool!.name})` : ""}: {HAND_WORDS[handSkill]}</div>}
         {playing && (
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => set({ strokes: strokes.slice(0, -1) })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Undo2 className="h-4 w-4" /> Undo</button>
-            <button type="button" onClick={() => set({ strokes: [] })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Eraser className="h-4 w-4" /> Clear</button>
+            <button type="button" onClick={() => set({ strokes: strokes.slice(0, -1), strokeInks: strokeInks.slice(0, -1) })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Undo2 className="h-4 w-4" /> Undo</button>
+            <button type="button" onClick={() => set({ strokes: [], strokeInks: [] })} disabled={!strokes.length} className="h-9 px-3 rounded-lg border border-stone-700 text-xs text-stone-200 inline-flex items-center gap-1 disabled:opacity-40"><Eraser className="h-4 w-4" /> Clear</button>
             <button type="button" disabled={busy || !strokes.length} onClick={() => inscribe(freehand ? "freehand" : "game")} className="ml-auto h-10 px-4 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-40" data-testid="rune-inscribe"><Sparkles className="h-4 w-4" /> Inscribe</button>
+          </div>
+        )}
+        {inParts && (
+          <div className="text-[11px] text-stone-400" data-testid="rune-trace-parts">
+            This one is drawn in parts: {rune!.config.sigil.map((_, i) => rune!.config.sigilInk?.[i]).filter((v): v is number => typeof v === "number")
+              .reduce<Array<{ slot: number; n: number }>>((a, slot) => { const hit = a.find((x) => x.slot === slot); if (hit) hit.n++; else a.push({ slot, n: 1 }); return a; }, [])
+              .map((x) => `${x.n} stroke${x.n === 1 ? "" : "s"} in ${slotLooks[x.slot]?.name ?? "?"}`).join(", ")}. The guide shows each part in its own ink.
           </div>
         )}
         <div className="text-[11px] text-stone-500">{freehand ? "Draw freely. If your marks come close enough to any rune (60%+) it takes as that rune: 80%+ is fine, 95%+ masterwork. Under 60% nothing takes and nothing is used up." : <>Trace the sigil{guide ? " over the guide" : " from memory"}. {guide ? "With the guide: 60%+ takes, 80%+ is fine, 95%+ masterwork." : "Without the guide: 40%+ takes, 65%+ is fine, 85%+ masterwork."} Under that the mark is spoiled: it takes up room on the item and does nothing.</>}</div>
@@ -174,7 +254,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
             <ChoiceRow label="Tool" empty="No carving tools or pens.">
               {tools.map((n) => { const e = toolEffectsOn(state, n.id); return <ItemTile key={n.id} compact note={n} selected={s.tool === n.id} disabled={!playing} onClick={() => set({ tool: s.tool === n.id ? undefined : n.id })} sub={[String(valueOn(state, n.id, "mark_style") ?? "Carved"), ...toolEffectWords(e, CRAFT_KIND_LABEL.rune)].join(" · ")} testId={`rune-tool-${n.name}`} />; })}
             </ChoiceRow>
-            <ChoiceRow label="Ink" empty="No inks — the rune will be plain.">
+            <ChoiceRow label="Ink" empty="No inks — the rune will be plain." testId="rune-inks">
               {inks.map((n) => <ItemTile key={n.id} compact note={n} selected={s.ink === n.id} disabled={!playing} color={colorOf(state, n.id, "ink_color", "#a78bfa")} onClick={() => set({ ink: s.ink === n.id ? undefined : n.id })} sub={`glow ${numOf(valueOn(state, n.id, "ink_glow"))}`} testId={`rune-ink-${n.name}`} />)}
             </ChoiceRow>
             {rune && (rune.config.ingredients.length > 0) && (
@@ -226,7 +306,7 @@ function paintItem(ctx: CanvasRenderingContext2D, size: number, img: HTMLImageEl
 }
 function placeSigil(ctx: CanvasRenderingContext2D, size: number, r: RuneLook, alpha = 1) {
   ctx.save(); ctx.translate((r.placement.x / 100) * size, (r.placement.y / 100) * size); ctx.rotate(((r.placement.r ?? 0) * Math.PI) / 180);
-  drawSigil(ctx, r.strokes, 0, 0, (r.placement.s / 100) * size, { color: r.color, glow: r.glow, style: r.style, alpha });
+  drawSigilParts(ctx, r.strokes, r.parts, 0, 0, (r.placement.s / 100) * size, { color: r.color, glow: r.glow, style: r.style, alpha });
   ctx.restore();
 }
 
@@ -327,8 +407,11 @@ export const HAND_WORDS = ["Shaky: the pen wanders and lags behind your hand.", 
 /** The tracing surface: zoomed in on where the rune goes (it fills the view, however small it is on the item) — the
  *  item, its runes, the guide and the strokes, live. The ink comes from the pen's tip, which an unskilled hand can't hold
  *  steady (it trails and wobbles); on a touch screen the pen is held just above the finger, so you can see its tip. */
-function TraceCanvas({ base, name, existing, sigil, guide, placement, look, strokes, playing, onStrokes, skill }: {
-  base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; guide: boolean; placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">;
+function TraceCanvas({ base, name, existing, sigil, guide, guideLooks, drawnLooks, placement, look, strokes, playing, onStrokes, skill }: {
+  base: string | null; name: string; existing: RuneLook[]; sigil: number[][][]; guide: boolean;
+  /** The ink each part of the guide asks for, so you can see where to change pens. */ guideLooks?: Array<{ color: string; glow: number } | null>;
+  /** The ink each stroke was actually drawn in. */ drawnLooks?: Array<{ color: string; glow: number } | null>;
+  placement: RuneLook["placement"]; look: Omit<RuneLook, "strokes" | "placement">;
   strokes: number[][][]; playing: boolean; onStrokes: (s: number[][][]) => void; skill: number;
 }) {
   const S = 520;
@@ -391,11 +474,14 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
         if (guide) {
           const pulse = 0.35 + 0.15 * Math.sin(t / 400);
           ctx.save(); ctx.translate(cx, cy); ctx.rotate(((placement.r ?? 0) * Math.PI) / 180);
-          drawSigil(ctx, sigil, 0, 0, sz, { color: "#e9d5ff", glow: 30, style: "Drawn", alpha: pulse, width: Math.max(2 / v.z, sz / 30) });
+          drawSigilParts(ctx, sigil, guideLooks, 0, 0, sz, { color: "#e9d5ff", glow: 30, style: "Drawn", alpha: pulse, width: Math.max(2 / v.z, sz / 30) });
           ctx.restore();
         }
         const all = current.current ? [...local.current, current.current] : local.current;
-        if (all.length) placeSigil(ctx, S, { strokes: all, ...look, placement });
+        if (all.length) {
+          const parts = all.map((_, i) => drawnLooks?.[i] ?? (i >= (drawnLooks?.length ?? 0) ? { color: look.color || "#c4b5fd", glow: look.glow } : null));
+          placeSigil(ctx, S, { strokes: all, ...look, placement, ...(parts.some(Boolean) ? { parts } : {}) });
+        }
         // The pen, at its tip (on screen, unzoomed).
         if (playing && ink && (P.down || P.aim)) {
           const [ix, iy] = fromSig(ink[0], ink[1]);
@@ -413,7 +499,7 @@ function TraceCanvas({ base, name, existing, sigil, guide, placement, look, stro
     };
     raf = requestAnimationFrame(f);
     return () => cancelAnimationFrame(raf);
-  }, [img, name, existing, sigil, guide, placement, look, hand, playing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [img, name, existing, sigil, guide, guideLooks, drawnLooks, placement, look, hand, playing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lift = () => {
     const P = pen.current;

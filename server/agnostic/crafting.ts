@@ -712,9 +712,29 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       // Freehand: nobody knew which rune it would be, so any fitting tool they carry will do.
       if (freehand && config.tools.length && (!tool || !config.tools.some((tn) => itemMatches(tool!, tn)))) tool = inv.find((n) => config.tools.some((tn) => itemMatches(n, tn))) ?? tool;
       if (config.tools.length && (!tool || !config.tools.some((tn) => itemMatches(tool, tn)))) fail(`It needs ${config.tools.map((tn) => tn.name).join(" or ")} to carve`);
-      const ink = body.inkId ? inInventory(inv, body.inkId, "That ink") : null;
-      if (ink && valueOf(store, ink.id, "ink_color") === undefined) fail(`${ink.name} isn't a liquid or ink`);
+      // A rune can be drawn in more than one ink, the crafter changing pens
+      // part-way: every ink that actually touched it is checked and used up.
+      const inkIds = Array.from(new Set([...(body.strokeInks ?? []).filter((x): x is string => typeof x === "string" && !!x), ...(body.inkId ? [body.inkId] : [])]));
+      const inksUsed = inkIds.map((inkId) => inInventory(inv, inkId, "That ink"));
+      for (const u of inksUsed) if (valueOf(store, u.id, "ink_color") === undefined) fail(`${u.name} isn't a liquid or ink`);
+      // The one the rune takes its own colour from: whatever the first stroke was drawn with.
+      const firstId = (body.strokeInks ?? []).find((x) => !!x) ?? body.inkId ?? null;
+      const ink = inksUsed.find((u) => u.id === firstId) ?? inksUsed[0] ?? null;
       if (config.needsInk && !ink) fail("This rune needs a liquid or ink");
+      // Each ink the recipe calls for has to be one of the ones it was drawn with.
+      // Not when drawing freehand: nobody knew which rune it would be, so they
+      // can hardly have known to change pens for it.
+      const inkNeeds = freehand ? [] : config.inks ?? [];
+      const inkUse = new Map<string, number>();
+      for (const need of inkNeeds) {
+        const match = inksUsed.find((u) => itemMatches(u, need)) ?? fail(`Part of it has to be drawn in ${need.name}`);
+        inkUse.set(match.id, Math.max(inkUse.get(match.id) ?? 0, Math.max(1, need.qty)));
+      }
+      for (const u of inksUsed) if (!inkUse.has(u.id)) inkUse.set(u.id, 1);
+      for (const [id, qty] of Array.from(inkUse.entries())) {
+        const it = inksUsed.find((u) => u.id === id)!;
+        if (qtyOf(store, id) < qty) fail(`Not enough ${it.name}`);
+      }
       // The tool decides how fine a mark can be cut, so where it goes is only
       // settled once we know which tool is doing the cutting.
       const kit = toolEffects((k) => (tool ? valueOf(store, tool.id, k) : undefined));
@@ -726,10 +746,16 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
       const color = ink ? String(valueOf(store, ink.id, "ink_color") ?? "") : "";
       const glow = ink ? numOf(valueOf(store, ink.id, "ink_glow")) : 0;
+      // How each stroke was inked, so the rune is drawn again in its own colours.
+      const inkOf = (id: string | null | undefined) => (id ? inksUsed.find((u) => u.id === id) ?? null : null);
+      const strokeParts = (body.strokeInks ?? []).slice(0, 40).map((id) => {
+        const n = inkOf(id);
+        return n ? { color: String(valueOf(store, n.id, "ink_color") ?? ""), glow: numOf(valueOf(store, n.id, "ink_glow")) } : null;
+      });
       const style = tool ? String(valueOf(store, tool.id, "mark_style") ?? "Carved") : "Carved";
       return store.run(async (cs) => {
         for (const u of use) if (u.consumed) await consume(store, u.item, u.qty, cs);
-        if (ink) await consume(store, ink, 1, cs);
+        for (const [id, qty] of Array.from(inkUse.entries())) await consume(store, inksUsed.find((u) => u.id === id)!, qty, cs);
         // The rune, set into the item for good (only the GM, or something made for it, takes it out).
         const name = `${tier === "fail" ? "Spent " : ""}${rune.name.replace(/\s*recipe\s*/i, "").trim() || "Rune"}`;
         const source = config.output ? store.notes.get(config.output) : undefined;
@@ -749,6 +775,8 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         const vals: Record<string, AgValue> = {
           item_type: "Rune", rune_tier: TIER_LABEL[tier], rune_color: color, rune_glow: glow, rune_style: style,
           sigil: JSON.stringify(config.sigil), rune_drawn: JSON.stringify((body.strokes ?? []).slice(0, 40)), placement: JSON.stringify(placement),
+          ...(strokeParts.some(Boolean) ? { rune_parts: JSON.stringify(strokeParts) } : {}),
+          ...(inksUsed.length > 1 ? { rune_inks: inksUsed.map((u) => u.name).join(", ") } : {}),
           boosts: tier === "fail" || amount === undefined || !config.effect ? "No effect (a spoiled mark)" : `${config.effect.key.replace(/_/g, " ")} ${amount >= 0 ? "+" : ""}${amount}`,
           rune_accuracy: quick ? 0 : accuracy,
         };

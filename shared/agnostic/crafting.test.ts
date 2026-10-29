@@ -48,6 +48,12 @@ import {
   fitSigil,
   parseSigil,
   parseCraftConfig,
+  sigilInkOf,
+  runeInParts,
+  inkStrokeCounts,
+  inkSlotColor,
+  traceAccuracyInk,
+  inkPartWords,
   traceAccuracy,
   shapeMask,
   startingStock,
@@ -596,5 +602,131 @@ describe("a rune recipe's setup", () => {
   it("still drops rubbish out of a sigil off the wire", () => {
     const cfg = parseCraftConfig({ kind: "rune", sigil: [[[10, 10], [90, 90]], "no", [[1, 1]]] });
     expect((cfg as any).sigil).toHaveLength(1);
+  });
+});
+
+describe("a rune drawn in more than one ink", () => {
+  const ring = sigilRing(50, 50, 34);
+  const bar = sigilLine([50, 12], [50, 88]);
+  const cross = sigilLine([16, 50], [84, 50]);
+  // A rune whose ring is one ink and whose cross is another.
+  const cfg = {
+    kind: "rune" as const, sigil: [ring, bar, cross], ingredients: [], tools: [],
+    inks: [{ name: "Emberblood", qty: 1 }, { name: "Moonsilver", qty: 1 }],
+    sigilInk: [0, 1, 1], output: null, effect: null,
+  };
+
+  it("knows which ink each stroke wants", () => {
+    expect(sigilInkOf(cfg, 0)).toBe(0);
+    expect(sigilInkOf(cfg, 2)).toBe(1);
+    expect(sigilInkOf({ sigilInk: [] }, 0)).toBeNull();
+  });
+
+  it("knows a rune that is drawn in parts from one that isn't", () => {
+    expect(runeInParts(cfg)).toBe(true);
+    expect(runeInParts({ inks: [{ name: "Ink", qty: 1 }], sigilInk: [0] })).toBe(false);
+    expect(runeInParts({ inks: [], sigilInk: [] })).toBe(false);
+  });
+
+  it("counts how much of itself each ink is asked for", () => {
+    expect(inkStrokeCounts(cfg)).toEqual([1, 2]);
+  });
+
+  it("gives each slot a colour to stand in before an ink is named", () => {
+    expect(inkSlotColor(0)).not.toBe(inkSlotColor(1));
+    expect(inkSlotColor(null)).toBeTruthy();
+    expect(inkSlotColor(99)).toBeTruthy();
+  });
+
+  it("scores a rune traced with the right ink in the right places near perfect", () => {
+    const { accuracy } = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 1, 1]);
+    expect(accuracy).toBeGreaterThan(95);
+  });
+
+  it("scores the part drawn in the wrong ink at nothing, however well it is drawn", () => {
+    // The shape is perfect; it was all laid down in the first ink.
+    const right = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 1, 1]);
+    const wrong = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 0, 0]);
+    expect(wrong.parts.find((p) => p.slot === 1)!.score).toBe(0);
+    // Masterwork becomes middling: it loses the share of itself that wanted the other ink.
+    expect(wrong.accuracy).toBeLessThan(right.accuracy - 20);
+    expect(wrong.accuracy).toBeGreaterThan(0);
+  });
+
+  it("loses exactly the share of itself that was in the wrong ink", () => {
+    // The ring is the long stroke, so it is most of the drawing: getting the ring
+    // right and the cross wrong keeps more than the other way round.
+    const ringOnly = traceAccuracyInk(cfg.sigil, cfg.sigilInk, [ring], [0]).accuracy;
+    const crossOnly = traceAccuracyInk(cfg.sigil, cfg.sigilInk, [bar, cross], [1, 1]).accuracy;
+    expect(ringOnly).toBeGreaterThan(crossOnly);
+    expect(crossOnly).toBeGreaterThan(0);
+  });
+
+  it("does not count the rest of the rune against a part that was drawn right", () => {
+    // The whole sigil, every stroke in its own ink: no part is penalised for
+    // the strokes that belong to the others.
+    const { parts } = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 1, 1]);
+    for (const p of parts) expect(p.score).toBeGreaterThan(90);
+  });
+
+  it("takes any ink for a stroke that asks for none", () => {
+    const loose = { ...cfg, sigilInk: [0, null, null] };
+    const { parts } = traceAccuracyInk(loose.sigil, loose.sigilInk, loose.sigil, [0, 0, 0]);
+    expect(parts.find((p) => p.slot === null)!.score).toBeGreaterThan(90);
+  });
+
+  it("scores a rune that asks for nothing in particular exactly as it always did", () => {
+    const plain = [ring, bar];
+    const both = traceAccuracyInk(plain, [null, null], plain, [null, null]).accuracy;
+    expect(both).toBe(traceAccuracy(plain, plain));
+  });
+
+  it("says which part never took", () => {
+    const { parts } = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 0, 0]);
+    expect(inkPartWords(parts, (i) => cfg.inks[i].name)).toBe("the Moonsilver part never took");
+  });
+
+  it("says nothing when every part took", () => {
+    const { parts } = traceAccuracyInk(cfg.sigil, cfg.sigilInk, cfg.sigil, [0, 1, 1]);
+    expect(inkPartWords(parts, (i) => cfg.inks[i].name)).toBeNull();
+  });
+
+  it("names both parts when both were missed", () => {
+    const three = { sigil: [ring, bar, cross], sigilInk: [0, 1, 2] };
+    const { parts } = traceAccuracyInk(three.sigil, three.sigilInk, [ring], [0]);
+    expect(inkPartWords(parts, (i) => ["A", "B", "C"][i])).toBe("the B and C parts never took");
+  });
+});
+
+describe("a rune recipe's inks, off the wire", () => {
+  it("keeps the inks and which stroke wants which", () => {
+    const c = parseCraftConfig({
+      kind: "rune", sigil: [sigilRing(50, 50, 30), sigilLine([50, 10], [50, 90])],
+      inks: [{ name: "Emberblood", qty: 1 }, { name: "Moonsilver", qty: 2 }], sigilInk: [0, 1],
+    }) as any;
+    expect(c.inks).toHaveLength(2);
+    expect(c.inks[1].qty).toBe(2);
+    expect(c.sigilInk).toEqual([0, 1]);
+  });
+
+  it("drops a stroke's ink when there is no such ink on the recipe", () => {
+    const c = parseCraftConfig({
+      kind: "rune", sigil: [sigilRing(50, 50, 30)], inks: [{ name: "One", qty: 1 }], sigilInk: [7],
+    }) as any;
+    expect(c.sigilInk).toEqual([null]);
+  });
+
+  it("gives every stroke an entry, even one the setup never mentioned", () => {
+    const c = parseCraftConfig({
+      kind: "rune", sigil: [sigilRing(50, 50, 30), sigilLine([50, 10], [50, 90])],
+      inks: [{ name: "One", qty: 1 }], sigilInk: [0],
+    }) as any;
+    expect(c.sigilInk).toEqual([0, null]);
+  });
+
+  it("is a rune with no inks at all when it never had any", () => {
+    const c = parseCraftConfig({ kind: "rune", sigil: [sigilRing(50, 50, 30)] }) as any;
+    expect(c.inks).toEqual([]);
+    expect(c.sigilInk).toEqual([null]);
   });
 });

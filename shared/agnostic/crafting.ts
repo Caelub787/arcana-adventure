@@ -135,6 +135,14 @@ export interface RuneConfig {
   tools: CraftNeed[];
   /** Must be drawn with a liquid or ink (an item with ink_color). */
   needsInk?: boolean;
+  /**
+   * The inks a rune is drawn with. More than one, and the rune is drawn in
+   * parts: the crafter changes ink part-way, and what is already down keeps the
+   * ink it was drawn with.
+   */
+  inks?: CraftNeed[];
+  /** Which of those inks each stroke of the sigil wants, by index. null: any ink will do. */
+  sigilInk?: Array<number | null>;
   /** The rune made and set into the item (a template or item to copy). */
   output?: string | null;
   /** What it does to the item it's on, by tier (e.g. damage_bonus +1 / +2 / +3). */
@@ -195,7 +203,12 @@ export function parseCraftConfig(raw: unknown): CraftConfig | null {
     // scribble, but a mirrored one lays two down at a time.
     const sigil = parseSigil(o.sigil);
     const eff = o.effect && key(o.effect.key) ? { key: key(o.effect.key), values: tierValues(o.effect.values) } : null;
-    return { kind: "rune", sigil, ingredients: needs(o.ingredients, true), tools: needs(o.tools, false), needsInk: !!o.needsInk, output: id(o.output), effect: eff };
+    const inks = needs(o.inks, true);
+    const sigilInk = sigil.map((_, i) => {
+      const v = Array.isArray(o.sigilInk) ? o.sigilInk[i] : null;
+      return typeof v === "number" && v >= 0 && v < inks.length ? Math.floor(v) : null;
+    });
+    return { kind: "rune", sigil, ingredients: needs(o.ingredients, true), tools: needs(o.tools, false), needsInk: !!o.needsInk, inks, sigilInk, output: id(o.output), effect: eff };
   }
   return null;
 }
@@ -567,12 +580,20 @@ export function resample(strokes: number[][][], step = 2): number[][] {
  * How well a tracing matches a sigil, 0–100: how much of the sigil it covers
  * and how much of it stays on the sigil (both within a few points).
  */
-export function traceAccuracy(guide: number[][][], drawn: number[][][], tolerance = 4.5): number {
+const nearest = (p: number[], set: number[][]) => { let best = Infinity; for (const q of set) { const dd = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2; if (dd < best) best = dd; } return Math.sqrt(best); };
+
+/** The two halves of a trace: how much of the sigil was covered, and how much of what was drawn was on it. */
+export function traceParts(guide: number[][][], drawn: number[][][], tolerance = 4.5): { covered: number; onLine: number } {
   const g = resample(guide), d = resample(drawn);
-  if (!g.length || !d.length) return 0;
-  const near = (p: number[], set: number[][]) => { let best = Infinity; for (const q of set) { const dd = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2; if (dd < best) best = dd; } return Math.sqrt(best); };
-  const covered = g.filter((p) => near(p, d) <= tolerance).length / g.length;
-  const onLine = d.filter((p) => near(p, g) <= tolerance * 1.4).length / d.length;
+  if (!g.length || !d.length) return { covered: 0, onLine: 0 };
+  return {
+    covered: g.filter((p) => nearest(p, d) <= tolerance).length / g.length,
+    onLine: d.filter((p) => nearest(p, g) <= tolerance * 1.4).length / d.length,
+  };
+}
+
+export function traceAccuracy(guide: number[][][], drawn: number[][][], tolerance = 4.5): number {
+  const { covered, onLine } = traceParts(guide, drawn, tolerance);
   return Math.round(100 * Math.pow(covered, 0.7) * Math.pow(onLine, 0.6));
 }
 
@@ -1201,4 +1222,91 @@ export function parseSigil(raw: unknown, maxStrokes = 40, maxPoints = 400): numb
     if (pts.length > 1) out.push(pts);
   }
   return out;
+}
+
+// --------------------------------------------------------------------------- runes in parts
+// A rune can ask for more than one ink, and say which of its strokes wants
+// which. The crafter changes ink part-way through drawing it; what is already
+// down keeps the ink it was drawn with, the way real ink does. So a rune that
+// needs two inks is two inks on the item, in the right places, and tracing it
+// means knowing when to put one pen down and pick the other up.
+
+/** Colours to stand in for an ink slot before anyone has said which ink it is. */
+export const INK_SLOT_COLORS = ["#a78bfa", "#f97316", "#38bdf8", "#4ade80", "#f472b6", "#facc15"];
+export const inkSlotColor = (slot: number | null | undefined) =>
+  slot === null || slot === undefined ? "#a78bfa" : INK_SLOT_COLORS[slot % INK_SLOT_COLORS.length];
+
+/** Which ink a stroke of the sigil wants, by index into the recipe's inks. */
+export function sigilInkOf(config: Pick<RuneConfig, "sigilInk">, stroke: number): number | null {
+  const v = config.sigilInk?.[stroke];
+  return typeof v === "number" ? v : null;
+}
+
+/** Whether a rune is drawn in parts at all, or is one ink from end to end. */
+export function runeInParts(config: Pick<RuneConfig, "inks" | "sigilInk">): boolean {
+  return (config.inks?.length ?? 0) > 1 && (config.sigilInk ?? []).some((v) => typeof v === "number");
+}
+
+/** How many strokes each ink of a rune is asked for, for the setup's own summary. */
+export function inkStrokeCounts(config: Pick<RuneConfig, "inks" | "sigilInk" | "sigil">): number[] {
+  const out = new Array(config.inks?.length ?? 0).fill(0);
+  (config.sigil ?? []).forEach((_, i) => {
+    const slot = sigilInkOf(config, i);
+    if (slot !== null && slot < out.length) out[slot]++;
+  });
+  return out;
+}
+
+export interface InkPartScore { slot: number | null; score: number; weight: number }
+
+/** How long a set of strokes is, as the crafter draws them: a long stroke is more of the rune than a short one. */
+const pathLength = (strokes: number[][][]) =>
+  strokes.reduce((a, st) => a + st.slice(1).reduce((b, p, i) => b + Math.hypot(p[0] - st[i][0], p[1] - st[i][1]), 0), 0);
+
+/**
+ * How well a rune was traced, ink by ink. Each part of the sigil counts only
+ * what was drawn in the ink it asked for, so a rune laid down in one ink loses
+ * exactly the share of itself that wanted the other — knowing when to change
+ * pens is as much of the work as the shape is.
+ *
+ * Whether what was drawn is on the sigil at all is judged once, over the whole
+ * rune: drawing the ring properly shouldn't count against the cross.
+ *
+ * A sigil that asks for nothing in particular scores exactly as it always did.
+ */
+export function traceAccuracyInk(
+  guide: number[][][],
+  guideInk: Array<number | null>,
+  drawn: number[][][],
+  drawnInk: Array<number | null>,
+  tolerance = 4.5,
+): { accuracy: number; parts: InkPartScore[] } {
+  const slots = Array.from(new Set(guide.map((_, i) => guideInk[i] ?? null)));
+  if (slots.length <= 1 && (slots[0] ?? null) === null) {
+    const score = traceAccuracy(guide, drawn, tolerance);
+    return { accuracy: score, parts: [{ slot: null, score, weight: 1 }] };
+  }
+  const onLine = traceParts(guide, drawn, tolerance).onLine;
+  const shown = (covered: number) => Math.round(100 * Math.pow(covered, 0.7) * Math.pow(onLine, 0.6));
+  const parts: InkPartScore[] = [];
+  let sum = 0, total = 0;
+  for (const slot of slots) {
+    const g = guide.filter((_, i) => (guideInk[i] ?? null) === slot);
+    // A stroke that asks for no ink in particular takes whatever was used; one
+    // that names an ink only counts what was drawn in that ink.
+    const d = slot === null ? drawn : drawn.filter((_, i) => (drawnInk[i] ?? null) === slot);
+    const covered = d.length ? traceParts(g, d, tolerance).covered : 0;
+    const weight = pathLength(g);
+    parts.push({ slot, score: shown(covered), weight });
+    sum += covered * weight;
+    total += weight;
+  }
+  return { accuracy: total ? shown(sum / total) : 0, parts };
+}
+
+/** What went wrong with the inks, said plainly, or null when nothing did. */
+export function inkPartWords(parts: InkPartScore[], inkName: (slot: number) => string): string | null {
+  const bad = parts.filter((p) => p.slot !== null && p.score < 40).map((p) => inkName(p.slot!));
+  if (!bad.length) return null;
+  return bad.length === 1 ? `the ${bad[0]} part never took` : `the ${bad.slice(0, -1).join(", ")} and ${bad[bad.length - 1]} parts never took`;
 }
