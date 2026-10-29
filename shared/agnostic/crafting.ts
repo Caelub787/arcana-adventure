@@ -577,3 +577,371 @@ export function itemMatches(item: AgNote, need: Pick<CraftNeed, "noteId" | "name
 
 /** A value as a number (for item settings read off fields). */
 export const numOf = (v: AgValue | undefined, d = 0) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : d);
+
+// --------------------------------------------------------------------------- tools
+// What the tool in your hand does to the work. Every craft reads the same two
+// values off whatever tool is being used, so a jeweller's loupe-and-needle set
+// helps a rune the way a good hammer helps a blade.
+//
+//   tool_skill      temporary points on the craft's skill, + or −. A crude
+//                   improvised tool is a penalty; a masterwork set is a bonus.
+//   tool_min_rune   rune making only: the smallest mark this tool can cut, as
+//                   a percentage of the item it is cut into. A chisel cannot
+//                   do fine work; a needle can.
+
+/** The smallest rune any tool can manage, and the largest any rune may be. */
+export const RUNE_SIZE_MIN = 4;
+export const RUNE_SIZE_MAX = 80;
+
+export interface ToolEffects {
+  /** Temporary points on the craft's skill, from the tool. */
+  skill: number;
+  /** Rune making: the smallest size this tool can cut (percent of the item). */
+  minRuneSize: number;
+}
+
+/**
+ * A tool's effect on the work, from its own values. A tool that says nothing
+ * is simply a tool: no bonus, no penalty, and no limit on how fine it can cut.
+ */
+export function toolEffects(
+  read: (key: string) => AgValue | undefined,
+): ToolEffects {
+  const skill = Math.round(numOf(read("tool_skill"), 0));
+  const min = numOf(read("tool_min_rune"), 0);
+  return {
+    // Bounded so a mistyped value can't make a craft impossible or certain.
+    skill: Math.max(-10, Math.min(10, skill)),
+    minRuneSize: Math.max(RUNE_SIZE_MIN, Math.min(RUNE_SIZE_MAX, min || RUNE_SIZE_MIN)),
+  };
+}
+
+/** How a tool's effect reads on screen: "+2 Rune Making", "can't cut under 12%". */
+export function toolEffectWords(t: ToolEffects, craftLabel: string): string[] {
+  const out: string[] = [];
+  if (t.skill) out.push(`${t.skill > 0 ? "+" : "−"}${Math.abs(t.skill)} ${craftLabel}`);
+  if (t.minRuneSize > RUNE_SIZE_MIN) out.push(`nothing finer than ${t.minRuneSize}%`);
+  return out;
+}
+
+// --------------------------------------------------------------------------- rune space
+// How many runes an item takes is not a number on the item - it is how much
+// room is left on it. Runes are marks cut into a surface: they cannot be cut
+// through one another, and a big one leaves less space than a small one.
+
+/** A rune's place on an item: centre, size and turn, all as percentages of the picture. */
+export interface RunePlacement { x: number; y: number; s: number; r?: number }
+
+/**
+ * Two runes clash when their marks would cross. Each is treated as the circle
+ * that just contains its sigil box, which is forgiving at the corners - a
+ * rune is strokes inside its box, not a filled square, so touching corners is
+ * not two marks crossing.
+ */
+export function runesOverlap(a: RunePlacement, b: RunePlacement, gap = 1): boolean {
+  const ra = a.s / 2, rb = b.s / 2;
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.hypot(dx, dy) < ra + rb + gap;
+}
+
+/** Whether a rune sits fully on the item rather than hanging off its edge. */
+export function runeOnItem(p: RunePlacement): boolean {
+  const r = p.s / 2;
+  return p.x - r >= -1 && p.x + r <= 101 && p.y - r >= -1 && p.y + r <= 101;
+}
+
+export type RuneFitProblem = "overlap" | "offItem" | "tooSmall" | null;
+
+/**
+ * Whether a rune can go where it has been put: on the item, clear of every
+ * rune already cut there, and no finer than the tool can cut.
+ */
+export function runeFit(p: RunePlacement, existing: RunePlacement[], minSize = RUNE_SIZE_MIN): RuneFitProblem {
+  if (p.s < minSize - 0.001) return "tooSmall";
+  if (!runeOnItem(p)) return "offItem";
+  if (existing.some((e) => runesOverlap(p, e))) return "overlap";
+  return null;
+}
+
+export const RUNE_FIT_WORDS: Record<Exclude<RuneFitProblem, null>, string> = {
+  overlap: "That would cut across a rune already here",
+  offItem: "That hangs off the edge of the item",
+  tooSmall: "Too fine for this tool",
+};
+
+/**
+ * Somewhere this rune will fit, searched outwards from where it was asked for,
+ * or null when the item has no room left for one this size. Used to say "full"
+ * honestly: an item is full when nothing more fits, not when a count runs out.
+ */
+export function findRuneSpot(p: RunePlacement, existing: RunePlacement[], minSize = RUNE_SIZE_MIN): RunePlacement | null {
+  if (!runeFit(p, existing, minSize)) return p;
+  if (p.s < minSize - 0.001) return null;
+  const r = p.s / 2;
+  // A coarse sweep is enough: this answers "is there room", not "where is
+  // the prettiest spot", which is the crafter's call.
+  for (let ring = 2; ring <= 100; ring += 2) {
+    for (let a = 0; a < 360; a += 15) {
+      const t = (a * Math.PI) / 180;
+      const c = { ...p, x: p.x + ring * Math.cos(t), y: p.y + ring * Math.sin(t) };
+      if (c.x - r < 0 || c.x + r > 100 || c.y - r < 0 || c.y + r > 100) continue;
+      if (!runeFit(c, existing, minSize)) return c;
+    }
+  }
+  return null;
+}
+
+/** Roughly how much of an item's face its runes already take up, 0–1. */
+export function runeSpaceUsed(existing: RunePlacement[]): number {
+  const area = existing.reduce((a, p) => a + Math.PI * (p.s / 2) ** 2, 0);
+  return Math.max(0, Math.min(1, area / (100 * 100)));
+}
+
+// --------------------------------------------------------------------------- the mold
+// Blacksmithing is not picking a shape off a list any more. You draw the mold:
+// click points, and the line between any two can be pulled into a curve. The
+// shape you draw IS the weapon, and what you make of it decides what it does.
+//
+// Nothing here knows the name of a single weapon. A long thin point reaches
+// and pierces; a heavy head at the far end hits hard and swings slow; a long
+// curved belly cuts. Draw a scythe and you get a scythe's trade-offs because
+// of its shape, not because anyone listed "scythe".
+
+/** A point on the mold outline, in a 100 × 100 box. `c` bends the line INTO this point. */
+export interface MoldPoint { x: number; y: number; /** -100 … 100: how far the line bows, and which way. */ c?: number }
+
+export interface Mold {
+  /** The outline, in order. Closed: the last point joins the first. */
+  points: MoldPoint[];
+  /** Where the handle meets it, as a fraction along the outline's width (0 = left edge). */
+  grip?: number;
+}
+
+export const MOLD_MAX_POINTS = 48;
+
+/** A mold's outline with its curves drawn out into plain points, for measuring and filling. */
+export function moldOutline(mold: Mold, perEdge = 12): number[][] {
+  const p = mold.points;
+  if (p.length < 2) return p.map((q) => [q.x, q.y]);
+  const out: number[][] = [];
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    // The bow belongs to the point the line runs INTO, so dragging one point
+    // changes the two lines that meet there and nothing else.
+    const bow = (b.c ?? 0) / 100;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const nx = -(b.y - a.y), ny = b.x - a.x;
+    const len = Math.hypot(nx, ny) || 1;
+    const cx = mx + (nx / len) * bow * len * 0.5;
+    const cy = my + (ny / len) * bow * len * 0.5;
+    for (let k = 0; k < perEdge; k++) {
+      const t = k / perEdge, u = 1 - t;
+      out.push([u * u * a.x + 2 * u * t * cx + t * t * b.x, u * u * a.y + 2 * u * t * cy + t * t * b.y]);
+    }
+  }
+  return out;
+}
+
+const polyArea = (poly: number[][]) => {
+  let a = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) a += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
+  return Math.abs(a) / 2;
+};
+
+/** What a drawn mold is, measured: nothing here is a weapon name, only shape. */
+export interface MoldMeasure {
+  /** Filled area as a fraction of the box - how much metal the head is. */
+  mass: number;
+  /** Longest span across the shape, 0–1 of the box. */
+  length: number;
+  /** How far the metal sits from the grip end: 0 all at the hand, 1 all at the tip. */
+  balance: number;
+  /** How sharply the far end narrows: 1 is a needle, 0 is a flat face. */
+  point: number;
+  /** How much of the outline is a long smooth curve rather than straight runs. */
+  curve: number;
+  /** Widest measure across the swing, 0–1 - a broad head catches more. */
+  breadth: number;
+  /** How even the shape is about its own spine; 1 is symmetrical. */
+  symmetry: number;
+}
+
+export function measureMold(mold: Mold): MoldMeasure {
+  const poly = moldOutline(mold);
+  if (poly.length < 3) return { mass: 0, length: 0, balance: 0.5, point: 0, curve: 0, breadth: 0, symmetry: 1 };
+  const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+  const area = polyArea(poly);
+  const mass = Math.max(0, Math.min(1, area / 10000));
+  const length = Math.max(0, Math.min(1, Math.max(w, h) / 100));
+  const breadth = Math.max(0, Math.min(1, Math.min(w, h) / 100));
+
+  // Balance: where the metal sits along the long axis, measured in strips so a
+  // heavy head at the end reads differently from the same metal spread out.
+  const along = w >= h ? 0 : 1;
+  const lo = along ? minY : minX, hi = along ? maxY : maxX;
+  const strips = 10;
+  let moment = 0, total = 0;
+  for (let i = 0; i < strips; i++) {
+    const a = lo + ((hi - lo) * i) / strips, b = lo + ((hi - lo) * (i + 1)) / strips;
+    const inStrip = poly.filter((p) => p[along] >= a && p[along] < b).length;
+    moment += inStrip * (i + 0.5) / strips;
+    total += inStrip;
+  }
+  const balance = total ? Math.max(0, Math.min(1, moment / total)) : 0.5;
+
+  // Point: how much narrower the last tenth is than the widest tenth.
+  const across = along ? 0 : 1;
+  const spanAt = (a: number, b: number) => {
+    const band = poly.filter((p) => p[along] >= a && p[along] <= b).map((p) => p[across]);
+    return band.length ? Math.max(...band) - Math.min(...band) : 0;
+  };
+  const tipSpan = spanAt(hi - (hi - lo) * 0.12, hi);
+  let widest = 0;
+  for (let i = 0; i < strips; i++) widest = Math.max(widest, spanAt(lo + ((hi - lo) * i) / strips, lo + ((hi - lo) * (i + 1)) / strips));
+  const point = widest > 0 ? Math.max(0, Math.min(1, 1 - tipSpan / widest)) : 0;
+
+  // Curve: how far the drawn outline runs beyond the straight lines between
+  // its own corners - a bowed belly is long here, a boxy head is not.
+  const straight = mold.points.reduce((a, p, i) => {
+    const q = mold.points[(i + 1) % mold.points.length];
+    return a + Math.hypot(q.x - p.x, q.y - p.y);
+  }, 0);
+  const drawn = poly.reduce((a, p, i) => {
+    const q = poly[(i + 1) % poly.length];
+    return a + Math.hypot(q[0] - p[0], q[1] - p[1]);
+  }, 0);
+  const curve = straight > 0 ? Math.max(0, Math.min(1, (drawn / straight - 1) * 4)) : 0;
+
+  // Symmetry: the shape folded over its own long axis.
+  const mid = along ? (minX + maxX) / 2 : (minY + maxY) / 2;
+  const diffs = poly.map((p) => Math.abs(p[across] - mid));
+  const mean = diffs.reduce((a, d) => a + d, 0) / diffs.length;
+  const spread = Math.sqrt(diffs.reduce((a, d) => a + (d - mean) ** 2, 0) / diffs.length);
+  const symmetry = Math.max(0, Math.min(1, 1 - spread / Math.max(1, mean + spread)));
+
+  return { mass, length, balance, point, curve, breadth, symmetry };
+}
+
+/** What a shape turns out to be good and bad at. Every number is a modifier. */
+export interface MoldTraits {
+  /** Extra damage dice sides, from how much metal lands on the blow. */
+  damage: number;
+  /** How far it reaches, in feet over a bare hand's reach. */
+  reach: number;
+  /** Attacks are quicker or slower: + is faster. */
+  speed: number;
+  /** How hard it is to use well - subtracted from attack rolls. */
+  unwieldy: number;
+  /** How well it holds an edge / resists bending. */
+  durability: number;
+  /** What it does best, for the item's own description. */
+  notes: string[];
+}
+
+/**
+ * The trade-offs a shape earns. There is no good shape here and no bad one:
+ * every gain is paid for. A long reach is slow. A heavy head hits hard and
+ * tires the arm. A needle point pierces and snaps.
+ */
+export function moldTraits(m: MoldMeasure): MoldTraits {
+  const notes: string[] = [];
+  // Metal on the blow. A heavy head that sits far out hits hardest of all.
+  const heft = m.mass * (0.5 + m.balance);
+  let damage = Math.round(heft * 8 - 1.5);
+  // A real point concentrates the blow.
+  if (m.point > 0.72) { damage += 1; notes.push("pierces armour"); }
+  // A long curved belly slices rather than chops.
+  if (m.curve > 0.4 && m.length > 0.55) { damage += 1; notes.push("cuts deep on the draw"); }
+
+  const reach = Math.round(m.length * 10 - 2);
+
+  // Weight out at the end is slow; metal near the hand is quick.
+  let speed = Math.round((0.55 - m.balance) * 6 - m.mass * 4);
+  if (m.mass < 0.18 && m.length < 0.5) { speed += 1; notes.push("quick in close"); }
+
+  // Lopsided and far-weighted shapes fight the hand.
+  let unwieldy = Math.max(0, Math.round((1 - m.symmetry) * 4 + Math.max(0, m.balance - 0.6) * 6 + Math.max(0, m.mass - 0.5) * 4));
+  if (m.breadth > 0.55) { unwieldy += 1; notes.push("broad - hard to carry unseen"); }
+
+  // A needle snaps; a thick even shape holds.
+  let durability = Math.round(m.mass * 6 + m.symmetry * 2 - m.point * 4);
+  if (m.point > 0.85 && m.mass < 0.22) { durability -= 2; notes.push("fine point - it will not take a parry"); }
+  if (m.mass > 0.45 && m.point < 0.3) notes.push("blunt and solid");
+
+  if (!notes.length) notes.push("honest and plain");
+  return {
+    damage: Math.max(-3, Math.min(6, damage)),
+    reach: Math.max(0, Math.min(10, reach)),
+    speed: Math.max(-4, Math.min(3, speed)),
+    unwieldy: Math.max(0, Math.min(6, unwieldy)),
+    durability: Math.max(-3, Math.min(8, durability)),
+    notes: notes.slice(0, 3),
+  };
+}
+
+/**
+ * What a shape most resembles, for a suggested name only. The trade-offs come
+ * from the shape itself; this is a courtesy so the crafter has somewhere to
+ * start when naming what they made.
+ */
+export function moldResembles(m: MoldMeasure): string {
+  if (m.mass > 0.4 && m.point < 0.35 && m.balance > 0.55) return "maul";
+  if (m.point > 0.8 && m.breadth < 0.25) return "spike";
+  if (m.curve > 0.45 && m.balance > 0.6 && m.length > 0.6) return "scythe";
+  if (m.curve > 0.35 && m.length > 0.5) return "sabre";
+  if (m.length > 0.7 && m.breadth < 0.3) return "longblade";
+  if (m.breadth > 0.5 && m.balance > 0.55) return "axe";
+  if (m.length < 0.45 && m.mass < 0.25) return "dagger";
+  return "blade";
+}
+
+export const MOLD_NAME_HINT: Record<string, string> = {
+  maul: "A heavy head that falls hard.",
+  spike: "All point, no belly.",
+  scythe: "A long curved reach.",
+  sabre: "Curved, made for the draw.",
+  longblade: "Long and straight.",
+  axe: "Broad at the head.",
+  dagger: "Small and quick.",
+  blade: "A blade of your own making.",
+};
+
+/** A mold off the wire, trimmed to something safe to measure and store. */
+export function parseMold(raw: unknown): Mold | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const pts = Array.isArray(r.points) ? r.points : [];
+  const points: MoldPoint[] = [];
+  for (const p of pts.slice(0, MOLD_MAX_POINTS)) {
+    if (!p || typeof p !== "object") continue;
+    const q = p as Record<string, unknown>;
+    if (typeof q.x !== "number" || typeof q.y !== "number") continue;
+    if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) continue;
+    const point: MoldPoint = { x: num(q.x, 0, 0, 100), y: num(q.y, 0, 0, 100) };
+    const c = num(q.c, 0, -100, 100);
+    if (c) point.c = Math.round(c);
+    points.push(point);
+  }
+  if (points.length < 3) return null;
+  const mold: Mold = { points };
+  const grip = num(r.grip, -1, 0, 1);
+  if (grip >= 0) mold.grip = grip;
+  return mold;
+}
+
+/** The values a finished mold writes onto the item it makes. */
+export function moldItemValues(mold: Mold): Record<string, number | string> {
+  const m = measureMold(mold);
+  const t = moldTraits(m);
+  return {
+    mold_damage: t.damage,
+    mold_reach: t.reach,
+    mold_speed: t.speed,
+    mold_unwieldy: t.unwieldy,
+    mold_durability: t.durability,
+    mold_notes: t.notes.join(", "),
+    mold_shape: moldResembles(m),
+  };
+}
