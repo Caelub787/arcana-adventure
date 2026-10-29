@@ -166,6 +166,7 @@ function MoldDesigner({ points, color, playing, sel, onPoints }: {
   const [local, setLocal] = useState<MoldPoint[] | null>(null);
   const pts = local ?? points;
   const drag = React.useRef<{ i: number; moved: boolean } | null>(null);
+  const lastSend = React.useRef(0);
   const svg = React.useRef<SVGSVGElement>(null);
   const mold = { points: pts };
   const at = (e: React.PointerEvent) => {
@@ -189,6 +190,9 @@ function MoldDesigner({ points, color, playing, sel, onPoints }: {
     drag.current.moved = true;
     const next = pts.map((q, i) => (i === drag.current!.i ? { ...q, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10 } : q));
     setLocal(next);
+    // Watchers see the shape move as it's dragged, not only where it lands.
+    const now = performance.now();
+    if (now - lastSend.current > 90) { lastSend.current = now; onPoints(next, drag.current.i); }
   };
   const up = () => {
     if (!drag.current) return;
