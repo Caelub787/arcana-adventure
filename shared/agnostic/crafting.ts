@@ -255,6 +255,10 @@ const N = FINE_COLS * FINE_ROWS;
 /** Metal as bits: 1 = still there. */
 export type Metal = Uint8Array;
 
+/** Caches keyed by shape. A mold is a shape made up as it's drawn, so they can be forgotten again. */
+const shapeCaches: Array<Map<string, unknown>> = [];
+function forgetShape(key: string) { for (const c of shapeCaches) c.delete(key); }
+
 /** Which fine cells are inside the outline (to keep) — the rest are stock to remove. */
 const maskCache = new Map<string, Metal>();
 export function shapeMask(shape: string): Metal {
@@ -268,6 +272,7 @@ export function shapeMask(shape: string): Metal {
 }
 /** The starting bar: whole hammer blocks round the outline, with stock all round to work away. */
 const stockCache = new Map<string, Metal>();
+shapeCaches.push(maskCache as Map<string, unknown>, stockCache as Map<string, unknown>);
 export function startingStock(shape: string): Metal {
   return stockOf(shape).slice();
 }
@@ -366,6 +371,7 @@ export const GRIND_REACH = 5;
 const GRIND_LOOSE = 16;
 /** The outline's outermost layer of cells (the only part an unsteady wheel can bite). */
 const rimCache = new Map<string, Metal>();
+shapeCaches.push(rimCache as Map<string, unknown>);
 function outlineRim(shape: string): Metal {
   let rim = rimCache.get(shape);
   if (rim) return rim;
@@ -380,6 +386,7 @@ function outlineRim(shape: string): Metal {
 }
 /** Each fine cell's distance to the outline (0 inside it), per shape. */
 const distCache = new Map<string, Float32Array>();
+shapeCaches.push(distCache as Map<string, unknown>);
 export function outlineDistance(shape: string): Float32Array {
   let d = distCache.get(shape);
   if (d) return d;
@@ -719,6 +726,46 @@ export interface Mold {
 
 export const MOLD_MAX_POINTS = 48;
 
+/**
+ * A new point goes into the outline between the two it landed nearest, rather
+ * than on the end — otherwise clicking inside a shape folds it over itself and
+ * the smith watches their blade turn into a knot.
+ */
+export function insertMoldPoint(points: MoldPoint[], at: { x: number; y: number }): { points: MoldPoint[]; index: number } {
+  const p = { x: Math.round(at.x * 10) / 10, y: Math.round(at.y * 10) / 10 };
+  if (points.length < 2) return { points: [...points, p], index: points.length };
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+    const d = Math.hypot(a.x + dx * t - p.x, a.y + dy * t - p.y);
+    if (d < bd) { bd = d; best = i + 1; }
+  }
+  return { points: [...points.slice(0, best), p, ...points.slice(best)], index: best };
+}
+
+/** Which point the finger landed on, or -1 for the empty canvas. */
+export function moldPointAt(points: MoldPoint[], at: { x: number; y: number }, reach = 6): number {
+  let best = -1, bd = reach;
+  points.forEach((q, i) => { const d = Math.hypot(q.x - at.x, q.y - at.y); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+
+/**
+ * The control point of the curve running from a into b. The bow belongs to the
+ * point the line runs INTO, so pulling on one point bends the two lines that
+ * meet there and nothing else. Shared so the shape on screen and the shape
+ * being measured are the same curve, down to the pixel.
+ */
+export function moldControl(a: MoldPoint, b: MoldPoint): [number, number] {
+  const bow = (b.c ?? 0) / 100;
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  const nx = -(b.y - a.y), ny = b.x - a.x;
+  const len = Math.hypot(nx, ny) || 1;
+  return [mx + (nx / len) * bow * len * 0.5, my + (ny / len) * bow * len * 0.5];
+}
+
 /** A mold's outline with its curves drawn out into plain points, for measuring and filling. */
 export function moldOutline(mold: Mold, perEdge = 12): number[][] {
   const p = mold.points;
@@ -726,20 +773,26 @@ export function moldOutline(mold: Mold, perEdge = 12): number[][] {
   const out: number[][] = [];
   for (let i = 0; i < p.length; i++) {
     const a = p[i], b = p[(i + 1) % p.length];
-    // The bow belongs to the point the line runs INTO, so dragging one point
-    // changes the two lines that meet there and nothing else.
-    const bow = (b.c ?? 0) / 100;
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const nx = -(b.y - a.y), ny = b.x - a.x;
-    const len = Math.hypot(nx, ny) || 1;
-    const cx = mx + (nx / len) * bow * len * 0.5;
-    const cy = my + (ny / len) * bow * len * 0.5;
+    const [cx, cy] = moldControl(a, b);
     for (let k = 0; k < perEdge; k++) {
       const t = k / perEdge, u = 1 - t;
       out.push([u * u * a.x + 2 * u * t * cx + t * t * b.x, u * u * a.y + 2 * u * t * cy + t * t * b.y]);
     }
   }
   return out;
+}
+
+/** The outline as an SVG path, the same curves moldOutline measures. */
+export function moldPath(mold: Mold): string {
+  const p = mold.points;
+  if (p.length < 2) return "";
+  let d = `M ${p[0].x} ${p[0].y}`;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    const [cx, cy] = moldControl(a, b);
+    d += ` Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${b.x} ${b.y}`;
+  }
+  return `${d} Z`;
 }
 
 const polyArea = (poly: number[][]) => {
@@ -944,4 +997,84 @@ export function moldItemValues(mold: Mold): Record<string, number | string> {
     mold_notes: t.notes.join(", "),
     mold_shape: moldResembles(m),
   };
+}
+
+/**
+ * A drawn mold as a forge outline, so the anvil can work metal to it. The shape
+ * is fitted into the bar (laid on its side if it was drawn tall, since the bar
+ * is wide) and registered under a key of its own, which means everything that
+ * works by shape name — the mask, the starting bar, the grindstone, the target
+ * drawn over the metal — takes a mold unchanged.
+ */
+export function moldBarPoints(mold: Mold): number[][] {
+  const poly = moldOutline(mold);
+  if (poly.length < 3) return FORGE_SHAPES.long_blade.points;
+  const xs = poly.map((p) => p[0]), ys = poly.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  // Drawn taller than wide: turn it a quarter so it lies along the bar.
+  const turn = maxY - minY > maxX - minX;
+  const pts = turn ? poly.map(([x, y]) => [y, -x]) : poly;
+  const qx = pts.map((p) => p[0]), qy = pts.map((p) => p[1]);
+  const x0 = Math.min(...qx), x1 = Math.max(...qx), y0 = Math.min(...qy), y1 = Math.max(...qy);
+  const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+  // Inside the bar with a little room all round, the drawing's own proportions kept.
+  const k = Math.min(92 / w, 34 / h);
+  const ox = (100 - w * k) / 2, oy = (40 - h * k) / 2;
+  return pts.map(([x, y]) => [ox + (x - x0) * k, oy + (y - y0) * k]);
+}
+
+const moldKeys: string[] = [];
+export function moldKey(mold: Mold): string {
+  let h = 5381;
+  for (const p of mold.points) for (const n of [Math.round(p.x * 4), Math.round(p.y * 4), Math.round(p.c ?? 0)]) h = ((h * 33) ^ (n + 512)) >>> 0;
+  return `mold:${h.toString(36)}`;
+}
+/** Registers a mold as a forge shape and gives back its key. Safe to call on every render. */
+export function registerMold(mold: Mold, label = "Mold"): string {
+  const key = moldKey(mold);
+  if (FORGE_SHAPES[key]) return key;
+  FORGE_SHAPES[key] = { label, role: "blade", points: moldBarPoints(mold) };
+  moldKeys.push(key);
+  // Every design drawn costs a mask, a starting bar and a distance map, so only
+  // the recent ones are kept — a smith redraws a mold a hundred times.
+  while (moldKeys.length > 12) { const old = moldKeys.shift()!; delete FORGE_SHAPES[old]; forgetShape(old); }
+  return key;
+}
+export const isMoldShape = (shape: string) => shape.startsWith("mold:");
+
+/**
+ * What a mold is worth as a weapon, with the tier and the metal it was cast in.
+ * The shape decides what it does; the tier is how well it was made, and good
+ * work gets more of what the shape promised (bad work less).
+ */
+export function moldWeapon(mold: Mold, tier: CraftTier, material: { hardness: number; value: number; weight: number }) {
+  const m = measureMold(mold);
+  const t = moldTraits(m);
+  const k = TIER_WORTH[tier];
+  const failed = tier === "fail";
+  // The die comes off how much metal lands on the blow, the shape's own doing.
+  const die = [4, 6, 8, 10, 12][Math.max(0, Math.min(4, Math.round(2 + t.damage / 2)))];
+  const hard = Math.max(0, Math.min(10, material.hardness));
+  return {
+    tier, failed, measure: m, traits: t, die: failed ? 4 : die,
+    damageBonus: failed ? 0 : Math.round(t.damage * k) + TIER_BONUS[tier],
+    // A shape that fights the hand costs accuracy; good work takes the edge off that.
+    accuracy: failed ? 0 : Math.round(t.speed * k) - Math.round(t.unwieldy * (failed ? 1 : 1 / Math.max(1, k))),
+    durability: failed ? 10 : Math.max(5, Math.min(100, Math.round((40 + t.durability * 5 + hard * 3) * Math.min(1.25, k)))),
+    reach: failed ? 0 : t.reach,
+    weight: Math.max(0.2, Math.round((0.5 + m.mass * 6) * Math.max(0.3, material.weight) * 10) / 10),
+    value: failed ? 0 : Math.max(1, Math.round((8 + m.mass * 40 + Math.max(0, t.damage) * 6) * Math.max(0.3, material.value) * k)),
+  };
+}
+
+/** What the trade-offs read as on screen and on the item's page. */
+export function moldTraitWords(t: MoldTraits): string[] {
+  const out: string[] = [];
+  const sign = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n)}`;
+  if (t.damage) out.push(`${sign(t.damage)} damage`);
+  if (t.reach) out.push(`${t.reach} ft reach`);
+  if (t.speed) out.push(t.speed > 0 ? `${sign(t.speed)} quick` : `${sign(t.speed)} slow`);
+  if (t.unwieldy) out.push(`−${t.unwieldy} to handle`);
+  if (t.durability) out.push(`${sign(t.durability)} sound`);
+  return out;
 }

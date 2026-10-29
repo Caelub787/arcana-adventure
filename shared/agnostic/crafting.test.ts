@@ -26,8 +26,23 @@ import {
   moldResembles,
   parseMold,
   moldItemValues,
+  moldBarPoints,
+  moldKey,
+  registerMold,
+  isMoldShape,
+  moldWeapon,
+  moldTraitWords,
+  insertMoldPoint,
+  moldPointAt,
+  moldPath,
+  moldControl,
+  shapeMask,
+  startingStock,
+  shapeScore,
+  FORGE_SHAPES,
   type RunePlacement,
   type Mold,
+  type MoldPoint,
 } from "./crafting";
 
 const vals = (o: Record<string, number | string>) => (k: string) => o[k];
@@ -273,5 +288,173 @@ describe("a mold off the wire", () => {
     expect(typeof v.mold_damage).toBe("number");
     expect(typeof v.mold_notes).toBe("string");
     expect(v.mold_shape).toBeTruthy();
+  });
+});
+
+describe("a mold at the anvil", () => {
+  const blade: Mold = { points: [{ x: 10, y: 44 }, { x: 90, y: 48 }, { x: 90, y: 52 }, { x: 10, y: 56 }] };
+  const tall: Mold = { points: [{ x: 44, y: 10 }, { x: 56, y: 10 }, { x: 52, y: 90 }, { x: 48, y: 90 }] };
+
+  it("becomes an outline that fits inside the bar", () => {
+    for (const [x, y] of moldBarPoints(blade)) {
+      expect(x).toBeGreaterThanOrEqual(0); expect(x).toBeLessThanOrEqual(100);
+      expect(y).toBeGreaterThanOrEqual(0); expect(y).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("is laid on its side when it was drawn tall, since the bar is wide", () => {
+    const pts = moldBarPoints(tall);
+    const w = Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0]));
+    const h = Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1]));
+    expect(w).toBeGreaterThan(h);
+  });
+
+  it("keeps its own proportions rather than being stretched to fill the bar", () => {
+    const pts = moldBarPoints({ points: [{ x: 40, y: 40 }, { x: 60, y: 40 }, { x: 60, y: 60 }, { x: 40, y: 60 }] });
+    const w = Math.max(...pts.map((p) => p[0])) - Math.min(...pts.map((p) => p[0]));
+    const h = Math.max(...pts.map((p) => p[1])) - Math.min(...pts.map((p) => p[1]));
+    expect(Math.abs(w - h)).toBeLessThan(1);
+  });
+
+  it("gets a key of its own, the same one every time it's the same drawing", () => {
+    expect(moldKey(blade)).toBe(moldKey({ points: [...blade.points] }));
+    expect(moldKey(blade)).not.toBe(moldKey(tall));
+  });
+
+  it("notices a line pulled into a curve as a different drawing", () => {
+    expect(moldKey(blade)).not.toBe(moldKey({ points: blade.points.map((p, i) => (i ? p : { ...p, c: 40 })) }));
+  });
+
+  it("registers as a shape the forge already knows how to work", () => {
+    const key = registerMold(blade);
+    expect(isMoldShape(key)).toBe(true);
+    expect(FORGE_SHAPES[key].points.length).toBeGreaterThan(3);
+    // Asking twice is the same shape, not two.
+    expect(registerMold(blade)).toBe(key);
+  });
+
+  it("gives the anvil a mask and a bar to work, like any other shape", () => {
+    const key = registerMold(blade);
+    const mask = shapeMask(key), stock = startingStock(key);
+    expect(mask.some((v) => v === 1)).toBe(true);
+    // The bar has stock round the outline to work away.
+    expect(stock.reduce((a, v) => a + v, 0)).toBeGreaterThan(mask.reduce((a, v) => a + v, 0));
+  });
+
+  it("scores worked metal against the mold: the bar is nowhere near, the mold itself is perfect", () => {
+    const key = registerMold(blade);
+    expect(shapeScore(key, startingStock(key))).toBeLessThan(40);
+    expect(shapeScore(key, shapeMask(key))).toBe(100);
+  });
+
+  it("forgets old drawings so a hundred redraws don't pile up", () => {
+    const keys = Array.from({ length: 20 }, (_, i) => registerMold({ points: [{ x: 10 + i, y: 40 }, { x: 90, y: 50 }, { x: 10, y: 60 }] }));
+    expect(FORGE_SHAPES[keys[0]]).toBeUndefined();
+    expect(FORGE_SHAPES[keys[19]]).toBeDefined();
+  });
+});
+
+describe("the weapon a mold makes", () => {
+  const maul: Mold = { points: [{ x: 10, y: 46 }, { x: 60, y: 46 }, { x: 60, y: 8 }, { x: 96, y: 8 }, { x: 96, y: 92 }, { x: 60, y: 92 }, { x: 60, y: 54 }, { x: 10, y: 54 }] };
+  const iron = { hardness: 4, value: 2, weight: 1 };
+
+  it("is better made at a better tier, from the same drawing", () => {
+    const fine = moldWeapon(maul, "huge", iron), plain = moldWeapon(maul, "default", iron);
+    expect(fine.damageBonus).toBeGreaterThan(plain.damageBonus);
+    expect(fine.value).toBeGreaterThan(plain.value);
+    expect(fine.durability).toBeGreaterThanOrEqual(plain.durability);
+  });
+
+  it("is a ruin when the work failed, whatever was drawn", () => {
+    const bad = moldWeapon(maul, "fail", iron);
+    expect(bad.failed).toBe(true);
+    expect(bad.damageBonus).toBe(0);
+    expect(bad.value).toBe(0);
+    expect(bad.durability).toBeLessThan(20);
+  });
+
+  it("rolls a bigger die for a shape that puts more metal on the blow", () => {
+    const needle: Mold = { points: [{ x: 6, y: 49 }, { x: 94, y: 50 }, { x: 6, y: 51 }] };
+    expect(moldWeapon(maul, "default", iron).die).toBeGreaterThan(moldWeapon(needle, "default", iron).die);
+  });
+
+  it("is sounder and worth more in a harder, costlier metal", () => {
+    const steel = moldWeapon(maul, "default", { hardness: 8, value: 6, weight: 1 });
+    const tin = moldWeapon(maul, "default", { hardness: 1, value: 1, weight: 1 });
+    expect(steel.durability).toBeGreaterThan(tin.durability);
+    expect(steel.value).toBeGreaterThan(tin.value);
+  });
+
+  it("says what it is good and bad at, in words", () => {
+    const words = moldTraitWords(moldWeapon(maul, "default", iron).traits);
+    expect(words.length).toBeGreaterThan(0);
+    expect(words.join(" ")).toMatch(/damage|reach|slow|quick|handle|sound/);
+  });
+});
+
+describe("drawing with the pen", () => {
+  // A plain bar, which is what the forge opens with.
+  const bar: MoldPoint[] = [{ x: 14, y: 44 }, { x: 86, y: 44 }, { x: 86, y: 56 }, { x: 14, y: 56 }];
+
+  it("puts a new point into the outline, not on the end of it", () => {
+    // Tapped on the top edge, between the first two points.
+    const { points, index } = insertMoldPoint(bar, { x: 50, y: 44 });
+    expect(index).toBe(1);
+    expect(points[1]).toEqual({ x: 50, y: 44 });
+    expect(points).toHaveLength(5);
+  });
+
+  it("puts one tapped on the far edge between the points that edge joins", () => {
+    const { index } = insertMoldPoint(bar, { x: 86, y: 50 });
+    expect(index).toBe(2);
+  });
+
+  it("never folds the shape over itself, however the points are tapped", () => {
+    // Tap all four edges in a daft order: the outline still runs round once.
+    let pts = bar;
+    for (const tap of [{ x: 50, y: 56 }, { x: 14, y: 50 }, { x: 50, y: 44 }, { x: 86, y: 50 }]) pts = insertMoldPoint(pts, tap).points;
+    const poly = moldOutline({ points: pts });
+    // A shape that folds over itself crosses its own edge; a single loop doesn't.
+    let crossings = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      for (let j = i + 2; j < poly.length; j++) {
+        if (i === 0 && j === poly.length - 1) continue;
+        const c = poly[j], d = poly[(j + 1) % poly.length];
+        const s1 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+        const s2 = (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0]);
+        const s3 = (d[0] - c[0]) * (a[1] - c[1]) - (d[1] - c[1]) * (a[0] - c[0]);
+        const s4 = (d[0] - c[0]) * (b[1] - c[1]) - (d[1] - c[1]) * (b[0] - c[0]);
+        if (s1 * s2 < 0 && s3 * s4 < 0) crossings++;
+      }
+    }
+    expect(crossings).toBe(0);
+  });
+
+  it("just adds the point when there isn't an outline yet", () => {
+    expect(insertMoldPoint([{ x: 10, y: 10 }], { x: 50, y: 50 }).points).toHaveLength(2);
+  });
+
+  it("finds the point under a finger, and nothing on the empty canvas", () => {
+    expect(moldPointAt(bar, { x: 14.5, y: 44.5 })).toBe(0);
+    expect(moldPointAt(bar, { x: 86, y: 56 })).toBe(2);
+    expect(moldPointAt(bar, { x: 50, y: 20 })).toBe(-1);
+  });
+
+  it("takes the nearest point when two are close together", () => {
+    const close = [...bar, { x: 16, y: 44 }];
+    expect(moldPointAt(close, { x: 15.6, y: 44 })).toBe(4);
+  });
+
+  it("draws the shape on screen as the same curves it measures", () => {
+    const bowed = { points: bar.map((p, i) => (i === 1 ? { ...p, c: 50 } : p)) };
+    const d = moldPath(bowed);
+    const [cx, cy] = moldControl(bar[0], bowed.points[1]);
+    expect(d).toContain(`Q ${cx.toFixed(2)} ${cy.toFixed(2)} 86 44`);
+    expect(d.endsWith(" Z")).toBe(true);
+  });
+
+  it("has nothing to draw with fewer than two points", () => {
+    expect(moldPath({ points: [{ x: 1, y: 1 }] })).toBe("");
   });
 });

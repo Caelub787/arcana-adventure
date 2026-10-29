@@ -11,6 +11,7 @@ import {
   traceAccuracy, stationAllows, metalFits, sellValue, CRAFT_DEF_TYPE, parseCraftConfig, quickCraftTier, runeTier, accuracyTier, itemMatches, numOf, partStats, weaponStats,
   TIER_LABEL, TIER_BONUS, TIER_DICE, TIER_WORTH, moreDice, CRAFT_KIND_LABEL, ALCHEMY_STEP_LABEL, FORGE_SHAPES,
   toolEffects, runeFit, RUNE_FIT_WORDS, RUNE_SIZE_MIN, RUNE_SIZE_MAX,
+  parseMold, moldWeapon, moldResembles, moldTraitWords, measureMold,
   type CraftTier, type CraftKind, type ForgeConfig, type AlchemyConfig, type RuneConfig, type ForgeRole, type CraftNeed, type RunePlacement,
 } from "@shared/agnostic/crafting";
 import { asNumber } from "@shared/agnostic/formula";
@@ -346,6 +347,30 @@ async function signItem(store: ScopeStore, itemId: string, character: AgNote, cs
   docs.unsubscribe(name, "craft-signature");
 }
 
+/**
+ * A free-forged weapon's page says where its numbers come from: the shape its
+ * smith drew, and what that shape is good and bad at. Written once, by the same
+ * trick as the signature below it.
+ */
+async function writeMoldSection(store: ScopeStore, itemId: string, cs: ChangeSet) {
+  const note = store.notes.get(itemId);
+  if (!note) return;
+  const name = noteDocName(note.id, note.docEpoch);
+  const entry = await docs.getDoc(name, note.id);
+  const frag = entry.doc.getXmlFragment("default");
+  const has = (el: Y.XmlFragment | Y.XmlElement): boolean => el.toArray().some((c) => c instanceof Y.XmlElement && ((c.nodeName === "agField" && c.getAttribute("ref") === "mold_traits") || has(c)));
+  if (!has(frag)) {
+    entry.doc.transact(() => appendNodes(frag, [
+      h(3, t("Its shape", { bold: {} })),
+      p(muted("LIKE A "), val("mold_shape", { look: { bold: true } }), muted("    "), val("mold_traits", { look: { bold: true } })),
+      p(i("What it does comes off the mold its smith drew: a heavy head hits hard and swings slow, a long thin point reaches and snaps.")),
+      p(val("mold_notes")),
+    ]));
+  }
+  docs.subscribe(entry, "craft-mold");
+  docs.unsubscribe(name, "craft-mold");
+}
+
 /** Apply a tier's changes to the output (values set or added; text — dice, a choice, words — is always set). */
 async function applyEffects(store: ScopeStore, noteId: string, effects: Array<{ key: string; mode?: "set" | "add"; values: Partial<Record<CraftTier, number | string>> }>, tier: CraftTier, cs: ChangeSet) {
   for (const e of effects) {
@@ -373,6 +398,20 @@ async function patchWeaponRolls(store: ScopeStore, noteId: string, damageDie: nu
     }
     else if (/strike|attack|hit/i.test(a.name)) await store.putAction({ ...a, options: { ...a.options, roll: { ...r, bonus: "accuracy" } } }, cs);
   }
+}
+
+/**
+ * A template to make a free-forged weapon from: whichever item template the
+ * system itself calls a weapon. Found by what it is, not by its name, so any
+ * system's weapon template works — and if a system has none, the weapon is a
+ * plain item with its numbers written on.
+ */
+function weaponTemplate(store: ScopeStore): string | null {
+  for (const n of Array.from(store.notes.values())) {
+    if (!n.isTemplate || n.type !== "item") continue;
+    if (String(valueOf(store, n.id, "item_type") ?? "") === "Weapon") return n.id;
+  }
+  return null;
 }
 
 // --------------------------------------------------------------------------- ops
@@ -460,7 +499,8 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const { defId, name: bpName, config } = knownDef(store, inv, body.blueprintId, "forge", "That blueprint");
       needMakeAt(store, station, defId, bpName);
       const bp = { id: defId, name: bpName };
-      const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", station) : null;
+      const forgeTool = body.op === "craft.forgeQuick" && body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
+      const quick = body.op === "craft.forgeQuick" ? quickRoll(store, character, "forge", station, [forgeTool]) : null;
       const QUICK: Record<CraftTier, number> = { fail: 5, weak: 45, default: 72, slight: 88, huge: 98 };
       const used: AgNote[] = [];
       // How it's put together — each part's shape, colour and metal as made — so its picture can be drawn again.
@@ -504,6 +544,56 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         await signItem(store, item.id, character, cs);
         await announce(ctx, `⚒ ${character.name} ${quick ? "quick-forged" : "assembled"} ${name}${quick ? ` (${TIER_LABEL[tier]})` : ""}.`);
         return { tier, tierLabel: TIER_LABEL[tier], noteId: item.id, name, roll: quick?.roll, message: failed ? `${name} is done — but it's a failure: it does nothing.` : `${name}: durability ${w.durability}%, damage d${config.damageDie} ${vals.damage_bonus as number >= 0 ? "+" : ""}${vals.damage_bonus}, accuracy ${w.accuracy >= 0 ? "+" : ""}${w.accuracy}, worth ${w.value} (sells for ${sellValue(w.value, w.durability)}).` } satisfies CraftResult;
+      });
+    }
+
+    // ---------------------------------------------------------------- the forge, free
+    // No blueprint: the smith draws the mold and the shape they drew is the
+    // weapon. What it does comes off the drawing (see moldTraits), how well it
+    // came out off the tier, and how sound and costly it is off the metal.
+    case "craft.forgeMold": {
+      const character = crafter(ctx, body.characterId);
+      const inv = inventoryOf(store, character.id, (await inventoryList(store, character)).reverse);
+      const station = needStation(store, inv, "forge", body.stationId);
+      const mold = parseMold(body.mold) ?? fail("Draw a mold first — three points at least");
+      const material = inInventory(inv, body.materialId, "That material");
+      if (valueOf(store, material.id, "station_for") !== undefined) fail("The forge itself can't be melted down");
+      if (qtyOf(store, material.id) < 1) fail(`No ${material.name} left`);
+      const tool = body.toolId ? inInventory(inv, body.toolId, "That tool") : null;
+      const quick = body.mode === "quick" ? quickRoll(store, character, "forge", station, [tool]) : null;
+      const tier: CraftTier = quick ? quick.tier : accuracyTier(Math.max(0, Math.min(100, body.shape ?? 0)));
+      const mat = { hardness: numOf(valueOf(store, material.id, "hardness"), 3), value: numOf(valueOf(store, material.id, "value"), 1), weight: numOf(valueOf(store, material.id, "weight"), 1) };
+      const w = moldWeapon(mold, tier, mat);
+      const called = String(body.name ?? "").trim().slice(0, 60);
+      const name = called || `${material.name} ${moldResembles(measureMold(mold))}`;
+      return store.run(async (cs) => {
+        await consume(store, material, 1, cs);
+        const item = await giveItem(ctx, character, weaponTemplate(store), name, cs);
+        await store.putNote({ ...store.notes.get(item.id)!, name }, cs);
+        const words = moldTraitWords(w.traits);
+        const vals: Record<string, AgValue> = {
+          item_type: "Weapon", material: material.name, metal_color: String(valueOf(store, material.id, "metal_color") ?? "#a8a29e"),
+          durability: w.durability, durability_max: 100, damage_bonus: w.damageBonus, accuracy: w.accuracy,
+          weight: w.weight, value: w.value, qty: 1, craft_tier: TIER_LABEL[tier],
+          mold_shape: moldResembles(w.measure), mold_notes: w.traits.notes.join(", "),
+          mold_traits: words.join(" · ") || "nothing much either way",
+          reach: w.reach,
+          // The drawing itself, so the weapon's picture can be drawn again from it.
+          forge_mold: JSON.stringify({ failed: w.failed, mold, metal: body.metal && metalFits(body.metal) ? body.metal : null, color: String(valueOf(store, material.id, "metal_color") ?? "#a8a29e") }),
+        };
+        const LABELS: Record<string, string> = { mold_shape: "Like a", mold_notes: "What it does well", mold_traits: "Trade-offs", reach: "Reach (ft)", material: "Metal", craft_tier: "Tier" };
+        for (const [k, v] of Object.entries(vals)) await setValue(store, item.id, k, v, cs, LABELS[k]);
+        await patchWeaponRolls(store, item.id, w.die, w.failed, cs);
+        await writeMoldSection(store, item.id, cs);
+        await setPortrait(ctx, item.id, body.portrait, cs);
+        await signItem(store, item.id, character, cs);
+        await announce(ctx, `⚒ ${character.name} forged ${name} from their own mold (${TIER_LABEL[tier]}).`);
+        return {
+          tier, tierLabel: TIER_LABEL[tier], noteId: item.id, name, roll: quick?.roll,
+          message: w.failed
+            ? `${name} came out of the mold a ruin — it does nothing.`
+            : `${name}: d${w.die} ${w.damageBonus >= 0 ? "+" : ""}${w.damageBonus} damage, accuracy ${w.accuracy >= 0 ? "+" : ""}${w.accuracy}, durability ${w.durability}%, worth ${w.value}${words.length ? ` — ${words.join(", ")}` : ""}.`,
+        } satisfies CraftResult;
       });
     }
 

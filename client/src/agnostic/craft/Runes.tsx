@@ -5,12 +5,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PenTool, Eye, EyeOff, Undo2, Eraser, Sparkles, ArrowLeft, ZoomIn, ZoomOut } from "lucide-react";
 import type { AgNote } from "@shared/agnostic/types";
-import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, runeFit, findRuneSpot, RUNE_FIT_WORDS, RUNE_SIZE_MAX, toolEffectWords, CRAFT_KIND_LABEL, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole, type RunePlacement } from "@shared/agnostic/crafting";
+import { traceAccuracy, runeTier, itemMatches, numOf, unpackMetal, parseMold, registerMold, runeFit, findRuneSpot, RUNE_FIT_WORDS, RUNE_SIZE_MAX, toolEffectWords, CRAFT_KIND_LABEL, TIER_COLOR, TIER_LABEL, type RuneConfig, type ForgeRole, type RunePlacement, type Mold } from "@shared/agnostic/crafting";
 import { useAg } from "../hooks";
 import { useToast } from "@/hooks/use-toast";
 import { valueOn, hasValue, runesOn, qtyOf, toolEffectsOn, craftHand, runeSpaceOn, type CraftState } from "./session";
 import { ItemTile, ResultBanner, QuickCraftButton, ChoiceRow, DefStrip, DefCard, useDefs, NotHere, stationNameOf, announceRoll, colorOf, Needs, type CraftOutcome } from "./common";
-import { drawSigil, loadImage, runePortrait, weaponPortrait, type MarkStyle, type RuneLook } from "./render";
+import { drawSigil, loadImage, runePortrait, weaponPortrait, partPortrait, type MarkStyle, type RuneLook } from "./render";
 
 interface Props { characterId: string; state: CraftState; set: (p: CraftState) => void; playing: boolean; /** Begin crafting (whoever does is the one at the controls). */ start: (p: CraftState) => void; /** The station item it's worked at. */ stationId?: string }
 type ScopeState = ReturnType<typeof useAg>["state"];
@@ -37,9 +37,26 @@ const baseOf = (state: ScopeState, item: AgNote | undefined) => {
   if (!item) return null;
   const build = valueOn(state, item.id, "forge_build");
   if (typeof build === "string" && build) { const drawn = buildPicture(build); if (drawn) return drawn; }
+  // A free-forged weapon keeps the mold it was made from, so it's drawn from that.
+  const cast = valueOn(state, item.id, "forge_mold");
+  if (typeof cast === "string" && cast) { const drawn = moldPicture(cast); if (drawn) return drawn; }
   const b = valueOn(state, item.id, "base_portrait");
   return (typeof b === "string" && b) || (hasValue(state, item.id, "base_portrait") ? null : item.portrait) || null;
 };
+const moldCache = new Map<string, string | null>();
+/** A free-forged weapon's picture, from the mold drawn and the metal as worked. */
+function moldPicture(cast: string): string | null {
+  if (moldCache.has(cast)) return moldCache.get(cast)!;
+  let out: string | null = null;
+  try {
+    const c = JSON.parse(cast) as { failed?: boolean; mold: Mold; metal: string | null; color?: string };
+    const mold = parseMold(c.mold);
+    if (mold) out = partPortrait(registerMold(mold), c.metal ? unpackMetal(c.metal) : null, c.color || "#9ca3af", 320);
+  } catch { out = null; }
+  moldCache.set(cast, out);
+  return out;
+}
+
 const buildCache = new Map<string, string | null>();
 function buildPicture(build: string): string | null {
   if (buildCache.has(build)) return buildCache.get(build)!;

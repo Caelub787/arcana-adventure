@@ -31,7 +31,7 @@ import {
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
   itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
-  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
+  craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, LEGACY_CRAFTING_HELP_2, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
 } from "./ca";
@@ -1776,6 +1776,8 @@ async function upgrade30(store: ScopeStore) {
 const SOCKET_TEXTS: Array<[string, string]> = [
   [RUNE_SOCKETS_HELP, RUNE_SPACE_HELP],
   [LEGACY_CRAFTING_HELP, CRAFTING_HELP],
+  [LEGACY_CRAFTING_HELP_2, CRAFTING_HELP],
+  ["Your Blacksmithing bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.", CRAFT_SKILL_HELP.blacksmithing],
   ["Rune sockets come with the item's rank: none at Bronze, one more each rank up. A rune takes one; when they're full, no more can be inscribed.", RUNE_SPACE_HELP],
   ["A carving tool or pen for Rune Making. **Carved**: the rune is cut into the item. **Drawn**: it's drawn on. The tool used sets the look.", TOOL_HELP],
 ];

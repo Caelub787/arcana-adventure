@@ -5,7 +5,7 @@ import type {
   AgAcl, AgAction, AgActionOptions, AgActionResult, AgActionStep, AgRollMods, AgCampaignSettings, AgComponentDef, AgExportBundle, AgField,
   AgFieldOptions, AgFieldType, AgLayout, AgLink, AgModifier, AgNote, AgRegion, AgScope, AgTokenBar, AgValue, AgVersionMeta,
 } from "./types";
-import type { RunePlacement } from "./crafting";
+import type { Mold, RunePlacement } from "./crafting";
 
 export interface AgMember { userId: string; name: string; role: string }
 
@@ -64,11 +64,12 @@ export type AgOp =
   | { op: "craft.close"; sessionId: string }
   | { op: "craft.forgePart"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partKey: string; materialId: string; shape: number; heat: number; portrait?: string | null; /** The part as hammered and ground (packed fine cells), for the weapon's picture. */ metal?: string | null }
   | { op: "craft.forgeWeapon"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; partIds: Record<string, string>; portrait?: string | null; name?: string }
-  | { op: "craft.forgeQuick"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; materials: Record<string, string>; portrait?: string | null; name?: string }
+  | { op: "craft.forgeQuick"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; blueprintId: string; materials: Record<string, string>; /** The tool in hand: its points count on the roll. */ toolId?: string | null; portrait?: string | null; name?: string }
   | { op: "craft.brew"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; recipeId: string; mode: "quick" | "game"; accuracy?: number }
   | { op: "craft.experiment"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; ingredients: Array<{ itemId: string; qty: number }>; log: string[]; steps: string[] }
   | { op: "craft.resolveExperiment"; experimentId: string; outputId: string | null }
   | { op: "craft.makeScroll"; defId: string; characterId?: string | null }
+  | { op: "craft.forgeMold"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; materialId: string; toolId?: string | null; mold: Mold; /** What the smith calls what they made. */ name?: string; mode: "quick" | "game"; /** How close the worked metal came to the mold, 0–100 (the played forge). */ shape?: number; metal?: string | null; portrait?: string | null }
   | { op: "craft.rune"; characterId: string; /** The station item it is worked at. */ stationId?: string | null; runeId?: string | null; targetId: string; inkId?: string | null; toolId?: string | null; mode: "quick" | "game" | "freehand"; accuracy?: number; guide?: boolean; strokes?: number[][][]; placement?: RunePlacement; portrait?: string | null };
 
 export type AgOpResult =
