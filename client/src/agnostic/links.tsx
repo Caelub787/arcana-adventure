@@ -106,6 +106,8 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const canRemove = (id: string) => {
     if (removeMode === "none") return false;
     if (viewer.isGM) return true;
+    // Some lists hold things that are not the holder's to take out again.
+    if (config.removeGm) return false;
     const n = state.notes.get(id);
     return !!n && n.ownerIds.includes(viewer.userId);
   };
@@ -690,6 +692,7 @@ export function LinksConfigEditor({ noteId, value, onChange }: { noteId: string;
         </>
       )}
       {row("Remove", <select value={cfg.remove ?? "none"} onChange={(e) => setCfg({ remove: e.target.value as any })} className="h-7 bg-stone-900 border border-stone-700 rounded px-1 text-xs"><option value="none">No remove button</option><option value="disconnect">Remove from the list (keep the sheet)</option><option value="delete">Delete the sheet</option></select>)}
+      {(cfg.remove ?? "none") !== "none" && row("", <label className="inline-flex items-center gap-1.5 text-xs text-stone-300"><input type="checkbox" checked={!!cfg.removeGm} onChange={(e) => setCfg({ removeGm: e.target.checked })} data-testid="ag-links-remove-gm" /> Only the GM can take things out</label>)}
       <div className="text-[10px] text-stone-500">Players can add from a template only when its Settings allow “Players can add this”, and remove only what they added. The GM can always add and remove.</div>
     </div>
   );

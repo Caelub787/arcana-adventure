@@ -112,7 +112,9 @@ export const ITEM_RANK_COLORS: Record<string, string> = {
 };
 export const DURABILITY_HELP = "How sound the item is, 0–100%. It sells for that share of its value (100% = full value, 50% = half) — and for nothing below 30%. Lower it as the item takes wear or damage.";
 export const SELL_HELP = "Its value at its durability: 100% durability sells for its full value, 50% for half; under 30% it's worth nothing.";
-export const RUNE_SPACE_HELP = "Runes are marks cut into the item, so what limits them is room, not rank: any item takes runes until there is nowhere left to put one. Two runes can't be cut across one another, and a rune can be no finer than the tool cutting it. Place each one on the item's picture — a big rune leaves less room for the next.";
+/** What the room help said before runes were called permanent, to put right on sheets that carry it. */
+export const LEGACY_RUNE_SPACE_HELP = "Runes are marks cut into the item, so what limits them is room, not rank: any item takes runes until there is nowhere left to put one. Two runes can't be cut across one another, and a rune can be no finer than the tool cutting it. Place each one on the item's picture — a big rune leaves less room for the next.";
+export const RUNE_SPACE_HELP = "Runes are marks cut into the item, so what limits them is room, not rank: any item takes runes until there is nowhere left to put one. Two runes can't be cut across one another, and a rune can be no finer than the tool cutting it. Place each one on the item's picture — a big rune leaves less room for the next.\n\nEvery rune cut here stays here, good or bad: a spoiled one does nothing but still takes its room. Only the GM takes one off again.";
 /** What the sockets help used to say, to find and replace on sheets that still carry it. */
 export const RUNE_SOCKETS_HELP = "Rune sockets come with the item's rank: none Unranked, one at Mortal, one more each rank up (Paragon 9). A rune takes one; when they're full, no more can be inscribed.";
 /** An item rank from anything (an old rank or a character rank): one of ITEM_RANKS, Unranked if it isn't one. */
@@ -439,7 +441,7 @@ export function scrollNodes(): DocNode[] {
 export function runeSlotNodes(): DocNode[] {
   return [
     h(3, icon("Gem", "#c084fc", 16), " Runes ", tip(RUNE_SPACE_HELP)),
-    links("runes", [{ ref: "boosts", display: "value", label: "" }, { ref: "rune_tier", display: "badge" }], { layout: "cards", add: { types: ["item"], reverse: "socket", existing: true }, remove: "disconnect", emptyText: "No runes yet — a rune maker inscribes them." }),
+    links("runes", [{ ref: "boosts", display: "value", label: "" }, { ref: "rune_tier", display: "badge" }], { layout: "cards", add: { types: ["item"], reverse: "socket", existing: true }, remove: "disconnect", removeGm: true, emptyText: "No runes yet — a rune maker inscribes them." }),
   ];
 }
 

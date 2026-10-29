@@ -143,11 +143,13 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
     !target && "Pick the item to inscribe",
     roomMsg,
     !toolOk && `Needs a tool: ${rune.config.tools.map((t) => t.name).join(" or ")}`,
-    rune.config.needsInk && !ink && !inkNeeds.length && "Needs a liquid or ink",
-    ...inkNeeds.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} — part of it is drawn in that`),
+    rune.config.needsInk && !ink && "Needs a liquid or ink",
     ...rune.config.ingredients.filter((i) => have(i) < i.qty).map((i) => `Needs ${i.qty}× ${i.name} (you have ${have(i)})`),
   ] : freehand ? [!target && "Pick the item to inscribe", roomMsg] : [];
   const ready = (!!rune || freehand) && !missing.some(Boolean);
+  // An ink the rune wants that isn't in the pack doesn't stop the work — nothing
+  // does, once a pen touches the item. It is a warning about what will come of it.
+  const inkShort = inkNeeds.filter((i) => have(i) < i.qty);
 
   const inscribe = async (mode: "quick" | "game" | "freehand") => {
     if ((!rune && mode !== "freehand") || !target || !character) return;
@@ -208,7 +210,10 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
                 </button>
               );
             })}
-            <span className="text-[11px] text-stone-500 w-full">Change pen as you go: what is already drawn keeps the ink it was drawn in.</span>
+            <span className="text-[11px] text-stone-500 w-full">
+              Change pen as you go: what is already drawn keeps the ink it was drawn in. A part never cut in the ink it
+              asks for spoils the whole mark — and the mark stays on the item either way.
+            </span>
           </div>
         )}
         <TraceCanvas base={baseOf(state, target)} name={target.name} existing={runesOn(state, target.id).map((r) => runeLookOf(state, r))} sigil={rune?.config.sigil ?? []} guideLooks={guideLooks} drawnLooks={drawnLooks} guide={useGuide} placement={placement} look={look} strokes={strokes} playing={playing} onStrokes={setStrokes} skill={handSkill} />
@@ -227,7 +232,7 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
               .map((x) => `${x.n} stroke${x.n === 1 ? "" : "s"} in ${slotLooks[x.slot]?.name ?? "?"}`).join(", ")}. The guide shows each part in its own ink.
           </div>
         )}
-        <div className="text-[11px] text-stone-500">{freehand ? "Draw freely. If your marks come close enough to any rune (60%+) it takes as that rune: 80%+ is fine, 95%+ masterwork. Under 60% nothing takes and nothing is used up." : <>Trace the sigil{guide ? " over the guide" : " from memory"}. {guide ? "With the guide: 60%+ takes, 80%+ is fine, 95%+ masterwork." : "Without the guide: 40%+ takes, 65%+ is fine, 85%+ masterwork."} Under that the mark is spoiled: it takes up room on the item and does nothing.</>}</div>
+        <div className="text-[11px] text-stone-500">{freehand ? "Draw freely. If your marks come close enough to any rune (60%+) it takes as that rune: 80%+ is fine, 95%+ masterwork. Under 60% nothing takes and nothing is used up." : <>Trace the sigil{guide ? " over the guide" : " from memory"}. {guide ? "With the guide: 60%+ takes, 80%+ is fine, 95%+ masterwork." : "Without the guide: 40%+ takes, 65%+ is fine, 85%+ masterwork."} Under that the mark is spoiled. Either way it is cut into the item for good: a rune is a mark in a surface, and only the GM takes one off again.</>}</div>
       </div>
     );
   }
@@ -280,6 +285,12 @@ export function RuneTool({ characterId, state: s, set, start, playing, stationId
               {rune && <QuickCraftButton kind="rune" characterId={characterId} busy={busy} disabled={!ready} onClick={() => inscribe("quick")} tools={[tool?.id]} />}
             </div>
             <Needs items={missing} />
+            {inkShort.length > 0 && (
+              <div className="text-[11px] text-amber-200/90" data-testid="rune-ink-short">
+                No {inkShort.map((i) => i.name).join(" or ")} in the pack. You can still cut it — but nothing will be
+                drawn in {inkShort.length === 1 ? "that" : "those"}, so it will be a spoiled mark, and the room it takes is gone for good.
+              </div>
+            )}
           </>)}
         </>
       )}

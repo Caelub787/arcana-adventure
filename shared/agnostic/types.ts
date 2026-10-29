@@ -573,6 +573,12 @@ export interface AgLinksConfig {
    */
   add?: { types?: string[]; reverse?: string; existing?: boolean; copy?: boolean; copyFolder?: string; /** false: only existing sheets can be added (nothing new is made here). */ createNew?: boolean } | null;
   remove?: "none" | "disconnect" | "delete";
+  /**
+   * Only the GM may take things out of this list. For things that are meant to
+   * stay where they are put — a rune cut into an item is a mark in a surface,
+   * and whoever carries it doesn't get to rub it out.
+   */
+  removeGm?: boolean;
   emptyText?: string;
 }
 

@@ -721,20 +721,25 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const firstId = (body.strokeInks ?? []).find((x) => !!x) ?? body.inkId ?? null;
       const ink = inksUsed.find((u) => u.id === firstId) ?? inksUsed[0] ?? null;
       if (config.needsInk && !ink) fail("This rune needs a liquid or ink");
-      // Each ink the recipe calls for has to be one of the ones it was drawn with.
-      // Not when drawing freehand: nobody knew which rune it would be, so they
-      // can hardly have known to change pens for it.
+      // The inks the recipe wants for parts of itself. Not when drawing freehand:
+      // nobody knew which rune it would be, so they can hardly have known to
+      // change pens for it.
       const inkNeeds = freehand ? [] : config.inks ?? [];
       const inkUse = new Map<string, number>();
-      for (const need of inkNeeds) {
-        const match = inksUsed.find((u) => itemMatches(u, need)) ?? fail(`Part of it has to be drawn in ${need.name}`);
-        inkUse.set(match.id, Math.max(inkUse.get(match.id) ?? 0, Math.max(1, need.qty)));
-      }
+      // A part of the sigil that asks for an ink no stroke was drawn in was
+      // never cut. The rune still goes onto the item — it is a mark in a
+      // surface, and marks don't come off — but it is not that rune, so it does
+      // nothing. Getting the ink wrong ruins a rune the way a bad trace does.
+      const inkMissed: string[] = [];
+      inkNeeds.forEach((need, slot) => {
+        const wanted = (config.sigilInk ?? []).includes(slot);
+        const match = inksUsed.find((u) => itemMatches(u, need));
+        if (match) inkUse.set(match.id, Math.max(inkUse.get(match.id) ?? 0, Math.max(1, need.qty)));
+        else if (wanted) inkMissed.push(need.name);
+      });
       for (const u of inksUsed) if (!inkUse.has(u.id)) inkUse.set(u.id, 1);
-      for (const [id, qty] of Array.from(inkUse.entries())) {
-        const it = inksUsed.find((u) => u.id === id)!;
-        if (qtyOf(store, id) < qty) fail(`Not enough ${it.name}`);
-      }
+      // Only as much of each as the crafter actually has: a short pot is used up.
+      for (const [id, qty] of Array.from(inkUse.entries())) inkUse.set(id, Math.min(qty, Math.max(0, qtyOf(store, id))));
       // The tool decides how fine a mark can be cut, so where it goes is only
       // settled once we know which tool is doing the cutting.
       const kit = toolEffects((k) => (tool ? valueOf(store, tool.id, k) : undefined));
@@ -743,7 +748,9 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
       const quick = body.mode === "quick" ? quickRoll(store, character, "rune", station, [tool]) : null;
       const accuracy = freehand ? freehand.score : Math.max(0, Math.min(100, body.accuracy ?? 0));
       // Freehand counts like tracing with the guide; tracing a known rune without it is easier to excel at.
-      const tier: CraftTier = quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
+      // A part never cut in the ink it asked for spoils the whole mark, however
+      // well the rest of it was drawn.
+      const tier: CraftTier = inkMissed.length ? "fail" : quick ? quick.tier : runeTier(accuracy, freehand ? true : body.guide !== false);
       const color = ink ? String(valueOf(store, ink.id, "ink_color") ?? "") : "";
       const glow = ink ? numOf(valueOf(store, ink.id, "ink_glow")) : 0;
       // How each stroke was inked, so the rune is drawn again in its own colours.
@@ -777,7 +784,7 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
           sigil: JSON.stringify(config.sigil), rune_drawn: JSON.stringify((body.strokes ?? []).slice(0, 40)), placement: JSON.stringify(placement),
           ...(strokeParts.some(Boolean) ? { rune_parts: JSON.stringify(strokeParts) } : {}),
           ...(inksUsed.length > 1 ? { rune_inks: inksUsed.map((u) => u.name).join(", ") } : {}),
-          boosts: tier === "fail" || amount === undefined || !config.effect ? "No effect (a spoiled mark)" : `${config.effect.key.replace(/_/g, " ")} ${amount >= 0 ? "+" : ""}${amount}`,
+          boosts: tier === "fail" || amount === undefined || !config.effect ? (inkMissed.length ? `No effect — never cut in ${inkMissed.join(" or ")}` : "No effect (a spoiled mark)") : `${config.effect.key.replace(/_/g, " ")} ${amount >= 0 ? "+" : ""}${amount}`,
           rune_accuracy: quick ? 0 : accuracy,
         };
         for (const [k, v] of Object.entries(vals)) await setValue(store, r.id, k, v, cs);
@@ -790,7 +797,9 @@ export async function runCraftOp(ctx: Ctx, body: CraftOp): Promise<any> {
         if (fieldsOf(store, target.id).get("base_portrait") === undefined) await setValue(store, target.id, "base_portrait", target.portrait ?? "", cs, "Picture without runes");
         await setPortrait(ctx, target.id, body.portrait, cs);
         await announce(ctx, `✦ ${character.name} inscribed ${name} on ${target.name} (${TIER_LABEL[tier]}).`);
-        return { tier, tierLabel: TIER_LABEL[tier], noteId: r.id, name, roll: quick?.roll, message: tier === "fail" ? `The rune didn't take — a spoiled mark on ${target.name}, and the room it took with it.` : `${name} on ${target.name}: ${vals.boosts} (${TIER_LABEL[tier]}).` } satisfies CraftResult;
+        return { tier, tierLabel: TIER_LABEL[tier], noteId: r.id, name, roll: quick?.roll, message: tier === "fail"
+            ? `${inkMissed.length ? `Nothing was cut in ${inkMissed.join(" or ")}, so it isn't that rune` : "The rune didn't take"} — a spoiled mark on ${target.name}, and the room it took with it.`
+            : `${name} on ${target.name}: ${vals.boosts} (${TIER_LABEL[tier]}).` } satisfies CraftResult;
       });
     }
   }

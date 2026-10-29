@@ -123,3 +123,47 @@ describe("what the inks are worth at the end", () => {
     expect(traceAccuracyInk(sigil, wants, p.strokes, slots).accuracy).toBeLessThan(40);
   });
 });
+
+/**
+ * A rune is a mark cut into a surface. Whatever comes of the attempt — a clean
+ * trace, a shaky one, or one where the pens never changed — the mark is on the
+ * item afterwards, taking its room, and only the GM takes it off again.
+ */
+describe("a rune that went wrong", () => {
+  /** What the server does with a trace, in the order it decides it. */
+  const outcome = ({ accuracy = 90, guide = true, inkMissed = [] as string[], quick = null as null | string }) => {
+    const tier = inkMissed.length ? "fail" : quick ? quick : accuracy >= 95 ? "huge" : accuracy >= 80 ? "slight" : accuracy >= 60 ? "default" : "fail";
+    return { tier, cut: true, takesRoom: true, worksOnTheItem: tier !== "fail" };
+  };
+
+  it("is still cut into the item when the shape was too far off", () => {
+    const o = outcome({ accuracy: 31 });
+    expect(o.tier).toBe("fail");
+    expect(o.cut).toBe(true);
+    expect(o.takesRoom).toBe(true);
+    expect(o.worksOnTheItem).toBe(false);
+  });
+
+  it("is still cut into the item when a part was never drawn in the ink it wanted", () => {
+    const o = outcome({ accuracy: 97, inkMissed: ["Moonsilver Ink"] });
+    expect(o.tier).toBe("fail");
+    expect(o.cut).toBe(true);
+    expect(o.worksOnTheItem).toBe(false);
+  });
+
+  it("is spoiled by a missed ink however well the rest of it was traced", () => {
+    expect(outcome({ accuracy: 100, inkMissed: ["Moonsilver Ink"] }).tier).toBe("fail");
+    expect(outcome({ accuracy: 100 }).tier).toBe("huge");
+  });
+
+  it("is spoiled by a missed ink on a Quick Craft too, whatever the roll said", () => {
+    expect(outcome({ quick: "huge", inkMissed: ["Moonsilver Ink"] }).tier).toBe("fail");
+    expect(outcome({ quick: "huge" }).tier).toBe("huge");
+  });
+
+  it("works when every part was cut in the ink it asked for", () => {
+    const o = outcome({ accuracy: 87 });
+    expect(o.tier).toBe("slight");
+    expect(o.worksOnTheItem).toBe(true);
+  });
+});
