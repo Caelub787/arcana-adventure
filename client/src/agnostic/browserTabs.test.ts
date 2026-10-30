@@ -1,63 +1,50 @@
 /**
  * The sheet browser used to be one list with a row of type chips. A table
- * reaches for characters, items and notes constantly and everything else
- * rarely, so those three get a tab each and the rest share "More" — where the
- * chips still are, because there it is still a list of several kinds.
+ * reaches for characters, items, beasts and notes, so each of those gets a tab
+ * and Items takes everything else — a blueprint or a recipe is a thing like
+ * any other thing. Inside a tab it is folders, so there are no chips left.
  */
 import { describe, it, expect } from "vitest";
 import { AG_BUILTIN_TYPES } from "@shared/agnostic/types";
 
 const TAB_TYPES: Record<string, string[]> = {
-  characters: ["character", "npc", "beast"],
-  items: ["item"],
-  notes: ["note"],
+  characters: ["character", "npc", "species"],
+  beasts: ["beast"],
+  notes: ["note", "location"],
 };
 const ALL = AG_BUILTIN_TYPES.map((t) => t.id);
-const typesOf = (tab: string, all = ALL) => {
-  if (tab === "more") { const taken = new Set(Object.values(TAB_TYPES).flat()); return all.filter((t) => !taken.has(t)); }
-  return TAB_TYPES[tab] ?? all;
-};
-const chipsFor = (tab: string, all = ALL) => (typesOf(tab, all).length > 1 ? typesOf(tab, all) : []);
+const tabOf = (type: string) => Object.keys(TAB_TYPES).find((k) => TAB_TYPES[k].includes(type)) ?? "items";
+const typesOf = (tab: string, all: string[] = ALL) => all.filter((t) => tabOf(t) === tab);
 
 describe("which sheets each tab holds", () => {
-  it("puts characters, NPCs and beasts together — they are all people on the table", () => {
-    expect(typesOf("characters")).toEqual(["character", "npc", "beast"]);
+  it("keeps the people together: characters, NPCs and species", () => {
+    expect(typesOf("characters")).toEqual(["character", "npc", "species"]);
   });
 
-  it("gives items and notes a tab of their own", () => {
-    expect(typesOf("items")).toEqual(["item"]);
-    expect(typesOf("notes")).toEqual(["note"]);
+  it("gives beasts and notes their own tab", () => {
+    expect(typesOf("beasts")).toEqual(["beast"]);
+    expect(typesOf("notes")).toContain("note");
   });
 
-  it("sweeps everything else into More, and leaves nothing out", () => {
-    const covered = [...typesOf("characters"), ...typesOf("items"), ...typesOf("notes"), ...typesOf("more")];
-    expect([...covered].sort()).toEqual([...ALL].sort());
-  });
-
-  it("keeps the crafting kinds out of the three main tabs", () => {
-    for (const t of ["blueprint", "recipe", "rune_recipe", "craft", "experiment"]) {
-      expect(typesOf("more")).toContain(t);
-      expect(typesOf("characters")).not.toContain(t);
+  it("puts blueprints and recipes in with the items", () => {
+    for (const t of ["item", "blueprint", "recipe", "rune_recipe", "craft", "experiment"]) {
+      expect(tabOf(t)).toBe("items");
     }
   });
 
-  it("shows chips only where there is a choice to make", () => {
-    expect(chipsFor("items")).toEqual([]);
-    expect(chipsFor("notes")).toEqual([]);
-    expect(chipsFor("characters").length).toBeGreaterThan(1);
-    expect(chipsFor("more").length).toBeGreaterThan(1);
+  it("sends a kind a GM invents to Items rather than nowhere", () => {
+    expect(tabOf("spell")).toBe("items");
   });
 
-  it("takes in a kind the GM invented, on the More tab", () => {
-    const withCustom = [...ALL, "faction"];
-    expect(typesOf("more", withCustom)).toContain("faction");
+  it("leaves nothing out: every kind lands on exactly one tab", () => {
+    const covered = ["characters", "items", "beasts", "notes"].flatMap((t) => typesOf(t));
+    expect([...covered].sort()).toEqual([...ALL].sort());
   });
 
-  it("drops a chip that the tab you moved to doesn't have", () => {
-    // Filtering by NPCs and then moving to Items would otherwise show nothing.
-    const keep = (tab: string, chip: string) => (chipsFor(tab).includes(chip) ? chip : "");
-    expect(keep("items", "npc")).toBe("");
-    expect(keep("characters", "npc")).toBe("npc");
+  it("only offers a tab that has something it could hold", () => {
+    const library = ["character", "npc", "beast", "item", "species"];
+    const offered = ["characters", "items", "beasts", "notes"].filter((t) => typesOf(t, library).length > 0);
+    expect(offered).toEqual(["characters", "items", "beasts"]);
   });
 });
 
@@ -122,14 +109,13 @@ describe("who may press New", () => {
 
 /** A panel pinned to one tab has nothing to choose, so the row is hidden. */
 describe("the tab row", () => {
-  const shows = (allowed?: string[]) => (allowed?.length ?? 2) > 1;
+  const shows = (tabs: string[]) => tabs.length > 1;
 
   it("is hidden when the panel is pinned to a single tab", () => {
     expect(shows(["notes"])).toBe(false);
   });
 
   it("shows when there is more than one tab", () => {
-    expect(shows()).toBe(true);
-    expect(shows(["characters", "items"])).toBe(true);
+    expect(shows(["characters", "items", "beasts", "notes"])).toBe(true);
   });
 });

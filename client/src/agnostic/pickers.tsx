@@ -127,7 +127,7 @@ export function ComponentPicker({ value, onChange, testId = "ag-component-picker
     id: c.id, name: c.name, icon: <Puzzle className="h-4 w-4" />, words: c.params.join(" "),
     sub: c.params.length ? c.params.map((p) => `$${p}`).join("  ") : "No parameters",
   })), [state.components]);
-  return <PickField value={value} items={items} onChange={onChange} title="Choose a component" placeholder="Choose a component…" emptyText="No components yet — make one in the Components tab." testId={testId} />;
+  return <PickField value={value} items={items} onChange={onChange} title="Choose a component" placeholder="Choose a component…" emptyText="No components yet — make one with the Components button at the top of Sheets." testId={testId} />;
 }
 
 export function noteItems(notes: AgNote[]): SelItem[] {

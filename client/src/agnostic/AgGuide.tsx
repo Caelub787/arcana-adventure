@@ -1,6 +1,6 @@
 // The Agnostic guide: how the system fits together and how to use every part
 // of it, with a deep dive on components. Opens from the campaign panel, the
-// libraries, every sheet and the Components tab (each at the relevant topic).
+// libraries, every sheet and the components panel (each at the relevant topic).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -116,14 +116,14 @@ function ExampleComponentsButton() {
   if (!ag || !ag.viewer.isGM) return null;
   const have = new Set(Array.from(ag.state.components.values()).map((c) => c.name.toLowerCase()));
   const missing = EXAMPLES.filter((e) => !have.has(e.name.toLowerCase()));
-  if (!missing.length || done) return <div className="text-[12px] text-emerald-300 inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> The examples are in your Components tab.</div>;
+  if (!missing.length || done) return <div className="text-[12px] text-emerald-300 inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> The examples are in your components.</div>;
   return (
     <button type="button" disabled={busy} onClick={async () => {
       setBusy(true);
       try {
         for (const e of missing) await ag.request({ op: "component.upsert", component: { name: e.name, params: e.params, layout: e.layout } });
         setDone(true);
-        toast({ title: "Examples added", description: `${missing.map((e) => e.name).join(", ")} — open the Components tab to see how they're built.` });
+        toast({ title: "Examples added", description: `${missing.map((e) => e.name).join(", ")} — open Components at the top of Sheets to see how they're built.` });
       } catch (err: any) { toast({ title: "Couldn't add them", description: err.message, variant: "destructive" }); }
       finally { setBusy(false); }
     }} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs inline-flex items-center gap-1.5 disabled:opacity-60" data-testid="ag-guide-examples">
@@ -151,13 +151,13 @@ const TOPICS: Topic[] = [
         ]} />
         <H>Build your first character in 10 steps</H>
         <Steps>
-          <li>In the campaign panel open <Ui>Templates</Ui> → <Ui>New</Ui>, pick <Ui>Character</Ui> and call it “Hero”.</li>
+          <li>In the campaign panel open <Ui>Characters</Ui> → <Ui>New</Ui>, tick <Ui>Make this a template</Ui>, pick <Ui>Character</Ui> and call it “Hero”.</li>
           <li>On the template, open the <Ui>Values</Ui> tab. It already has <Code>hp</Code> and <Code>hp_max</Code>. Press <Ui>Add value</Ui> to add more: “Strength” (Number), “Class” (Text)…</li>
           <li>Go back to the <Ui>Sheet</Ui> tab. Press <Ui>+ Insert</Ui> → <Ui>Component</Ui> → <Ui>HP bar</Ui> → <Ui>Insert</Ui>. Leave its parameters empty — it shows the sheet's own HP.</li>
           <li>Hover the bar and drag its right edge to make it wider, or its bottom edge to make it thicker. Press ⚙ → <Ui>Look & size</Ui> for colours, text and style.</li>
           <li><Ui>+ Insert</Ui> → <Ui>Value block</Ui> → pick <Ui>Strength</Ui>. Type text around it like any document — headings, lists, tables.</li>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>New action…</Ui>: add a <Ui>Roll</Ui> step with <Code>1d20 + str</Code>, call it “Attack”, save, insert.</li>
-          <li>Back in the campaign panel, <Ui>Sheets</Ui> → <Ui>New</Ui> → Character, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
+          <li>Back in the campaign panel, <Ui>Characters</Ui> → <Ui>New</Ui>, leave the template box unticked, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
           <li>Right-click the new sheet in the list (or press its <Ui>⋮</Ui>) → <Ui>Add to player tracker</Ui>. Its card already has the HP bar.</li>
           <li>Same menu → <Ui>Place on battlemap</Ui> (or drag the sheet onto the map) to make it a token with a live HP bar. Double-click the token to open the sheet.</li>
           <li>Use the <Ui>View as</Ui> picker at the top of a sheet to check exactly what the player sees.</li>
@@ -172,7 +172,8 @@ const TOPICS: Topic[] = [
         </Bullets>
         <H>Where things are</H>
         <Bullets>
-          <li><b>Campaign panel</b>: <Ui>Sheets</Ui>, <Ui>Templates</Ui> and <Ui>Components</Ui> tabs, the import/export button, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>.</li>
+          <li><b>Campaign panel</b>: the <Ui>Characters</Ui>, <Ui>Items</Ui>, <Ui>Beasts</Ui> and <Ui>Notes</Ui> tabs with your folders in them, the <Ui>Components</Ui> and import/export buttons, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>.</li>
+          <li><b>Folders</b>: the folder button next to <Ui>Search</Ui> makes one. Drag sheets onto a folder to file them, and folders onto each other to nest them — a folder of weapons with a folder of weapon templates inside it, say. Drop a sheet on the empty space below the list to take it out again.</li>
           <li><b>A sheet</b>: the <Ui>Sheet</Ui> page, the <Ui>Values</Ui> tab and, for the GM, <Ui>Links</Ui> (connections) and <Ui>Settings</Ui> (who sees it, owners, token bars, buttons, template, history).</li>
           <li><b>Admin → Agnostic</b> and <b>My Library → Agnostic</b>: your own Characters, Items and Species, kept apart from every other system.</li>
         </Bullets>
@@ -357,7 +358,7 @@ const TOPICS: Topic[] = [
       <>
         <P>A template is a sheet used as a blueprint. Design it like a normal sheet (values, page, buttons) and every new sheet made from it starts as a copy.</P>
         <Steps>
-          <li><Ui>Templates</Ui> → <Ui>New</Ui> (or <Ui>Add blank templates</Ui> for Character, NPC and Item at once).</li>
+          <li>Any tab → <Ui>New</Ui> → tick <Ui>Make this a template</Ui> (or <Ui>Add blank templates</Ui> for a tab that has none yet).</li>
           <li>Design it. The values' starting numbers become each new sheet's starting numbers.</li>
           <li><Ui>Sheets</Ui> → <Ui>New</Ui> → choose the template. It's locked to that sheet from then on.</li>
         </Steps>
@@ -460,7 +461,7 @@ const TOPICS: Topic[] = [
     body: (
       <>
         <P><b>CA Agnostic</b> is also a system of its own: choose it when creating a campaign and the campaign starts with all of these templates. It has its own Admin and My Library (pick “CA Agnostic” there), separate from plain Agnostic. The CA Agnostic <b>admin library</b> is the system's master copy: change a template there and campaigns made afterwards start with your version.</P>
-        <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the top of the <Ui>Templates</Ui> tab (GM only).</P>
+        <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the bottom of the <Ui>Characters</Ui> tab (GM only).</P>
         <H>Cultivator's Adventure</H>
         <Table rows={[
           [<b>CA Character</b>, "Tabs for Overview, Skills, Ability, Inventory and Traits. Rank, Max HP, Focus and Lifespan come from the Energy Pool by themselves; attributes set each skill's die; attribute and skill points are counted for you."],

@@ -608,6 +608,12 @@ export interface AgCampaignSettings {
   };
   /** note type → default token bars when a note has none of its own. */
   tokenBarsByType: Record<string, AgTokenBar[]>;
+  /**
+   * Folders someone has made but not filled yet. A folder with anything in it
+   * is written on the sheets themselves, so it needs nothing here; this is
+   * only so an empty one is still there for everyone until it is used.
+   */
+  folders?: string[];
 }
 
 export const DEFAULT_TRACKER_CARD: AgTrackerCard = {

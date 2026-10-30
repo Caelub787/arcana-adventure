@@ -12,6 +12,7 @@ import {
 } from "@shared/agnostic/acl";
 import { FormulaError, interpolate, parseFormula, toFieldValue, asNumber, isTruthy } from "@shared/agnostic/formula";
 import { rollDie } from "@shared/agnostic/compute";
+import { normalizeFolder } from "@shared/agnostic/folders";
 import type { AgOp, AgOpResult } from "@shared/agnostic/protocol";
 import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
@@ -272,6 +273,9 @@ function cleanSettings(raw: unknown): AgCampaignSettings {
       diceTray: t.diceTray !== false,
     },
     tokenBarsByType: Object.fromEntries(Object.entries(s.tokenBarsByType && typeof s.tokenBarsByType === "object" ? s.tokenBarsByType : d.tokenBarsByType).slice(0, 50).map(([k, v]) => [k.slice(0, 40), cleanTokenBars(v) ?? []])),
+    folders: Array.isArray(s.folders)
+      ? Array.from(new Set<string>(s.folders.filter((x: unknown) => typeof x === "string").map((x: string) => normalizeFolder(x)).filter(Boolean))).slice(0, 300)
+      : [],
   };
 }
 
@@ -345,13 +349,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           if (!t.isTemplate) fail("That isn't a template");
           const s = await snap.takeSnapshot(store, t.id);
           const n = await snap.createFromSnapshot(store, s, {
-            name, folder: body.folder ?? null, portrait: body.portrait ?? null,
+            name, folder: normalizeFolder(body.folder) || null, portrait: body.portrait ?? null,
             ownerIds: viewer.isGM ? (body.ownerIds ?? []).slice(0, 50) : [viewer.userId],
           }, cs, { fromTemplateId: t.id });
           return { noteId: n.id };
         }
         const n = newNote(store, {
-          type, name, folder: body.folder ?? null, portrait: body.portrait ?? null,
+          type, name, folder: normalizeFolder(body.folder) || null, portrait: body.portrait ?? null,
           ownerIds: viewer.isGM ? (body.ownerIds ?? []).slice(0, 50) : [viewer.userId],
           isTemplate: !!body.isTemplate, templateMeta: body.isTemplate ? { version: 1 } : null,
           // A template's own permissions are what its sheets start with; the
@@ -372,7 +376,9 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "note.update": {
       const n = noteOf(store, body.id);
       const p = body.patch ?? {};
-      const headerOnly = Object.keys(p).every((k) => k === "name" || k === "portrait");
+      // Filing a sheet is tidying, not building: anyone who may rename it may
+      // also say which folder it sits in.
+      const headerOnly = Object.keys(p).every((k) => k === "name" || k === "portrait" || k === "folder" || k === "sortOrder");
       if (headerOnly ? !canEditNoteHeader(n, viewer) : !viewer.isGM) fail("You can't change that");
       return store.run(async (cs) => {
         const note = noteOf(store, body.id);
@@ -385,7 +391,8 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
           note.portrait = s;
           if (changed && store.scope.kind === "campaign") void ctx.host.refreshNoteTokens?.(store.scope.id, note.id, s).catch(() => {});
         }
-        if (p.folder !== undefined) note.folder = p.folder ? cleanLabel(p.folder, 80) : null;
+        // A folder is a path ("Weapons/Templates"), tidied of stray slashes.
+        if (p.folder !== undefined) note.folder = normalizeFolder(cleanLabel(p.folder, 200)) || null;
         if (p.sortOrder !== undefined && Number.isFinite(p.sortOrder)) note.sortOrder = p.sortOrder;
         if (p.type !== undefined) note.type = labelKey(p.type) || note.type;
         if (p.ownerIds !== undefined) { note.ownerIds = (p.ownerIds ?? []).filter((x) => typeof x === "string").slice(0, 50); aclChanged = true; }

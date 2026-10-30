@@ -2,14 +2,19 @@
 // side panel, My Library and the Admin library.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Plus, Search, FolderOpen, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown, Lock, Flame, Loader2,
-  MoreVertical, ExternalLink, Share2, Pencil, Copy, Trash2,
+  Plus, Search, Folder, FolderOpen, FolderPlus, Blocks, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown,
+  Lock, Flame, Loader2, MoreVertical, ExternalLink, Share2, Pencil, Copy, Trash2,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { AclEditor } from "./pickers";
 import type { AgAcl } from "@shared/agnostic/types";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel, agLibraryScope } from "@shared/agnostic/types";
+import { canEditNoteHeader } from "@shared/agnostic/acl";
+import {
+  buildFolderTree, canMoveFolder, childFolder, cleanFolderName, countIn, folderName, inFolder, movedFolder,
+  normalizeFolder, parentFolder, parseTabFolder, tabFolderKey, type FolderNode,
+} from "@shared/agnostic/folders";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, agConfirm } from "./float";
 import { NotePicker } from "./pickers";
@@ -23,18 +28,20 @@ import { ImportExportDialog } from "./ImportExport";
 import { GuideButton } from "./AgGuide";
 
 /**
- * The browser's own tabs. The three kinds of sheet a table reaches for most get
- * one each; everything else shares "More", where the type chips still are.
+ * The browser's tabs. Four kinds of thing a table keeps, and every sheet lands
+ * on one of them — Items is the catch-all, so blueprints, recipes and whatever
+ * kind a GM invents sit with the things. Inside a tab it's folders: a folder
+ * you made and named says what's in it better than a row of type chips did.
  */
-type Tab = "characters" | "items" | "notes" | "more" | "templates" | "components";
-/** The sheet types each content tab holds. "more" takes whatever is left over. */
+type Tab = "characters" | "items" | "beasts" | "notes";
 const TAB_TYPES: Record<string, string[]> = {
-  characters: ["character", "npc", "beast"],
-  items: ["item"],
-  notes: ["note"],
+  characters: ["character", "npc", "species"],
+  beasts: ["beast"],
+  notes: ["note", "location"],
 };
-const CONTENT_TABS: Array<[Tab, string]> = [["characters", "Characters"], ["items", "Items"], ["notes", "Notes"], ["more", "More"]];
-const isContentTab = (t: Tab) => t !== "templates" && t !== "components";
+const CONTENT_TABS: Array<[Tab, string]> = [["characters", "Characters"], ["items", "Items"], ["beasts", "Beasts"], ["notes", "Notes"]];
+/** Which tab a kind of sheet sits on. Anything unclaimed is a thing, so: Items. */
+export const agTabOfType = (type: string): Tab => (Object.keys(TAB_TYPES).find((k) => TAB_TYPES[k].includes(type)) as Tab) ?? "items";
 
 export interface BrowserOptions {
   /** Only these note types are offered (libraries: character/item/species). */
@@ -47,118 +54,271 @@ export interface BrowserOptions {
   tabs?: Tab[];
 }
 
+/** An empty folder nobody has filled yet, remembered in this browser's own list. */
+function useRememberedFolders(scopeKey: string): [string[], (next: string[]) => void] {
+  const key = `ag-folders:${scopeKey}`;
+  const [v, setV] = useState<string[]>(() => {
+    try { const raw = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : []; }
+    catch { return []; }
+  });
+  return [v, (next) => { setV(next); try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* private mode */ } }];
+}
+
 export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
-  const { state, viewer, openNote, system } = useAg();
+  const { state, viewer, openNote, system, scope, request, key: scopeKey } = useAg();
+  const { toast } = useToast();
+  const play = usePlayView();
+  const isGM = viewer.isGM;
   const allowed = opts.tabs;
   const [tabState, setTab] = useState<Tab>(allowed?.[0] ?? "characters");
-  const play = usePlayView();
-  // Player view: just the sheets — templates, components and imports are building tools.
-  const tab: Tab = allowed && !allowed.includes(tabState) ? allowed[0] : play && !isContentTab(tabState) ? "characters" : tabState;
   const [q, setQ] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
-  const [creating, setCreating] = useState<null | { template: boolean; type?: string }>(null);
+  const [creating, setCreating] = useState<null | { template: boolean; type?: string; folder: string }>(null);
   const [io, setIo] = useState(false);
   const [importing, setImporting] = useState(false);
-  const isGM = viewer.isGM;
-  /** Who may press New here: anyone on a tab of notes, the GM anywhere.
-   *  Notes are a playing thing, not a building one, so Player view keeps New. */
-  const mayCreate = (t: Tab) => isGM || t === "notes";
+  const [parts, setParts] = useState(false);
+  const [naming, setNaming] = useState<null | { parent: string; path?: string }>(null);
+  const [shut, setShut] = useState<Set<string>>(new Set());
+  const [mine, setMine] = useRememberedFolders(scopeKey);
+
+  const fail = (e: any) => toast({ title: "Couldn't do that", description: e?.message, variant: "destructive" });
   const all = [...Array.from(state.notes.values())];
   const typeIds = useMemo(() => {
     const base = opts.types ?? AG_BUILTIN_TYPES.map((t) => t.id);
     return [...Array.from(new Set([...base, ...all.map((n) => n.type).filter((t) => !opts.types || opts.types.includes(t))]))];
   }, [all.length, opts.types]); // eslint-disable-line react-hooks/exhaustive-deps
-  /** Which types this tab shows: its own, or everything the others don't take. */
-  const tabTypes = useMemo(() => {
-    if (!isContentTab(tab) || tab === "more") {
-      const taken = new Set(Object.values(TAB_TYPES).flat());
-      return tab === "more" ? typeIds.filter((t) => !taken.has(t)) : typeIds;
-    }
-    return TAB_TYPES[tab] ?? typeIds;
-  }, [tab, typeIds]);
-  // Chips only where there is a choice to make: a tab of one type needs none.
-  const chipTypes = tab === "templates" ? typeIds : tabTypes.length > 1 ? tabTypes : [];
+  const typesOf = (t: Tab) => typeIds.filter((x) => agTabOfType(x) === t);
+  // A tab that could never hold anything here isn't offered (My Library keeps no notes).
+  const tabs = CONTENT_TABS.filter(([t]) => (!allowed || allowed.includes(t)) && typesOf(t).length > 0);
+  const tab: Tab = tabs.some(([t]) => t === tabState) ? tabState : tabs[0]?.[0] ?? "characters";
+  const tabTypes = typesOf(tab);
+  /** Who may press New here: anyone on a tab of notes, the GM anywhere. */
+  const mayCreate = isGM || tab === "notes";
+  const search = q.trim().toLowerCase();
+  // Templates sit with what they make, in whatever folder they're filed in;
+  // they're the GM's building material, so players never see them at all.
   const list = all
-    .filter((n) => (tab === "templates" ? n.isTemplate : !n.isTemplate))
-    .filter((n) => tab === "templates" || tabTypes.includes(n.type))
-    .filter((n) => !typeFilter || n.type === typeFilter)
-    .filter((n) => !opts.types || opts.types.includes(n.type))
-    .filter((n) => !q.trim() || n.name.toLowerCase().includes(q.trim().toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  useEffect(() => { if (typeFilter && !chipTypes.includes(typeFilter)) setTypeFilter(""); }, [chipTypes, typeFilter]);
-  const groups = new Map<string, AgNote[]>();
-  for (const n of list) {
-    const key = n.folder || agTypeLabel(n.type);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(n);
-  }
+    .filter((n) => tabTypes.includes(n.type))
+    .filter((n) => isGM || !n.isTemplate)
+    .filter((n) => !search || n.name.toLowerCase().includes(search))
+    .sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
+
+  // Folders live on the sheets, so the ones with anything in them need no list.
+  // This is the rest: made, named, and still waiting for something.
+  const empties = useMemo(() => {
+    // An empty folder the GM made is the campaign's, but a player has no use
+    // for one until something they can see is in it.
+    const raw = Array.from(new Set([...(isGM ? state.settings?.folders ?? [] : []), ...mine]));
+    return raw.map(parseTabFolder).filter((f): f is { tab: string; path: string } => !!f);
+  }, [state.settings?.folders, mine, isGM]);
+  const tree = useMemo(() => buildFolderTree(list, search ? [] : empties.filter((f) => f.tab === tab).map((f) => f.path)), [list, empties, tab, search]);
+
+  const rememberFolders = async (next: Array<{ tab: string; path: string }>) => {
+    const keys = Array.from(new Set(next.map((f) => tabFolderKey(f.tab, f.path))));
+    // The GM's folders are the campaign's, so everyone gets them at once. A
+    // player's own are their own, and live in their browser.
+    if (scope.kind === "campaign" && isGM && state.settings) {
+      try { await request({ op: "settings.update", settings: { ...state.settings, folders: keys } }); return; }
+      catch (e) { fail(e); return; }
+    }
+    setMine(keys);
+  };
+  const addFolder = (parent: string, name: string) => {
+    const clean = cleanFolderName(name);
+    if (!clean) return;
+    void rememberFolders([...empties, { tab, path: childFolder(parent, clean) }]);
+  };
+  const moveNote = (id: string, folder: string) => {
+    const note = state.notes.get(id);
+    if (!note || normalizeFolder(note.folder) === normalizeFolder(folder)) return;
+    request({ op: "note.update", id, patch: { folder: folder || null } }).catch(fail);
+  };
+  /** Moving, renaming and deleting a folder are all one thing: its sheets get a new path. */
+  const refolder = (from: string, to: string) => {
+    for (const n of all) {
+      if (!inFolder(n.folder ?? "", from) || !n.folder) continue;
+      const next = movedFolder(n.folder, from, to);
+      if (next !== normalizeFolder(n.folder)) request({ op: "note.update", id: n.id, patch: { folder: next || null } }).catch(fail);
+    }
+    const kept = empties.filter((f) => !(f.tab === tab && inFolder(f.path, from)));
+    const moved = to ? empties.filter((f) => f.tab === tab && inFolder(f.path, from)).map((f) => ({ tab, path: movedFolder(f.path, from, to) })) : [];
+    void rememberFolders([...kept, ...moved]);
+  };
+  const dropFolder = (from: string, parent: string) => { if (canMoveFolder(from, parent)) refolder(from, childFolder(parent, folderName(from))); };
+  const renameFolder = (path: string, name: string) => {
+    const clean = cleanFolderName(name);
+    if (clean && clean !== folderName(path)) refolder(path, childFolder(parentFolder(path), clean));
+  };
+  const deleteFolder = async (path: string) => {
+    const ok = await agConfirm(`Everything in “${folderName(path)}” moves up one level. Nothing is deleted.`, { title: "Remove this folder?", confirm: "Remove it" });
+    if (ok) refolder(path, parentFolder(path));
+  };
+  /** Folders are tidying: the GM files anything, a player files what's theirs. */
+  const mayFile = (note: AgNote) => canEditNoteHeader(note, viewer);
+  const mayFolder = isGM || tab === "notes";
+  const starterTypes = tabTypes.filter((t) => ["character", "npc", "item", "beast"].includes(t));
+
+  const folderProps = {
+    opts, onOpen: openNote, shut, toggle: (p: string) => setShut((s) => { const n = new Set(s); n.has(p) ? n.delete(p) : n.add(p); return n; }),
+    moveNote, dropFolder, mayFile, mayFolder,
+    onNewInside: (parent: string) => setNaming({ parent }),
+    onRename: (path: string) => setNaming({ parent: parentFolder(path), path }),
+    onDelete: deleteFolder,
+    onNewHere: (folder: string) => setCreating({ template: false, folder, type: tabTypes.length === 1 ? tabTypes[0] : undefined }),
+    mayCreate,
+  };
 
   return (
     <div className="h-full flex flex-col text-stone-200" data-testid="ag-browser">
-      {isGM && !play && (allowed?.length ?? 2) > 1 && (
-        <div className="flex items-center gap-1 px-2 pt-2 shrink-0">
-          {([...CONTENT_TABS, ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).filter(([t]) => !allowed || allowed.includes(t)).map(([t, label]) => (
+      {tabs.length > 1 && (
+        <div className="flex items-center gap-1 px-2 pt-2 shrink-0" data-testid="ag-browser-tabs">
+          {tabs.map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
-          <GuideButton compact topic={tab === "components" ? "components" : tab === "templates" ? "templates" : "start"} className="ml-auto" />
-          <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
+          {isGM && !play && <>
+            <GuideButton compact topic="start" className="ml-auto" />
+            <button type="button" onClick={() => setParts(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Components — the pieces sheets are built from" data-testid="ag-components"><Blocks className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
+          </>}
         </div>
       )}
-      {(play || !isGM) && (allowed?.length ?? 2) > 1 && (
-        <div className="flex gap-1 p-2 pb-0 shrink-0" data-testid="ag-browser-tabs-play">
-          {CONTENT_TABS.filter(([t]) => !allowed || allowed.includes(t)).map(([t, label]) => (
-            <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
-          ))}
+      <div className="p-2 space-y-1.5 shrink-0">
+        <div className="flex gap-1.5">
+          <div className="relative flex-1">
+            <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-9 pl-7 pr-2 rounded bg-stone-900 border border-stone-700 text-sm" data-testid="ag-browser-search" />
+          </div>
+          {mayFolder && <button type="button" onClick={() => setNaming({ parent: "" })} className="h-9 w-9 grid place-items-center rounded bg-stone-800 hover:bg-stone-700 text-stone-200" title="New folder" aria-label="New folder" data-testid="ag-new-folder"><FolderPlus className="h-4 w-4" /></button>}
+          {mayCreate && <button type="button" onClick={() => setCreating({ template: false, folder: "", type: tabTypes.length === 1 ? tabTypes[0] : undefined })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
         </div>
-      )}
-      {tab === "components" ? <div className="flex-1 min-h-0 overflow-y-auto"><ComponentsManager /></div> : (
-        <>
-          <div className="p-2 space-y-1.5 shrink-0">
-            <div className="flex gap-1.5">
-              <div className="relative flex-1">
-                <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-9 pl-7 pr-2 rounded bg-stone-900 border border-stone-700 text-sm" data-testid="ag-browser-search" />
-              </div>
-              {mayCreate(tab) && <button type="button" onClick={() => setCreating({ template: tab === "templates", type: tabTypes.length === 1 ? tabTypes[0] : undefined })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
-            </div>
-            {/* CA Agnostic: every type chip shows, wrapping onto more lines, whatever the panel's width. */}
-            {chipTypes.length > 0 && <div className={`flex gap-1 ${system === "ca-agnostic" ? "flex-wrap" : "overflow-x-auto no-scrollbar"}`} data-testid="ag-type-chips">
-              <button type="button" onClick={() => setTypeFilter("")} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${!typeFilter ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>All</button>
-              {chipTypes.map((t) => (
-                <button key={t} type="button" onClick={() => setTypeFilter(typeFilter === t ? "" : t)} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${typeFilter === t ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>{AG_BUILTIN_TYPES.find((x) => x.id === t)?.plural ?? agTypeLabel(t)}</button>
-              ))}
-            </div>}
-            {isGM && !play && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
-            {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
-            {!list.length && <div className="text-sm text-stone-500 p-3 text-center" data-testid="ag-browser-empty">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : mayCreate(tab) ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
-            {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
-            {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
-            {tab === "templates" && isGM && !opts.types && <StarterKits />}
-          </div>
-        </>
-      )}
-      {creating && <CreateDialog template={creating.template} types={tab === "templates" ? typeIds : tabTypes} startType={creating.type} onClose={() => setCreating(null)} />}
+        {isGM && !play && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
+      </div>
+      {/* Drop a sheet out here and it leaves whatever folder it was in. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3" data-testid="ag-folder-root"
+        onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }}
+        onDrop={(e) => {
+          const k = dragKind(e);
+          if (!k) return;
+          e.preventDefault();
+          if (k === "note") moveNote(e.dataTransfer.getData(DND_NOTE), "");
+          else dropFolder(e.dataTransfer.getData(DND_FOLDER), "");
+        }}>
+        <FolderRows node={tree} {...folderProps} />
+        {!list.length && <div className="text-sm text-stone-500 p-3 text-center" data-testid="ag-browser-empty">{search ? "Nothing matches." : mayCreate ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
+        {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
+        {isGM && !play && !!starterTypes.length && !all.some((n) => n.isTemplate && tabTypes.includes(n.type)) && <StarterTemplates types={starterTypes} />}
+        {isGM && !play && !opts.types && tab === "characters" && <StarterKits />}
+      </div>
+      {creating && <CreateDialog template={creating.template} types={tabTypes} startType={creating.type} folder={creating.folder} onClose={() => setCreating(null)} />}
+      {naming && <FolderDialog name={naming.path ? folderName(naming.path) : ""} parent={naming.parent}
+        onSave={(name) => { naming.path ? renameFolder(naming.path, name) : addFolder(naming.parent, name); setNaming(null); }}
+        onClose={() => setNaming(null)} />}
       {io && <ImportExportDialog onClose={() => setIo(false)} />}
+      {parts && <AgPanel title="Components" onClose={() => setParts(false)} width={520} height={620} testId="ag-components-panel"><ComponentsManager /></AgPanel>}
       {importing && <ImportFromLibraryDialog onClose={() => setImporting(false)} />}
     </div>
   );
 }
 
-function Group({ title, notes, opts, onOpen }: { title: string; notes: AgNote[]; opts: BrowserOptions; onOpen: (id: string) => void }) {
-  const [open, setOpen] = useState(true);
+// What's being dragged over a folder: one sheet, or a folder and all of its own.
+const DND_NOTE = "application/ag-note";
+const DND_FOLDER = "application/ag-folder";
+const dragKind = (e: React.DragEvent): "note" | "folder" | null => {
+  const t = Array.from(e.dataTransfer.types ?? []);
+  return t.includes(DND_NOTE) ? "note" : t.includes(DND_FOLDER) ? "folder" : null;
+};
+
+interface FolderProps {
+  opts: BrowserOptions;
+  onOpen: (id: string) => void;
+  shut: Set<string>;
+  toggle: (path: string) => void;
+  moveNote: (id: string, folder: string) => void;
+  dropFolder: (from: string, parent: string) => void;
+  mayFile: (note: AgNote) => boolean;
+  mayFolder: boolean;
+  mayCreate: boolean;
+  onNewInside: (parent: string) => void;
+  onRename: (path: string) => void;
+  onDelete: (path: string) => void;
+  onNewHere: (folder: string) => void;
+}
+
+/** The folders of one folder, then its own sheets. */
+function FolderRows({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps) {
   return (
-    <div>
-      <button type="button" onClick={() => setOpen(!open)} className="w-full flex items-center gap-1 text-[11px] uppercase tracking-wide text-stone-500 py-1">
-        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}<FolderOpen className="h-3 w-3" />{title}<span className="ml-1 text-stone-600">{notes.length}</span>
-      </button>
-      {open && <div className="space-y-1">{notes.map((n) => <NoteRow key={n.id} note={n} opts={opts} onOpen={onOpen} />)}</div>}
+    <>
+      {node.folders.map((f) => <FolderBlock key={f.path} node={f} {...p} />)}
+      <div className="space-y-1">{node.items.map((n) => <NoteRow key={n.id} note={n} opts={p.opts} onOpen={p.onOpen} mayFile={p.mayFile(n)} />)}</div>
+    </>
+  );
+}
+
+function FolderBlock({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps) {
+  const [over, setOver] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const open = !p.shut.has(node.path);
+  const count = countIn(node);
+  const take = (e: React.DragEvent) => {
+    const k = dragKind(e);
+    if (!k) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(false);
+    if (k === "note") p.moveNote(e.dataTransfer.getData(DND_NOTE), node.path);
+    else p.dropFolder(e.dataTransfer.getData(DND_FOLDER), node.path);
+  };
+  return (
+    // Anywhere in the folder's block takes a drop, not just the row with its
+    // name on it: aiming at a two-line strip is no fun.
+    <div className={`rounded ${over ? "bg-amber-600/10 ring-1 ring-amber-500/70" : ""}`}
+      onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setOver(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false); }}
+      onDrop={take}>
+      <div className="flex items-center gap-1 rounded px-1 bg-stone-900/50"
+        draggable={p.mayFolder}
+        onDragStart={(e) => { e.dataTransfer.setData(DND_FOLDER, node.path); e.dataTransfer.effectAllowed = "move"; }}
+        data-testid={`ag-folder-${node.path}`}>
+        <button type="button" onClick={() => p.toggle(node.path)} className="flex items-center gap-1 flex-1 min-w-0 text-[11px] uppercase tracking-wide text-stone-400 py-1">
+          {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+          {open ? <FolderOpen className="h-3 w-3 shrink-0 text-amber-500/80" /> : <Folder className="h-3 w-3 shrink-0 text-amber-500/80" />}
+          <span className="truncate">{node.name}</span>
+          <span className="ml-1 text-stone-600">{count}</span>
+        </button>
+        {p.mayFolder && (
+          <button type="button" onClick={() => setMenu(true)} className="h-6 w-6 grid place-items-center rounded text-stone-500 hover:text-stone-100 hover:bg-stone-800 shrink-0"
+            title={`More for ${node.name}`} aria-label={`More for ${node.name}`} data-testid={`ag-folder-menu-${node.name}`}><MoreVertical className="h-3.5 w-3.5" /></button>
+        )}
+      </div>
+      {menu && (
+        <AgPanel title={node.name} onClose={() => setMenu(false)} width={300} height={230} testId="ag-folder-actions">
+          <div className="space-y-1 text-sm">
+            {p.mayCreate && <button type="button" onClick={() => { setMenu(false); p.onNewHere(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-new-sheet"><Plus className="h-4 w-4" /> New sheet in here</button>}
+            <button type="button" onClick={() => { setMenu(false); p.onNewInside(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-new-inside"><FolderPlus className="h-4 w-4" /> New folder in here</button>
+            <button type="button" onClick={() => { setMenu(false); p.onRename(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-rename"><Pencil className="h-4 w-4" /> Rename…</button>
+            <button type="button" onClick={() => { setMenu(false); p.onDelete(node.path); }} className="w-full h-9 px-3 rounded text-left text-red-300 hover:bg-red-950/60 inline-flex items-center gap-2" data-testid="ag-folder-delete"><Trash2 className="h-4 w-4" /> Remove folder</button>
+            <div className="text-[11px] text-stone-500 px-3 pt-1">Removing a folder keeps everything in it — it all moves up one level.</div>
+          </div>
+        </AgPanel>
+      )}
+      {open && <div className="pl-3 ml-3 border-l-2 border-amber-900/50 space-y-1"><FolderRows node={node} {...p} /></div>}
     </div>
   );
 }
 
-function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; onOpen: (id: string) => void }) {
+/** Making a folder, or renaming one. */
+function FolderDialog({ name: start, parent, onSave, onClose }: { name: string; parent: string; onSave: (name: string) => void; onClose: () => void }) {
+  const [name, setName] = useState(start);
+  const save = () => { if (name.trim()) onSave(name.trim()); else onClose(); };
+  return (
+    <AgPanel title={start ? "Rename folder" : parent ? `New folder in ${folderName(parent)}` : "New folder"} onClose={onClose} width={340} height={180} testId="ag-folder-dialog"
+      footer={<><button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button><button type="button" onClick={save} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-folder-save">Save</button></>}>
+      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Weapons" className="w-full h-10 bg-stone-950 border border-stone-700 rounded px-2 text-stone-100" data-testid="ag-folder-name" />
+      <div className="text-[11px] text-stone-500 mt-1.5">Drag sheets onto a folder to file them, and folders onto each other to nest them.</div>
+    </AgPanel>
+  );
+}
+
+function NoteRow({ note, opts, onOpen, mayFile }: { note: AgNote; opts: BrowserOptions; onOpen: (id: string) => void; mayFile?: boolean }) {
   const { state, viewer } = useAg();
   const template = note.templateId ? state.notes.get(note.templateId) : undefined;
   const pinned = !!state.settings?.tracker.pinned.includes(note.id);
@@ -169,7 +329,12 @@ function NoteRow({ note, opts, onOpen }: { note: AgNote; opts: BrowserOptions; o
   const cancelPress = () => { if (press.current) { clearTimeout(press.current); press.current = null; } };
   return (
     <div className="flex items-center gap-2 rounded-md border border-stone-800 bg-stone-900/70 hover:border-stone-600 px-1.5 py-1 group" draggable
-      onDragStart={(e) => { e.dataTransfer.setData("application/character-id", `ag:${note.id}`); e.dataTransfer.effectAllowed = "copy"; }}
+      onDragStart={(e) => {
+        // The map takes one of these; a folder in this list takes the other.
+        e.dataTransfer.setData("application/character-id", `ag:${note.id}`);
+        if (mayFile) e.dataTransfer.setData("application/ag-note", note.id);
+        e.dataTransfer.effectAllowed = "copyMove";
+      }}
       onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
       // Long-press on phones = right-click.
       onTouchStart={(e) => { cancelPress(); longPressed.current = false; const t = e.touches[0]; press.current = setTimeout(() => { longPressed.current = true; setMenu({ x: t.clientX, y: t.clientY }); }, 550); }}
@@ -306,10 +471,11 @@ function RenameDialog({ note, onClose }: { note: AgNote; onClose: () => void }) 
   );
 }
 
-function CreateDialog({ template, types, startType, onClose }: { template: boolean; types: string[]; startType?: string; onClose: () => void }) {
-  const { state, request, openNote } = useAg();
+function CreateDialog({ template: startTemplate, types, startType, folder, onClose }: { template: boolean; types: string[]; startType?: string; folder?: string; onClose: () => void }) {
+  const { state, request, openNote, viewer } = useAg();
   const { toast } = useToast();
   const [name, setName] = useState("");
+  const [template, setTemplate] = useState(startTemplate);
   const [type, setType] = useState(startType ?? types[0] ?? "character");
   const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate && n.type === type);
   const [templateId, setTemplateId] = useState<string>("");
@@ -317,19 +483,20 @@ function CreateDialog({ template, types, startType, onClose }: { template: boole
   const players = state.members.filter((m) => m.role !== "gm");
   const create = async () => {
     try {
-      const res = await request<{ noteId: string }>({ op: "note.create", type, name: name.trim() || (template ? `${agTypeLabel(type)} template` : `New ${agTypeLabel(type)}`), isTemplate: template, templateId: template ? null : templateId || null, ownerIds: owners });
+      const res = await request<{ noteId: string }>({ op: "note.create", type, name: name.trim() || (template ? `${agTypeLabel(type)} template` : `New ${agTypeLabel(type)}`), isTemplate: template, templateId: template ? null : templateId || null, ownerIds: owners, folder: folder || null });
       onClose();
       openNote(res.noteId);
     } catch (e: any) { toast({ title: "Couldn't create it", description: e.message, variant: "destructive" }); }
   };
   return (
-    <AgPanel title={template ? "New template" : "New sheet"} onClose={onClose} width={440} height={520} testId="ag-create"
+    <AgPanel title={template ? "New template" : "New sheet"} onClose={onClose} width={440} height={560} testId="ag-create"
       footer={<>
         <button type="button" onClick={onClose} className="h-9 px-3 rounded text-sm text-stone-300 hover:bg-stone-800">Cancel</button>
         <button type="button" onClick={create} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-create-submit">Create</button>
       </>}>
         <div className="space-y-3 text-stone-200">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} placeholder="Name" className="w-full h-10 bg-stone-950 border border-stone-700 rounded px-2" data-testid="ag-create-name" />
+          {folder && <div className="text-[11px] text-stone-400 inline-flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-amber-500/80" /> Goes in {folder}</div>}
           <div>
             <div className="text-[11px] text-stone-400 mb-1">Kind</div>
             <div className="flex flex-wrap gap-1">
@@ -337,11 +504,20 @@ function CreateDialog({ template, types, startType, onClose }: { template: boole
               <input placeholder="+ new kind" onBlur={(e) => { const v = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_"); if (v) setType(v); }} className="h-8 w-28 bg-stone-950 border border-stone-700 rounded-full px-2.5 text-xs" />
             </div>
           </div>
+          {viewer.isGM && (
+            <label className="flex items-start gap-2 rounded-lg border border-stone-800 bg-stone-900/60 p-2 cursor-pointer" data-testid="ag-create-as-template">
+              <input type="checkbox" checked={template} onChange={(e) => setTemplate(e.target.checked)} className="mt-0.5 accent-amber-600" />
+              <span className="min-w-0">
+                <span className="block text-sm text-stone-200">Make this a template</span>
+                <span className="block text-[11px] text-stone-500">A sheet others are built from: its values, layout and buttons are what every new one starts with. Only you can see it.</span>
+              </span>
+            </label>
+          )}
           {!template && (
             <div>
               <div className="text-[11px] text-stone-400 mb-1">Template (locked once chosen)</div>
               <NotePicker value={templateId} onChange={setTemplateId} notes={templates} title={`${agTypeLabel(type)} templates`} noneLabel="Blank sheet" placeholder="Blank sheet" testId="ag-create-template" />
-              {!templates.length && <div className="text-[10px] text-stone-500 mt-1">No {agTypeLabel(type)} templates yet — make one in the Templates tab.</div>}
+              {!templates.length && <div className="text-[10px] text-stone-500 mt-1">No {agTypeLabel(type)} templates yet — tick the box above to make one.</div>}
             </div>
           )}
           {!template && players.length > 0 && (

@@ -384,7 +384,7 @@ function InsertConfigDialog({ noteId, config, onCancel, onInsert }: { noteId: st
               {row("Component", <ComponentPicker value={a.componentId} onChange={(componentId) => update({ componentId, bindings: {} })} />)}
               {(comp?.params ?? []).map((p) => <React.Fragment key={p}>{row(`$${p}`, <RefPicker noteId={noteId} value={a.bindings?.[p]} placeholder={`(this sheet's ${p})`} onChange={(ref) => update({ bindings: { ...(a.bindings ?? {}), [p]: ref } })} />)}</React.Fragment>)}
               {comp && comp.params.length > 0 && <div className="text-[10px] text-stone-500">Leave a parameter empty to use this sheet's value with the same name.</div>}
-              {!state.components.size && <div className="text-xs text-stone-500">Make components in the Components tab first.</div>}
+              {!state.components.size && <div className="text-xs text-stone-500">Make components first — the Components button at the top of Sheets.</div>}
             </>
           )}
           {preview && (

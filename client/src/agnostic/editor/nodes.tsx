@@ -642,7 +642,7 @@ function ComponentNodeView(p: NodeViewProps) {
         {(comp?.params ?? []).map((param) => (
           <Row key={param} label={`$${param}`}><RefPicker noteId={ctx.noteId} value={bindings[param]} placeholder={`(this sheet's ${param})`} onChange={(ref) => p.updateAttributes({ bindings: { ...bindings, [param]: ref } })} /></Row>
         ))}
-        {!ag.state.components.size && <div className="text-xs text-stone-500">Make components in the Components tab first.</div>}
+        {!ag.state.components.size && <div className="text-xs text-stone-500">Make components first — the Components button at the top of Sheets.</div>}
       </ConfigPopover>
       <ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>
     </>}>
