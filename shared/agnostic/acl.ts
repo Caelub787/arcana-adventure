@@ -96,6 +96,17 @@ export function describeAudience(a: AgAudienceOrInherit, memberName?: (id: strin
   return [a.owners ? "Owners" : null, ...names].filter(Boolean).join(", ") + " + GM";
 }
 
+/**
+ * Who plays a sheet: whoever it is assigned to (its owners), and anyone it has
+ * been lent to (a player carrying someone else's item). They move its token,
+ * change its values and press its buttons. A GM plays everything, so they are
+ * never asked — callers check for the GM first.
+ */
+export function mayPlayNote(note: Pick<AgNote, "ownerIds" | "userIds">, userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  return note.ownerIds.includes(userId) || !!note.userIds?.includes(userId);
+}
+
 export function normalizeAudience(raw: unknown, allowInherit: boolean): AgAudienceOrInherit {
   if (raw === "inherit" && allowInherit) return "inherit";
   if (raw === "gm" || raw === "owners" || raw === "everyone") return raw;

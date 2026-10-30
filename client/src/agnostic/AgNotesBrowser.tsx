@@ -3,7 +3,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Search, Folder, FolderOpen, FolderPlus, Blocks, Pin, PinOff, MapPin, Download, Library, ChevronRight, ChevronDown,
-  Lock, Flame, Loader2, MoreVertical, ExternalLink, Share2, Pencil, Copy, Trash2,
+  Lock, Flame, Loader2, MoreVertical, ExternalLink, Share2, Pencil, Copy, Trash2, UserCheck,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { AclEditor } from "./pickers";
@@ -393,7 +393,7 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
   const { state, request, viewer, scope, system } = useAg();
   const { toast } = useToast();
   const { user } = useAuth() as any;
-  const [panel, setPanel] = useState<null | "share" | "rename">(null);
+  const [panel, setPanel] = useState<null | "share" | "rename" | "assign">(null);
   const pinned = !!state.settings?.tracker.pinned.includes(note.id);
   const fail = (e: any) => toast({ title: "Couldn't do that", description: e.message, variant: "destructive" });
   const togglePin = () => {
@@ -405,7 +405,11 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
   type Item = MenuItem;
   const items: Item[] = [
     { icon: <ExternalLink className="h-4 w-4" />, label: "Open", run: () => onOpen(note.id), testId: "open" },
-    ...(isGM && !note.isTemplate && scope.kind === "campaign" ? [{ icon: <Share2 className="h-4 w-4" />, label: "Share with players…", run: () => setPanel("share"), testId: "share" } as Item] : []),
+    ...(isGM && !note.isTemplate && scope.kind === "campaign" ? [
+      // Who plays it. The one people reach for most, so it sits near the top.
+      { icon: <UserCheck className="h-4 w-4" />, label: "Assign to…", run: () => setPanel("assign"), testId: "assign" } as Item,
+      { icon: <Share2 className="h-4 w-4" />, label: "Share with players…", run: () => setPanel("share"), testId: "share" } as Item,
+    ] : []),
     ...(isGM && opts.showTrackerPin && !note.isTemplate ? [{ icon: pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />, label: pinned ? "Remove from player tracker" : "Add to player tracker", run: togglePin, testId: "pin" } as Item] : []),
     ...(isGM && opts.onPlaceOnMap && !note.isTemplate ? [{ icon: <MapPin className="h-4 w-4" />, label: "Place on battlemap", run: () => opts.onPlaceOnMap!(note.id), testId: "place" } as Item] : []),
     ...(isGM ? ["sep" as Item,
@@ -417,16 +421,73 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
     ] : []),
   ];
   if (panel === "share") return <ShareDialog note={note} onClose={onClose} />;
+  if (panel === "assign") return <AssignDialog note={note} onClose={onClose} />;
   if (panel === "rename") return <RenameDialog note={note} onClose={onClose} />;
-  return <MenuAt at={at} title={note.name || "Untitled"} items={items} keep={["share", "rename"]} testId="ag-row-menu" onClose={onClose} />;
+  return <MenuAt at={at} title={note.name || "Untitled"} items={items} keep={["share", "rename", "assign"]} testId="ag-row-menu" onClose={onClose} />;
 }
 
 /** Who sees a sheet, who owns it — in one place, from the list. */
+/**
+ * Who plays this sheet.
+ *
+ * Whoever it is assigned to moves its token on the map, changes its values,
+ * presses its buttons and carries its things — and what they type in chat
+ * shows over its head. A GM takes one the same way: running a character for a
+ * scene is the same job as playing one.
+ */
+function AssignDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
+  const { state, request, viewer } = useAg();
+  const { toast } = useToast();
+  const note = state.notes.get(initial.id) ?? initial;
+  const fail = (e: any) => toast({ title: "Couldn't save", description: e?.message, variant: "destructive" });
+  const set = (ownerIds: string[]) => request({ op: "note.update", id: note.id, patch: { ownerIds } }).catch(fail);
+  const toggle = (id: string) => set(note.ownerIds.includes(id) ? note.ownerIds.filter((x) => x !== id) : [...note.ownerIds, id]);
+  const mine = note.ownerIds.includes(viewer.userId);
+  // Assigned, but hidden from everyone: they'd never find it.
+  const hidden = note.acl.view === "gm" && note.ownerIds.some((id) => id !== viewer.userId);
+  return (
+    <AgPanel title={<span className="inline-flex items-center gap-1.5"><UserCheck className="h-4 w-4 text-amber-400" />Assign “{note.name || "Untitled"}”</span>}
+      onClose={onClose} width={420} height={430} testId="ag-assign"
+      footer={<button type="button" onClick={onClose} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-assign-done">Done</button>}>
+      <div className="space-y-3 text-stone-200">
+        <button type="button" onClick={() => toggle(viewer.userId)}
+          className={`w-full h-10 rounded-md border text-sm ${mine ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 hover:border-amber-600"}`}
+          data-testid="ag-assign-me">{mine ? "It's mine — hand it back" : "Assign it to me"}</button>
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-stone-400">Everyone at the table</div>
+          <div className="flex flex-wrap gap-1.5">
+            {state.members.map((m) => {
+              const on = note.ownerIds.includes(m.userId);
+              return (
+                <button key={m.userId} type="button" onClick={() => toggle(m.userId)}
+                  className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`}
+                  data-testid={`ag-assign-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>
+              );
+            })}
+            {!state.members.length && <span className="text-xs text-stone-500">Nobody has joined yet.</span>}
+          </div>
+        </div>
+        <div className="text-[11px] text-stone-500 leading-snug">
+          Whoever it's assigned to moves its token, changes its values, presses its buttons and carries its things, and what they say in chat shows over its head on the map.
+        </div>
+        {hidden && (
+          <div className="rounded-md border border-amber-800/60 bg-amber-950/30 p-2 space-y-1.5" data-testid="ag-assign-hidden">
+            <div className="text-[11px] text-amber-200">Only you can see this sheet, so they won't find it.</div>
+            <button type="button" onClick={() => request({ op: "note.update", id: note.id, patch: { acl: { ...note.acl, view: "owners" } as AgAcl } }).catch(fail)}
+              className="h-8 px-2.5 rounded border border-amber-700 text-xs text-amber-200 hover:bg-amber-900/40" data-testid="ag-assign-show">Let them see it</button>
+          </div>
+        )}
+      </div>
+    </AgPanel>
+  );
+}
+
 export function ShareDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
   const { state, request } = useAg();
   const { toast } = useToast();
   const note = state.notes.get(initial.id) ?? initial;
-  const players = state.members.filter((m) => m.role !== "gm");
+  // Everyone at the table can be given a sheet — a GM plays characters too.
+  const players = state.members;
   const update = (patch: any) => request({ op: "note.update", id: note.id, patch }).catch((e: any) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
   const everyone = note.acl.view === "everyone";
   const hidden = note.acl.view === "gm";
@@ -445,14 +506,14 @@ export function ShareDialog({ note: initial, onClose }: { note: AgNote; onClose:
           <AclEditor acl={note.bodyAcl} onChange={(bodyAcl: AgAcl) => update({ bodyAcl })} />
         </div>
         <div className="space-y-1.5">
-          <div className="text-[11px] text-stone-400">Owners — players who control this sheet (change its values, use its buttons, add items)</div>
+          <div className="text-[11px] text-stone-400">Assigned to — who plays this sheet: moves its token, changes its values, uses its buttons, carries its things</div>
           <div className="flex flex-wrap gap-1.5">
             {players.map((m) => {
               const on = note.ownerIds.includes(m.userId);
               return <button key={m.userId} type="button" onClick={() => update({ ownerIds: on ? note.ownerIds.filter((x) => x !== m.userId) : [...note.ownerIds, m.userId] })}
-                className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-share-owner-${m.name}`}>{m.name}</button>;
+                className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-share-owner-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>;
             })}
-            {!players.length && <span className="text-xs text-stone-500">No players have joined yet.</span>}
+            {!players.length && <span className="text-xs text-stone-500">Nobody has joined yet.</span>}
           </div>
         </div>
         <div className="text-[10px] text-stone-500">Values, sections and buttons on the sheet can still be hidden individually (their own settings).</div>
@@ -483,7 +544,8 @@ function CreateDialog({ template: startTemplate, types, startType, folder, onClo
   const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate && n.type === type);
   const [templateId, setTemplateId] = useState<string>("");
   const [owners, setOwners] = useState<string[]>([]);
-  const players = state.members.filter((m) => m.role !== "gm");
+  // Anyone at the table, the GM included: a sheet can be made already assigned.
+  const players = state.members;
   const create = async () => {
     try {
       const res = await request<{ noteId: string }>({ op: "note.create", type, name: name.trim() || (template ? `${agTypeLabel(type)} template` : `New ${agTypeLabel(type)}`), isTemplate: template, templateId: template ? null : templateId || null, ownerIds: owners, folder: folder || null });
@@ -525,8 +587,8 @@ function CreateDialog({ template: startTemplate, types, startType, folder, onClo
           )}
           {!template && players.length > 0 && (
             <div>
-              <div className="text-[11px] text-stone-400 mb-1">Owners</div>
-              <div className="flex flex-wrap gap-1">{players.map((m) => <button key={m.userId} type="button" onClick={() => setOwners(owners.includes(m.userId) ? owners.filter((x) => x !== m.userId) : [...owners, m.userId])} className={`h-8 px-2.5 rounded-full border text-xs ${owners.includes(m.userId) ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-300"}`}>{m.name}</button>)}</div>
+              <div className="text-[11px] text-stone-400 mb-1">Assigned to</div>
+              <div className="flex flex-wrap gap-1">{players.map((m) => <button key={m.userId} type="button" onClick={() => setOwners(owners.includes(m.userId) ? owners.filter((x) => x !== m.userId) : [...owners, m.userId])} className={`h-8 px-2.5 rounded-full border text-xs ${owners.includes(m.userId) ? "border-amber-500 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-create-owner-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>)}</div>
             </div>
           )}
         </div>

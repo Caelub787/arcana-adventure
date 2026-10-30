@@ -43,6 +43,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { sceneLevels, levelForElevation, findLevel, visibleLevelStack, BASE_LEVEL_ID, type SceneLevel } from "@shared/battlemapLevels";
 import { setViewLevel } from "@/battlemap/levelStore";
 import { useAgMaybe } from "@/agnostic/hooks";
+import { mayPlayNote } from "@shared/agnostic/acl";
 import { LevelsPanel, ElevationStepper } from "@/battlemap/LevelsPanel";
 import { Building2 } from "lucide-react";
 import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap, Crosshair, Gem, Wand2 } from "lucide-react";
@@ -1465,8 +1466,8 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
     if (canControlToken?.(t)) return true;
     if (t?.agnosticNoteId && agCtx) {
       const note = agCtx.state.notes.get(t.agnosticNoteId);
-      const uid = agCtx.viewer?.userId;
-      if (note && uid && (note.ownerIds?.includes(uid) || (note as any).userIds?.includes(uid))) return true;
+      // Same rule the server moves it by (see mayControlAgnosticToken).
+      if (note && mayPlayNote(note, agCtx.viewer?.userId)) return true;
     }
     const lvl = t?.characterId ? myPermissions?.permissions?.[t.characterId] : undefined;
     return lvl === 'edit' || lvl === 'owner';

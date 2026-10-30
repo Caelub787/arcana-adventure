@@ -28,7 +28,8 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
   const { user } = useAuth() as any;
   if (!note) return null;
   const update = (patch: any) => request({ op: "note.update", id: noteId, patch }).catch((e) => toast({ title: "Couldn't save", description: e.message, variant: "destructive" }));
-  const players = state.members.filter((m) => m.role !== "gm");
+  // Anyone at the table can be given a sheet — a GM plays characters too.
+  const players = state.members;
   const types = [...Array.from(new Set([...AG_BUILTIN_TYPES.map((t) => t.id), ...[...Array.from(state.notes.values())].map((n) => n.type)]))];
 
   return (
@@ -44,18 +45,18 @@ export function SettingsPanel({ noteId, onDeleted }: { noteId: string; onDeleted
       </Section>
 
       {scope.kind === "campaign" && (
-        <Section title="Owners">
+        <Section title="Assigned to">
           <div className="flex flex-wrap gap-1.5">
             {players.map((m) => {
               const on = note.ownerIds.includes(m.userId);
               return (
                 <button key={m.userId} type="button" onClick={() => update({ ownerIds: on ? note.ownerIds.filter((x) => x !== m.userId) : [...note.ownerIds, m.userId] })}
-                  className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-owner-${m.name}`}>{m.name}</button>
+                  className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`} data-testid={`ag-owner-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>
               );
             })}
-            {!players.length && <span className="text-xs text-stone-500">No players have joined yet.</span>}
+            {!players.length && <span className="text-xs text-stone-500">Nobody has joined yet.</span>}
           </div>
-          <div className="text-[10px] text-stone-500 mt-1">Owners can change this sheet.{note.userIds?.length ? <> <b className="text-stone-300">{note.userIds.map((id) => players.find((m) => m.userId === id)?.name ?? "player").join(", ")}</b> can see it and use its buttons and rolls (it's on their sheet), but not change it unless you make them an owner.</> : null}</div>
+          <div className="text-[10px] text-stone-500 mt-1">Whoever it's assigned to plays it: its token, its values, its buttons, its things.{note.userIds?.length ? <> <b className="text-stone-300">{note.userIds.map((id) => players.find((m) => m.userId === id)?.name ?? "player").join(", ")}</b> can see it and use its buttons and rolls (it's on their sheet), but not change it unless you make them an owner.</> : null}</div>
         </Section>
       )}
 

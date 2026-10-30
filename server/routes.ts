@@ -24,7 +24,7 @@ import { isWoundSystem } from "@shared/systemRules";
 import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
 import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOUNDSCAPE, type SoundscapeState } from "@shared/soundscape";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
-import { initAgnosticRealtime, handleAgnosticUpgrade, removeSpawnedNote } from "./agnostic/realtime";
+import { initAgnosticRealtime, handleAgnosticUpgrade, removeSpawnedNote, mayControlAgnosticToken } from "./agnostic/realtime";
 import { deleteAgnosticCampaignData } from "./agnostic/repo";
 import { resolveScopeAccessCached as resolveAgnosticScopeAccess } from "./agnostic/access";
 import { getStore as getAgnosticStore } from "./agnostic/store";
@@ -679,7 +679,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const originalY = token.y;
 
       if (userRole !== "gm") {
-        if (token.characterId) {
+        const agNoteId = (token as any).agnosticNoteId as string | null | undefined;
+        if (agNoteId) {
+          // Agnostic: the sheet behind the token says who moves it — whoever it
+          // is assigned to. Without this a player's own character walks back to
+          // where it started.
+          const mayMove = await mayControlAgnosticToken(campaignId, agNoteId, authenticatedUserId).catch(() => false);
+          if (!mayMove) {
+            sendRollback({ x: originalX, y: originalY, message: "Not authorized to move this token" });
+            try { ws.send(JSON.stringify({ type: "error", message: "Not authorized to move this token" })); } catch {}
+            return;
+          }
+          const agScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
+          if (agScene?.inCombat && agScene.currentTurnCharacterId && agScene.currentTurnCharacterId !== agNoteId) {
+            sendRollback({ x: originalX, y: originalY, message: "It's not your turn to move" });
+            try { ws.send(JSON.stringify({ type: "error", message: "It's not your turn to move" })); } catch {}
+            return;
+          }
+        } else if (token.characterId) {
           const character = await storage.getCharacter(token.characterId);
           if (!character) {
             sendRollback({ x: originalX, y: originalY, message: "Character not found" });

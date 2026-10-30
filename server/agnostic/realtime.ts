@@ -16,7 +16,7 @@ import * as Y from "yjs";
 import type { AgScope, AgViewer, AgNote, AgField, AgAction } from "@shared/agnostic/types";
 import { parseDocName, scopeKey } from "@shared/agnostic/types";
 import {
-  canViewNote, canViewField, canViewRegion, canEditRegion, canViewBody, canEditBody, canViewLink, canSeeAction,
+  canViewNote, canViewField, canViewRegion, canEditRegion, canViewBody, canEditBody, canViewLink, canSeeAction, mayPlayNote,
 } from "@shared/agnostic/acl";
 import type { AgClientMsg, AgServerMsg, AgActionView, AgEntityKind } from "@shared/agnostic/protocol";
 import { getStore, peekStore, sweepStores, type ChangeSet, type ScopeStore } from "./store";
@@ -460,6 +460,22 @@ export async function noteForViewer(scope: AgScope, noteId: string, userId: stri
  * Does nothing for an ordinary sheet, so the token routes can call it for every
  * token they remove without knowing which is which.
  */
+/**
+ * May this person move the token this sheet stands behind?
+ *
+ * Whoever the sheet is assigned to: its owners, and anyone it has been lent to
+ * (a player holding someone else's item). The GM is never asked — they move
+ * everything. A sheet nobody is assigned to is the GM's to move, as it always
+ * was for a monster.
+ */
+export async function mayControlAgnosticToken(campaignId: string, noteId: string | null | undefined, userId: string): Promise<boolean> {
+  if (!noteId || !userId) return false;
+  const scope: AgScope = { kind: "campaign", id: campaignId };
+  const store = peekStore(scope) ?? (await getStore(scope));
+  const note = store.notes.get(noteId);
+  return !!note && mayPlayNote(note, userId);
+}
+
 export async function removeSpawnedNote(campaignId: string, noteId: string | null | undefined): Promise<boolean> {
   if (!noteId) return false;
   const scope: AgScope = { kind: "campaign", id: campaignId };
