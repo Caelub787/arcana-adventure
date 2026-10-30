@@ -13,6 +13,7 @@ import * as snap from "../snapshot";
 import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, h, icon, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
 import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints, CA_CRAFT_FOLDER } from "./caCrafting";
+import { ensureCraftGuide } from "./caGuide";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -41,7 +42,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 35;
+export const CA_KIT_LEVEL = 36;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -88,6 +89,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 33) await upgrade33(store);
   if (level < 34) await upgrade34(store);
   if (level < 35) await upgrade35(store);
+  if (level < 36) await upgrade36(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1908,4 +1910,12 @@ async function upgrade35(store: ScopeStore) {
       await store.removeField(mark.id, cs);
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 36
+// Crafting, in writing: how to build a forge, a pot and a pen, the metals,
+// ingredients, inks and tools they eat, and the blueprints, recipes and runes
+// that say what to make. A note like any other — rewrite it, share it, bin it.
+async function upgrade36(store: ScopeStore) {
+  await store.run((cs) => ensureCraftGuide(store, cs));
 }

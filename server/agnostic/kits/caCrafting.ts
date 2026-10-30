@@ -11,6 +11,7 @@ import * as snap from "../snapshot";
 import { p, i, t, h, block, icon, tip, section, type DocNode } from "./doc";
 import { Sheet, itemTemplate, CA_CRAFT_ITEM_KINDS, CA_COPIES_FOLDER, type ItemKind } from "./ca";
 import { syncCopyOwners } from "../copies";
+import { ensureCraftGuide } from "./caGuide";
 
 export const CA_CRAFT_FOLDER = "Cultivator's Adventure — Crafting";
 const GILT = "#d4a24c";
@@ -75,6 +76,8 @@ export async function applyCACrafting(store: ScopeStore, cs: ChangeSet, _opts: {
     ["rune", { kind: "rune", sigil: SIGILS.flame.strokes, ingredients: [], tools: [], needsInk: false, output: runeTpl?.id ?? null, effect: { key: "damage_bonus", values: { default: 1, slight: 2, huge: 3 } } } satisfies RuneConfig],
   ];
   for (const [kind, config] of defs) tpl[kind] = byName(store, CA_DEF_TEMPLATE_NAMES[kind], true) ?? await snap.createFromSnapshot(store, defTemplate(kind, config), {}, cs);
+  // How to build all of this, in writing, for whoever is running the game.
+  await ensureCraftGuide(store, cs);
   for (const st of CA_STATION_TEMPLATES) {
     let t = byName(store, st.name, true);
     if (!t) {
