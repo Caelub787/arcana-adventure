@@ -922,7 +922,9 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
 
 // --------------------------------------------------------------------------- wounds & traits
 /** Focus: current / max and its bar, kept by hand (it's spent targeting an enemy — nothing to do with wounds). */
-export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9. Resets on a long rest. Click the bar to spend or restore it.";
+export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent. The choice is yours when your attack beats their DC by 5 or more — the same roll that wounds them:\nWhere | Focus\nBody | 2\nArm or leg | 4\nHead | 6\n\n6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9. Resets on a long rest. Click the bar to spend or restore it.";
+/** What it said before the aiming costs went up and the 5-over rule was spelled out. */
+export const LEGACY_FOCUS_COSTS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9. Resets on a long rest. Click the bar to spend or restore it.";
 export const LEGACY_FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));

@@ -63,9 +63,11 @@ export const CA_WOUND_SEVERITY_COST: Record<CAWoundSeverity, number> = {
   serious: 3,
 };
 
-// Where a wound lands on the body. Purely for the Focus cost reference below
-// — nothing here is spent automatically; the attacker (or the GM, for a
-// monster) reads the cost and adjusts their own Focus by hand.
+// Where a wound lands on the body. The choice is only yours when the attack
+// beats the target's DC by 5 or more — the same roll that causes a wound (see
+// CA_WOUND_SEVERITY_MARGIN above). Purely a Focus cost reference: nothing here
+// is spent automatically; the attacker (or the GM, for a monster) reads the
+// cost and adjusts their own Focus by hand.
 export type CAWoundLocation = "body" | "arm" | "leg" | "head";
 export const CA_WOUND_LOCATIONS: CAWoundLocation[] = ["body", "arm", "leg", "head"];
 export const CA_WOUND_LOCATION_LABELS: Record<CAWoundLocation, string> = {
@@ -75,10 +77,10 @@ export const CA_WOUND_LOCATION_LABELS: Record<CAWoundLocation, string> = {
   head: "Head",
 };
 export const CA_WOUND_LOCATION_FOCUS_COST: Record<CAWoundLocation, number> = {
-  body: 0,
-  arm: 2,
-  leg: 2,
-  head: 4,
+  body: 2,
+  arm: 4,
+  leg: 4,
+  head: 6,
 };
 
 // Movement stats a wound's effect can target besides a skill.
@@ -344,7 +346,8 @@ export function caMaxHp(
 
 // ---------------------------------------------------------------------------
 // Focus — spent by the attacker (or the GM, for a monster) to choose where a
-// wound lands (see CA_WOUND_LOCATION_FOCUS_COST above). Starts at 10, +2 per
+// wound lands, when the roll beats the DC by 5 or more and the choice is theirs
+// to make (see CA_WOUND_LOCATION_FOCUS_COST above). Starts at 10, +2 per
 // rung climbed — same ladder, same shape as the old Wound Capacity formula,
 // just a different starting value and step. Resets on a long rest. Nothing
 // deducts it automatically; it is a plain spendable number like Energy.

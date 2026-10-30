@@ -31,6 +31,7 @@ import {
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
   itemTemplate, beastTemplateSnapshot, applyCATrackerSettings, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
+  LEGACY_FOCUS_COSTS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, LEGACY_RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, LEGACY_CRAFTING_HELP_2, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
@@ -40,7 +41,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 33;
+export const CA_KIT_LEVEL = 34;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -85,6 +86,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 31) await upgrade31(store);
   if (level < 32) await upgrade32(store);
   if (level < 33) await upgrade33(store);
+  if (level < 34) await upgrade34(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1861,4 +1863,31 @@ async function upgrade33(store: ScopeStore) {
     // A beast on the table reads like an NPC: a card on the tracker and a health bar.
     await applyCATrackerSettings(store, cs);
   });
+}
+
+// --------------------------------------------------------------------------- level 34
+// Aiming costs more, and nowhere is free: the body 2 Focus, an arm or a leg 4,
+// the head 6. The note also says when the choice is yours to make — an attack
+// that beats the DC by 5 or more, the same roll that wounds.
+const FOCUS_TEXTS: Array<[string, string]> = [[LEGACY_FOCUS_COSTS_NOTE, FOCUS_NOTE]];
+async function upgrade34(store: ScopeStore) {
+  const pages = new Set<string>();
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      for (const f of Array.from(store.fieldsByNote.get(n.id)?.values() ?? [])) {
+        const tt = f.options?.tooltip;
+        if (!tt || !tt.includes(LEGACY_FOCUS_COSTS_NOTE)) continue;
+        pages.add(n.id);
+        await store.putField({ ...f, options: { ...f.options, tooltip: tt.split(LEGACY_FOCUS_COSTS_NOTE).join(FOCUS_NOTE) } }, cs);
+      }
+      // The Focus line on a character's page carries it as a "?" of its own.
+      if (store.fieldsByNote.get(n.id)?.get("focus")) pages.add(n.id);
+    }
+  });
+  for (const id of Array.from(pages)) {
+    const n = store.notes.get(id);
+    if (!n) continue;
+    await editPage(n, (_doc, frag) => retext(frag, FOCUS_TEXTS));
+    for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag, FOCUS_TEXTS));
+  }
 }

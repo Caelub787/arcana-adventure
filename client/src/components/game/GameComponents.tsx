@@ -23355,8 +23355,9 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   <CaDivider />
 
                   {/* Focus — spent by the attacker (or the GM, for a monster)
-                      to choose where a wound lands. Nothing deducts it
-                      automatically; it's a plain spendable number, same as
+                      to choose where a wound lands, which is theirs to choose
+                      when the attack beats the DC by 5 or more. Nothing deducts
+                      it automatically; it's a plain spendable number, same as
                       Energy, with a reference for what each location costs. */}
                   <CaSection
                     icon={<Sparkles className="h-3.5 w-3.5" />}
@@ -23392,7 +23393,7 @@ export const CharacterSheet = React.memo(function CharacterSheet({ character, is
                   >
                     <Progress value={Math.min(100, Math.round(((liveCharacter.focus ?? 0) / Math.max(1, caMaxFocus(liveCharacter))) * 100))} className="h-2 [&>div]:bg-violet-500" data-testid="progress-ca-focus" />
                     <p className="text-[10px] text-stone-500" data-testid="text-ca-focus-costs">
-                      Choosing where a wound lands costs Focus: Body 0, Arm 2, Leg 2, Head 4. Resets on a long rest.
+                      Beat their DC by 5 or more and you may choose where the wound lands, for Focus: Body 2, Arm 4, Leg 4, Head 6. Resets on a long rest.
                     </p>
                   </CaSection>
 
