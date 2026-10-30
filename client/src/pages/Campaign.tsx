@@ -40,6 +40,7 @@ import { useKeybind, useBindingLabel } from '@/lib/keybinds';
 import { KeybindsPanel } from '@/components/KeybindsPanel';
 import { openAgNoteWindow } from "@/agnostic/AgWindows";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
+import { isSpeech, said, forgetSpeech } from "@/agnostic/speech";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
@@ -10202,6 +10203,8 @@ export default function Campaign() {
         
         // Handle chat messages - real-time chat
         if (data.type === 'chat_message' && data.message) {
+          // Said out loud: it shows over the speaker's token for a moment too.
+          if (isSpeech(data.message)) said(data.message.userId, data.message.text, data.message.sender);
           // Immediately add the new message to the cache
           queryClientRef.current.setQueryData(
             [`/api/campaigns/${effectiveCampaignIdRef.current}/messages`],
@@ -10777,6 +10780,9 @@ export default function Campaign() {
     };
     createTokenMutation.mutate(newToken);
   };
+
+  // Nothing anyone said follows you out of the campaign.
+  useEffect(() => forgetSpeech, [effectiveCampaignId]);
 
   const handleDropCharacterOnMap = useCallback((characterId: string, gridX: number, gridY: number) => {
     // Agnostic: any note can be a token ("ag:<noteId>").

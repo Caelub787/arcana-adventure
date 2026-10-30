@@ -2,11 +2,12 @@
 // bars the GM chose. Bars are the note's real values — click one (if you're
 // allowed) to change it, and the sheet, tracker and every client update.
 import React from "react";
-import type { AgTokenBar } from "@shared/agnostic/types";
+import type { AgTokenBar, AgNote } from "@shared/agnostic/types";
 import { Portrait } from "./widgets";
 import { canViewNote } from "@shared/agnostic/acl";
 import { useAgMaybe, resolveRef } from "./hooks";
 import { ResourceBar } from "./widgets";
+import { onSpeech, speechOf, speechOpacity, SPEECH_FADE_MS } from "./speech";
 
 export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = true }: { noteId: string; tokenSize: number; showName?: boolean; showBars?: boolean }) {
   const ag = useAgMaybe();
@@ -19,6 +20,7 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
   const barH = Math.max(5, Math.min(10, tokenSize / 8));
   return (
     <>
+      <SpeechBubble note={note} tokenSize={tokenSize} />
       {/* The kind's icon until the picture loads (and if it can't). */}
       {/* Pinned over the token's own square (the Portrait box is position:relative itself). */}
       <div className="absolute inset-0 pointer-events-none rounded-xl overflow-hidden" data-testid="ag-token-portrait">
@@ -44,5 +46,41 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * What the person playing this sheet just typed in chat, over its head for a
+ * few seconds. Whoever owns the sheet is who is speaking through it, so a
+ * player's line appears over their own character wherever it stands — and over
+ * each of their sheets, if they have more than one on the table.
+ */
+function SpeechBubble({ note, tokenSize }: { note: AgNote; tokenSize: number }) {
+  const [, bump] = React.useState(0);
+  React.useEffect(() => onSpeech(() => bump((n) => n + 1)), []);
+  // Fading is a second of animation: redraw while there is something to fade.
+  const owner = note.ownerIds.find((id) => !!speechOf(id));
+  const said = speechOf(owner);
+  React.useEffect(() => {
+    if (!said) return;
+    const t = setInterval(() => bump((n) => n + 1), 120);
+    return () => clearInterval(t);
+  }, [said?.at]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!said) return null;
+  const opacity = speechOpacity(said.at);
+  if (opacity <= 0) return null;
+  const size = Math.max(9, Math.min(13, tokenSize / 4.6));
+  return (
+    <div
+      className="absolute left-1/2 -translate-x-1/2 pointer-events-none z-20"
+      style={{ bottom: `calc(100% + ${Math.max(6, tokenSize / 9)}px)`, width: Math.max(120, tokenSize * 2.4), opacity, transition: `opacity ${SPEECH_FADE_MS}ms linear` }}
+      data-testid="ag-token-speech"
+    >
+      <div className="relative mx-auto w-fit max-w-full rounded-xl bg-stone-900/95 border border-stone-600 px-2.5 py-1.5 shadow-lg">
+        <div className="text-stone-100 leading-snug break-words text-center" style={{ fontSize: size }}>{said.text}</div>
+        {/* The tail, pointing down at whoever said it. */}
+        <div className="absolute left-1/2 -translate-x-1/2 -bottom-[5px] h-2 w-2 rotate-45 bg-stone-900/95 border-r border-b border-stone-600" />
+      </div>
+    </div>
   );
 }
