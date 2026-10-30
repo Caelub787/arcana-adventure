@@ -17,7 +17,8 @@ export function AgCampaignPanel({ onPlaceOnMap }: { onPlaceOnMap?: (noteId: stri
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0">
-        <AgNotesBrowser opts={{ showTrackerPin: true, onPlaceOnMap, importSources: true }} />
+        {/* Notes have a panel of their own, so they aren't in here as well. */}
+        <AgNotesBrowser opts={{ showTrackerPin: true, onPlaceOnMap, importSources: true, tabs: ["characters", "abilities", "items", "beasts"] }} />
       </div>
       {ag.realViewer.isGM && ag.state.members.some((m) => m.role !== "gm") && (
         <div className="mx-2 shrink-0" title="See the whole table — sheets, tracker, tokens — as a player would"><MemberPicker value={ag.previewUserId ?? ""} onChange={(id) => ag.setPreviewUserId(id || null)} noneLabel="Viewing as GM" title="Preview the table as…" testId="ag-campaign-preview" /></div>

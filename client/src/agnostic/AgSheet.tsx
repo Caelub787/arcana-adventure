@@ -203,7 +203,8 @@ function SheetBody({ noteId }: { noteId: string }) {
   const play = usePlayView();
   if (!note) return null;
   if (!canViewBody) return <div className="p-6 text-sm text-stone-400 flex items-center gap-2"><Eye className="h-4 w-4" /> Only the name and portrait are shared with you.</div>;
-  const showToolbar = canEditBody && !previewUserId && !play;
+  // Notes are written in, never built: Player view doesn't take the tools away.
+  const showToolbar = canEditBody && !previewUserId && (!play || note.type === "note");
   return (
     <div>
       {showToolbar && <div className="sticky top-0 z-30 bg-stone-950/95 backdrop-blur border-b border-stone-800 px-2"><EditorToolbar noteId={noteId} isGM={isGM} /></div>}

@@ -151,13 +151,13 @@ const TOPICS: Topic[] = [
         ]} />
         <H>Build your first character in 10 steps</H>
         <Steps>
-          <li>In the campaign panel open <Ui>Characters</Ui> → <Ui>New</Ui>, tick <Ui>Make this a template</Ui>, pick <Ui>Character</Ui> and call it “Hero”.</li>
+          <li>In the Sheets panel open <Ui>Characters</Ui> → <Ui>New</Ui> (or right-click the list), tick <Ui>Make this a template</Ui>, pick <Ui>Character</Ui> and call it “Hero”.</li>
           <li>On the template, open the <Ui>Values</Ui> tab. It already has <Code>hp</Code> and <Code>hp_max</Code>. Press <Ui>Add value</Ui> to add more: “Strength” (Number), “Class” (Text)…</li>
           <li>Go back to the <Ui>Sheet</Ui> tab. Press <Ui>+ Insert</Ui> → <Ui>Component</Ui> → <Ui>HP bar</Ui> → <Ui>Insert</Ui>. Leave its parameters empty — it shows the sheet's own HP.</li>
           <li>Hover the bar and drag its right edge to make it wider, or its bottom edge to make it thicker. Press ⚙ → <Ui>Look & size</Ui> for colours, text and style.</li>
           <li><Ui>+ Insert</Ui> → <Ui>Value block</Ui> → pick <Ui>Strength</Ui>. Type text around it like any document — headings, lists, tables.</li>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>New action…</Ui>: add a <Ui>Roll</Ui> step with <Code>1d20 + str</Code>, call it “Attack”, save, insert.</li>
-          <li>Back in the campaign panel, <Ui>Characters</Ui> → <Ui>New</Ui>, leave the template box unticked, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
+          <li>Back in the Sheets panel, <Ui>Characters</Ui> → <Ui>New</Ui>, leave the template box unticked, choose the <Ui>Hero</Ui> template, pick the player as owner.</li>
           <li>Right-click the new sheet in the list (or press its <Ui>⋮</Ui>) → <Ui>Add to player tracker</Ui>. Its card already has the HP bar.</li>
           <li>Same menu → <Ui>Place on battlemap</Ui> (or drag the sheet onto the map) to make it a token with a live HP bar. Double-click the token to open the sheet.</li>
           <li>Use the <Ui>View as</Ui> picker at the top of a sheet to check exactly what the player sees.</li>
@@ -172,8 +172,8 @@ const TOPICS: Topic[] = [
         </Bullets>
         <H>Where things are</H>
         <Bullets>
-          <li><b>Campaign panel</b>: the <Ui>Characters</Ui>, <Ui>Items</Ui>, <Ui>Beasts</Ui> and <Ui>Notes</Ui> tabs with your folders in them, the <Ui>Components</Ui> and import/export buttons, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>.</li>
-          <li><b>Folders</b>: the folder button next to <Ui>Search</Ui> makes one. Drag sheets onto a folder to file them, and folders onto each other to nest them — a folder of weapons with a folder of weapon templates inside it, say. Drop a sheet on the empty space below the list to take it out again.</li>
+          <li><b>Sheets panel</b>: the <Ui>Characters</Ui>, <Ui>Abilities</Ui>, <Ui>Items</Ui> and <Ui>Beasts</Ui> tabs with your folders in them, the <Ui>Components</Ui> and import/export buttons, <Ui>Bring in from My Library / Admin</Ui> and <Ui>Design the player tracker</Ui>. Notes have a panel of their own.</li>
+          <li><b>Folders</b>: the folder button next to <Ui>Search</Ui> makes one, and so does a right-click on the list. Drag sheets onto a folder to file them, and folders onto each other to nest them — a folder of weapons with a folder of weapon templates inside it, say. Drop a sheet on the empty space below the list to take it out again.</li>
           <li><b>A sheet</b>: the <Ui>Sheet</Ui> page, the <Ui>Values</Ui> tab and, for the GM, <Ui>Links</Ui> (connections) and <Ui>Settings</Ui> (who sees it, owners, token bars, buttons, template, history).</li>
           <li><b>Admin → Agnostic</b> and <b>My Library → Agnostic</b>: your own Characters, Items and Species, kept apart from every other system.</li>
         </Bullets>

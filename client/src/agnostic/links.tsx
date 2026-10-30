@@ -15,6 +15,7 @@ import { RollsList } from "./rolls";
 import { EffectsList } from "./effects";
 import { AgSelector, QtyPicker, agConfirm, type SelItem } from "./float";
 import { TipIcon, useAnchoredPopup } from "./tips";
+import { MenuAt, type MenuItem } from "./menu";
 // A list can show its sheets' pages, and pages contain lists: the editor is loaded when first needed.
 const AgEditor = React.lazy(() => import("./editor/AgEditor").then((m) => ({ default: m.AgEditor })));
 
@@ -245,6 +246,23 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
     return <span className="inline-flex items-center gap-1"><FieldInput field={f} />{c.suffix ? <span className="text-stone-500 text-[11px]">{c.suffix}</span> : null}</span>;
   };
 
+  // Right-click a row for the same things its buttons do — and on a phone, a
+  // long press is a right-click.
+  const [rowMenu, setRowMenu] = useState<null | { id: string; x: number; y: number }>(null);
+  const rowMenuProps = (id: string) => ({
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); setRowMenu({ id, x: e.clientX, y: e.clientY }); },
+  });
+  const rowMenuEl = rowMenu && (
+    <MenuAt at={rowMenu} title={state.notes.get(rowMenu.id)?.name || "Untitled"} testId="ag-links-menu" onClose={() => setRowMenu(null)} items={[
+      { icon: <ExternalLink className="h-4 w-4" />, label: "Open", run: () => openNote(rowMenu.id), testId: "open" },
+      ...(canRemove(rowMenu.id) ? [{
+        icon: removeMode === "delete" ? <Trash2 className="h-4 w-4" /> : <Unlink className="h-4 w-4" />,
+        label: removeMode === "delete" ? "Delete" : "Remove from this list",
+        danger: removeMode === "delete", run: () => remove(rowMenu.id), testId: "remove",
+      } as MenuItem] : []),
+    ]} />
+  );
+
   const removeBtn = (id: string) => canRemove(id) && (
     <button type="button" onClick={(e) => { e.stopPropagation(); remove(id); }} className="h-8 w-8 grid place-items-center rounded text-stone-500 hover:text-red-400 hover:bg-red-950/40 shrink-0" title={removeMode === "delete" ? "Delete" : "Remove from this list"} data-testid={`ag-links-remove-${state.notes.get(id)?.name}`}>
       {removeMode === "delete" ? <Trash2 className="h-4 w-4" /> : <Unlink className="h-4 w-4" />}
@@ -283,6 +301,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
           const accent = accentOf(id);
           return (
             <div key={id} role="button" tabIndex={0} draggable onDragStart={dragRow(id)} onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a, [data-no-open]")) openNote(id); }} onKeyDown={(e) => { if (e.key === "Enter") openNote(id); }}
+              {...rowMenuProps(id)}
               className="flex items-center gap-3 p-2.5 rounded-lg bg-stone-900/80 border hover:brightness-110 cursor-pointer" style={{ borderColor: accent ?? look?.border ?? "#44403c" }} data-testid={`ag-links-row-${n.name}`}>
               <Portrait note={n} size={44} radius={8} className="shrink-0" />
               <div className="flex-1 min-w-0 space-y-1">
@@ -311,6 +330,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
         {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={(id) => void pick(id)} onHold={config.add?.copy ? (id) => setHowMany(adding.find((i) => i.id === id) ?? null) : undefined} onClose={() => setAdding(null)} keepOpen hint={holdHint} emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
         {qtyUi}
         {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
+        {rowMenuEl}
       </div>
     );
   }
@@ -331,7 +351,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
             {rows.map((id) => {
               const n = state.notes.get(id)!;
               return (
-                <tr key={id} draggable onDragStart={dragRow(id)} className="border-t border-stone-800 hover:bg-stone-800/40" data-testid={`ag-links-row-${n.name}`}>
+                <tr key={id} draggable onDragStart={dragRow(id)} {...rowMenuProps(id)} className="border-t border-stone-800 hover:bg-stone-800/40" data-testid={`ag-links-row-${n.name}`}>
                   <td className="px-2 py-1"><button type="button" className="inline-flex items-center gap-1.5 text-amber-200 hover:underline text-left" onClick={() => openNote(id)}><Portrait note={n} size={20} radius={4} />{n.name}</button></td>
                   {columns.map((c) => <td key={c.ref} className="px-2 py-1">{cell(id, c)}</td>)}
                   {removeMode !== "none" && <td className="px-1">{removeBtn(id)}</td>}
@@ -345,6 +365,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
       {adding && <AgSelector title={`Add to ${viaPath ? state.notes.get(addHost)?.name ?? lastLabel : label.replace(/_/g, " ")}`} items={adding} onPick={(id) => void pick(id)} onHold={config.add?.copy ? (id) => setHowMany(adding.find((i) => i.id === id) ?? null) : undefined} onClose={() => setAdding(null)} keepOpen hint={holdHint} emptyText="Nothing to add yet — the GM makes templates for these." testId="ag-links-add-selector" />}
         {qtyUi}
       {pickingHost && <AgSelector title="Add to which one?" items={pickingHost} onPick={(id) => { setPickingHost(null); setAddHost(id); void openAdd(id); }} onClose={() => setPickingHost(null)} testId="ag-links-add-host" />}
+      {rowMenuEl}
     </div>
   );
 }

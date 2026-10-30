@@ -24,6 +24,7 @@ import { usePlayView } from "./viewMode";
 import { Portrait } from "./widgets";
 import { agClient } from "./client";
 import { ComponentsManager } from "./ComponentsManager";
+import { MenuAt, type MenuItem } from "./menu";
 import { ImportExportDialog } from "./ImportExport";
 import { GuideButton } from "./AgGuide";
 
@@ -82,6 +83,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const [importing, setImporting] = useState(false);
   const [parts, setParts] = useState(false);
   const [naming, setNaming] = useState<null | { parent: string; path?: string }>(null);
+  const [listMenu, setListMenu] = useState<null | { x: number; y: number }>(null);
   const [shut, setShut] = useState<Set<string>>(new Set());
   const [mine, setMine] = useRememberedFolders(scopeKey);
 
@@ -202,8 +204,10 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
         </div>
         {isGM && !play && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
       </div>
-      {/* Drop a sheet out here and it leaves whatever folder it was in. */}
+      {/* Drop a sheet out here and it leaves whatever folder it was in, and
+          right-click for the things you can make. */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3" data-testid="ag-folder-root"
+        onContextMenu={(e) => { if (!mayCreate && !mayFolder) return; e.preventDefault(); setListMenu({ x: e.clientX, y: e.clientY }); }}
         onDragOver={(e) => { if (dragKind(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }}
         onDrop={(e) => {
           const k = dragKind(e);
@@ -218,6 +222,21 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
         {isGM && !play && !!starterTypes.length && !all.some((n) => n.isTemplate && tabTypes.includes(n.type)) && <StarterTemplates types={starterTypes} />}
         {isGM && !play && !opts.types && tab === "characters" && <StarterKits />}
       </div>
+      {listMenu && (
+        <MenuAt at={listMenu} testId="ag-list-menu" onClose={() => setListMenu(null)} items={[
+          // Right-clicking the list makes what the list is for: on Items a new
+          // item, on Characters a new character, and a folder to keep it in.
+          ...(mayCreate ? [{
+            icon: <Plus className="h-4 w-4" />,
+            label: `New ${tabTypes.length === 1 ? agTypeLabel(tabTypes[0]).toLowerCase() : "sheet"}`,
+            run: () => setCreating({ template: false, folder: "", type: tabTypes.length === 1 ? tabTypes[0] : undefined }),
+            testId: "new",
+          } as MenuItem] : []),
+          ...(mayFolder ? [{ icon: <FolderPlus className="h-4 w-4" />, label: "New folder", run: () => setNaming({ parent: "" }), testId: "new-folder" } as MenuItem] : []),
+          ...(isGM && !play && opts.importSources ? ["sep" as MenuItem,
+            { icon: <Library className="h-4 w-4" />, label: "Bring in from My Library / Admin", run: () => setImporting(true), testId: "import" } as MenuItem] : []),
+        ]} />
+      )}
       {creating && <CreateDialog template={creating.template} types={tabTypes} startType={creating.type} folder={creating.folder} onClose={() => setCreating(null)} />}
       {naming && <FolderDialog name={naming.path ? folderName(naming.path) : ""} parent={naming.parent}
         onSave={(name) => { naming.path ? renameFolder(naming.path, name) : addFolder(naming.parent, name); setNaming(null); }}
@@ -265,7 +284,7 @@ function FolderRows({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps) 
 
 function FolderBlock({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps) {
   const [over, setOver] = useState(false);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<null | { x: number; y: number }>(null);
   const open = !p.shut.has(node.path);
   const count = countIn(node);
   const take = (e: React.DragEvent) => {
@@ -287,6 +306,7 @@ function FolderBlock({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps)
       <div className="flex items-center gap-1 rounded px-1 bg-stone-900/50"
         draggable={p.mayFolder}
         onDragStart={(e) => { e.dataTransfer.setData(DND_FOLDER, node.path); e.dataTransfer.effectAllowed = "move"; }}
+        onContextMenu={(e) => { if (!p.mayFolder) return; e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }); }}
         data-testid={`ag-folder-${node.path}`}>
         <button type="button" onClick={() => p.toggle(node.path)} className="flex items-center gap-1 flex-1 min-w-0 text-[11px] uppercase tracking-wide text-stone-400 py-1">
           {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -295,20 +315,20 @@ function FolderBlock({ node, ...p }: { node: FolderNode<AgNote> } & FolderProps)
           <span className="ml-1 text-stone-600">{count}</span>
         </button>
         {p.mayFolder && (
-          <button type="button" onClick={() => setMenu(true)} className="h-6 w-6 grid place-items-center rounded text-stone-500 hover:text-stone-100 hover:bg-stone-800 shrink-0"
+          <button type="button" onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu({ x: r.right, y: r.bottom }); }}
+            className="h-6 w-6 grid place-items-center rounded text-stone-500 hover:text-stone-100 hover:bg-stone-800 shrink-0"
             title={`More for ${node.name}`} aria-label={`More for ${node.name}`} data-testid={`ag-folder-menu-${node.name}`}><MoreVertical className="h-3.5 w-3.5" /></button>
         )}
       </div>
       {menu && (
-        <AgPanel title={node.name} onClose={() => setMenu(false)} width={300} height={230} testId="ag-folder-actions">
-          <div className="space-y-1 text-sm">
-            {p.mayCreate && <button type="button" onClick={() => { setMenu(false); p.onNewHere(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-new-sheet"><Plus className="h-4 w-4" /> New sheet in here</button>}
-            <button type="button" onClick={() => { setMenu(false); p.onNewInside(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-new-inside"><FolderPlus className="h-4 w-4" /> New folder in here</button>
-            <button type="button" onClick={() => { setMenu(false); p.onRename(node.path); }} className="w-full h-9 px-3 rounded text-left text-stone-200 hover:bg-stone-800 inline-flex items-center gap-2" data-testid="ag-folder-rename"><Pencil className="h-4 w-4" /> Rename…</button>
-            <button type="button" onClick={() => { setMenu(false); p.onDelete(node.path); }} className="w-full h-9 px-3 rounded text-left text-red-300 hover:bg-red-950/60 inline-flex items-center gap-2" data-testid="ag-folder-delete"><Trash2 className="h-4 w-4" /> Remove folder</button>
-            <div className="text-[11px] text-stone-500 px-3 pt-1">Removing a folder keeps everything in it — it all moves up one level.</div>
-          </div>
-        </AgPanel>
+        <MenuAt at={menu} title={node.name} testId="ag-folder-actions" onClose={() => setMenu(null)} items={[
+          ...(p.mayCreate ? [{ icon: <Plus className="h-4 w-4" />, label: "New sheet in here", run: () => p.onNewHere(node.path), testId: "new-sheet" } as MenuItem] : []),
+          { icon: <FolderPlus className="h-4 w-4" />, label: "New folder in here", run: () => p.onNewInside(node.path), testId: "new-inside" },
+          "sep",
+          { icon: <Pencil className="h-4 w-4" />, label: "Rename…", run: () => p.onRename(node.path), testId: "rename" },
+          // Nothing inside is deleted — it all moves up one level.
+          { icon: <Trash2 className="h-4 w-4" />, label: "Remove folder", danger: true, run: () => p.onDelete(node.path), testId: "delete" },
+        ]} />
       )}
       {open && <div className="pl-3 ml-3 border-l-2 border-amber-900/50 space-y-1"><FolderRows node={node} {...p} /></div>}
     </div>
@@ -345,7 +365,7 @@ function NoteRow({ note, opts, onOpen, mayFile }: { note: AgNote; opts: BrowserO
         if (mayFile) e.dataTransfer.setData("application/ag-note", note.id);
         e.dataTransfer.effectAllowed = "copyMove";
       }}
-      onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY }); }}
       // Long-press on phones = right-click.
       onTouchStart={(e) => { cancelPress(); longPressed.current = false; const t = e.touches[0]; press.current = setTimeout(() => { longPressed.current = true; setMenu({ x: t.clientX, y: t.clientY }); }, 550); }}
       onTouchEnd={cancelPress} onTouchMove={cancelPress}
@@ -373,24 +393,8 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
   const { state, request, viewer, scope, system } = useAg();
   const { toast } = useToast();
   const { user } = useAuth() as any;
-  const ref = useRef<HTMLDivElement>(null);
   const [panel, setPanel] = useState<null | "share" | "rename">(null);
-  const [pos, setPos] = useState({ left: at.x, top: at.y });
   const pinned = !!state.settings?.tracker.pinned.includes(note.id);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const w = el.offsetWidth, h = el.offsetHeight;
-    setPos({ left: Math.max(8, Math.min(window.innerWidth - w - 8, at.x)), top: Math.max(8, Math.min(window.innerHeight - h - 8, at.y)) });
-  }, [at.x, at.y, panel]);
-  useEffect(() => {
-    if (panel) return;
-    const close = (e: Event) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("pointerdown", close, true);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", close, true); document.removeEventListener("keydown", esc); };
-  }, [panel, onClose]);
   const fail = (e: any) => toast({ title: "Couldn't do that", description: e.message, variant: "destructive" });
   const togglePin = () => {
     if (!state.settings) return;
@@ -398,7 +402,7 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
     request({ op: "settings.update", settings: { ...state.settings, tracker: { ...t, pinned: pinned ? t.pinned.filter((x) => x !== note.id) : [...t.pinned, note.id] } } }).catch(fail);
   };
   const isGM = viewer.isGM;
-  type Item = { icon: React.ReactNode; label: string; run: () => void; danger?: boolean; testId: string } | "sep";
+  type Item = MenuItem;
   const items: Item[] = [
     { icon: <ExternalLink className="h-4 w-4" />, label: "Open", run: () => onOpen(note.id), testId: "open" },
     ...(isGM && !note.isTemplate && scope.kind === "campaign" ? [{ icon: <Share2 className="h-4 w-4" />, label: "Share with players…", run: () => setPanel("share"), testId: "share" } as Item] : []),
@@ -414,18 +418,7 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
   ];
   if (panel === "share") return <ShareDialog note={note} onClose={onClose} />;
   if (panel === "rename") return <RenameDialog note={note} onClose={onClose} />;
-  return createPortal(
-    <div ref={ref} role="menu" className="fixed z-[30000] min-w-[210px] rounded-lg border border-stone-700 bg-stone-900/98 shadow-2xl py-1 text-sm text-stone-200" style={pos} data-testid="ag-row-menu">
-      <div className="px-3 py-1 text-[11px] text-stone-500 truncate max-w-[260px]">{note.name || "Untitled"}</div>
-      {items.map((it, i) => it === "sep" ? <div key={i} className="my-1 border-t border-stone-800" /> : (
-        <button key={it.testId} type="button" role="menuitem" onClick={() => { const keep = it.testId === "share" || it.testId === "rename"; it.run(); if (!keep) onClose(); }}
-          className={`w-full flex items-center gap-2.5 px-3 h-9 text-left hover:bg-stone-800 ${it.danger ? "text-red-300 hover:bg-red-950/60" : ""}`} data-testid={`ag-row-menu-${it.testId}`}>
-          <span className={it.danger ? "text-red-400" : "text-stone-400"}>{it.icon}</span>{it.label}
-        </button>
-      ))}
-    </div>,
-    document.body,
-  );
+  return <MenuAt at={at} title={note.name || "Untitled"} items={items} keep={["share", "rename"]} testId="ag-row-menu" onClose={onClose} />;
 }
 
 /** Who sees a sheet, who owns it — in one place, from the list. */

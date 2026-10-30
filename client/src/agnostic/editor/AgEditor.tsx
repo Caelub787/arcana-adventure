@@ -74,7 +74,11 @@ export function AgEditor({ docName, noteId, nested, inline, placeholder, locked 
   const parsed = parseDocName(docName);
   const gmSection = parsed?.kind === "region" && realViewer.isGM && state.regions.get(parsed.id)?.acl.view === "gm";
   const forced = useForcedPlayView();
-  const play = locked || forced || (usePlayView() && !gmSection);
+  // A note is a page to write on — there's no layout on it to lock away — so
+  // Player view leaves it open. What you may change is still up to the
+  // permissions on it: a sheet you can't edit comes back read-only anyway.
+  const isNote = state.notes.get(noteId)?.type === "note";
+  const play = locked || forced || (usePlayView() && !gmSection && !isNote);
   if (!handle) return null;
   if (handle.revoked) return null; // no longer allowed: nothing to show
   if (!handle.synced) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;

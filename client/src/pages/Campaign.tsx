@@ -11406,32 +11406,6 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'characters' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('characters');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
-                  data-testid="button-panel-characters"
-                >
-                  <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-              </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>{isSandbox ? 'Actors' : (campaign as any)?.system === 'ca-agnostic' ? 'Sheets' : 'Characters'}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
           {!isSandbox && (
             <TooltipProvider>
               <Tooltip>
@@ -11459,6 +11433,33 @@ export default function Campaign() {
               </Tooltip>
             </TooltipProvider>
           )}
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'characters' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('characters');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  data-testid="button-panel-characters"
+                >
+                  <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+              </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>{isSandbox ? 'Actors' : (campaign as any)?.system === 'ca-agnostic' ? 'Sheets' : 'Characters'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
 
           <TooltipProvider>
             <Tooltip>
