@@ -123,8 +123,9 @@ export async function createFromSnapshot(
     ...snap.note,
     id, scope: store.scope.kind, scopeId: store.scope.id,
     docEpoch: 0, createdAt: now, updatedAt: now,
-    // A new sheet is nobody's copy unless it's made as one (see copies.ts).
-    copyOf: null,
+    // A new sheet is nobody's copy, and nobody's beast on the table, unless
+    // it's made as one (see copies.ts and note.spawn).
+    copyOf: null, spawnedFrom: null,
     ...(fromTemplate ? { isTemplate: false, templateMeta: null, templateId: opts.fromTemplateId!, templateVersion: snap.note.templateMeta?.version ?? 1 } : {}),
     ...overrides,
   } as AgNote;

@@ -41,7 +41,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 34;
+export const CA_KIT_LEVEL = 35;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -87,6 +87,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 32) await upgrade32(store);
   if (level < 33) await upgrade33(store);
   if (level < 34) await upgrade34(store);
+  if (level < 35) await upgrade35(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1890,4 +1891,21 @@ async function upgrade34(store: ScopeStore) {
     await editPage(n, (_doc, frag) => retext(frag, FOCUS_TEXTS));
     for (const r of store.regionsOf(id)) await editRegion(n, r.id, (frag) => retext(frag, FOCUS_TEXTS));
   }
+}
+
+// --------------------------------------------------------------------------- level 35
+// A beast put on the table belongs to its token, so the browser leaves it out:
+// the only beast anyone can pick up is the original, not one already halfway
+// through a fight. The first ones said so in a field on the sheet; it is on
+// the sheet itself now, so move them over and take the field off.
+async function upgrade35(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const mark = Array.from(store.fieldsByNote.get(n.id)?.values() ?? []).find((f) => f.key === "spawned_from");
+      if (!mark) continue;
+      const from = String(mark.value ?? "").replace(/^"|"$/g, "");
+      if (from && !n.spawnedFrom) await store.putNote({ ...n, spawnedFrom: from }, cs);
+      await store.removeField(mark.id, cs);
+    }
+  });
 }

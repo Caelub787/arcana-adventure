@@ -225,6 +225,12 @@ export interface AgNote {
    * window (the GM); every sheet made from that template gets it.
    */
   windowSize?: { width: number; height: number } | null;
+  /**
+   * One of a kind of creature, put on the table: the sheet it came off. It
+   * stands on the map and nowhere else — the browser leaves it out, so the
+   * only one anybody can pick up is the original, with its full stats.
+   */
+  spawnedFrom?: string | null;
   createdAt: number;
   updatedAt: number;
 }

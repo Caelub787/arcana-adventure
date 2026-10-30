@@ -9,6 +9,7 @@ import { AG_BUILTIN_TYPES } from "@shared/agnostic/types";
 
 const TAB_TYPES: Record<string, string[]> = {
   characters: ["character", "npc", "species"],
+  abilities: ["ability", "aspect"],
   beasts: ["beast"],
   notes: ["note", "location"],
 };
@@ -37,14 +38,42 @@ describe("which sheets each tab holds", () => {
   });
 
   it("leaves nothing out: every kind lands on exactly one tab", () => {
-    const covered = ["characters", "items", "beasts", "notes"].flatMap((t) => typesOf(t));
+    const covered = ["characters", "abilities", "items", "beasts", "notes"].flatMap((t) => typesOf(t));
     expect([...covered].sort()).toEqual([...ALL].sort());
   });
 
   it("only offers a tab that has something it could hold", () => {
     const library = ["character", "npc", "beast", "item", "species"];
-    const offered = ["characters", "items", "beasts", "notes"].filter((t) => typesOf(t, library).length > 0);
+    const offered = ["characters", "abilities", "items", "beasts", "notes"].filter((t) => typesOf(t, library).length > 0);
     expect(offered).toEqual(["characters", "items", "beasts"]);
+  });
+
+  it("gives abilities and their aspects a tab of their own, away from the items", () => {
+    expect(tabOf("ability")).toBe("abilities");
+    expect(tabOf("aspect")).toBe("abilities");
+    expect(typesOf("items", ["item", "ability", "aspect", "blueprint"])).toEqual(["item", "blueprint"]);
+  });
+});
+
+/**
+ * A beast put on the table is a copy that belongs to its token: it can be
+ * wounded and killed on its own. The browser leaves those out, so the only
+ * beast anyone can pick up is the original with its own stats — not one
+ * already halfway through a fight.
+ */
+describe("beasts standing on the table", () => {
+  const shown = (notes: Array<{ name: string; spawnedFrom?: string | null }>) => notes.filter((n) => !n.spawnedFrom).map((n) => n.name);
+
+  it("keeps the copies out of the list", () => {
+    expect(shown([
+      { name: "Dire Wolf" },
+      { name: "Dire Wolf 1", spawnedFrom: "w" },
+      { name: "Dire Wolf 2", spawnedFrom: "w" },
+    ])).toEqual(["Dire Wolf"]);
+  });
+
+  it("leaves the sheet they came off right where it is", () => {
+    expect(shown([{ name: "Dire Wolf", spawnedFrom: null }])).toEqual(["Dire Wolf"]);
   });
 });
 

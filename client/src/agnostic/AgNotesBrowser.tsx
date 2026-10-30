@@ -28,18 +28,23 @@ import { ImportExportDialog } from "./ImportExport";
 import { GuideButton } from "./AgGuide";
 
 /**
- * The browser's tabs. Four kinds of thing a table keeps, and every sheet lands
- * on one of them — Items is the catch-all, so blueprints, recipes and whatever
- * kind a GM invents sit with the things. Inside a tab it's folders: a folder
- * you made and named says what's in it better than a row of type chips did.
+ * The browser's tabs. A tab for each kind of thing a table keeps, and every
+ * sheet lands on one of them — Items is the catch-all, so blueprints, recipes
+ * and whatever kind a GM invents sit with the things. Inside a tab it's
+ * folders: a folder you made and named says what's in it better than a row of
+ * type chips did.
  */
-type Tab = "characters" | "items" | "beasts" | "notes";
+type Tab = "characters" | "abilities" | "items" | "beasts" | "notes";
 const TAB_TYPES: Record<string, string[]> = {
   characters: ["character", "npc", "species"],
+  // An ability and its aspects (its single uses) are one thing, kept together.
+  abilities: ["ability", "aspect"],
   beasts: ["beast"],
   notes: ["note", "location"],
 };
-const CONTENT_TABS: Array<[Tab, string]> = [["characters", "Characters"], ["items", "Items"], ["beasts", "Beasts"], ["notes", "Notes"]];
+const CONTENT_TABS: Array<[Tab, string]> = [
+  ["characters", "Characters"], ["abilities", "Abilities"], ["items", "Items"], ["beasts", "Beasts"], ["notes", "Notes"],
+];
 /** Which tab a kind of sheet sits on. Anything unclaimed is a thing, so: Items. */
 export const agTabOfType = (type: string): Tab => (Object.keys(TAB_TYPES).find((k) => TAB_TYPES[k].includes(type)) as Tab) ?? "items";
 
@@ -98,6 +103,10 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   // they're the GM's building material, so players never see them at all.
   const list = all
     .filter((n) => tabTypes.includes(n.type))
+    // One of a kind of creature, out on the table: it belongs to its token.
+    // Leaving it out is the point — the only beast you can pick up is the
+    // original, with its own stats, not a copy halfway through a fight.
+    .filter((n) => !n.spawnedFrom)
     .filter((n) => isGM || !n.isTemplate)
     .filter((n) => !search || n.name.toLowerCase().includes(search))
     .sort((a, b) => Number(b.isTemplate) - Number(a.isTemplate) || a.name.localeCompare(b.name));
@@ -170,15 +179,16 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   return (
     <div className="h-full flex flex-col text-stone-200" data-testid="ag-browser">
       {tabs.length > 1 && (
-        <div className="flex items-center gap-1 px-2 pt-2 shrink-0" data-testid="ag-browser-tabs">
+        <div className="flex flex-wrap items-center gap-1 px-2 pt-2 shrink-0" data-testid="ag-browser-tabs">
           {tabs.map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
-          {isGM && !play && <>
-            <GuideButton compact topic="start" className="ml-auto" />
+          {/* The building tools keep together, and wrap as one when the tabs fill the row. */}
+          {isGM && !play && <span className="ml-auto flex items-center gap-1">
+            <GuideButton compact topic="start" />
             <button type="button" onClick={() => setParts(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Components — the pieces sheets are built from" data-testid="ag-components"><Blocks className="h-3.5 w-3.5" /></button>
             <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
-          </>}
+          </span>}
         </div>
       )}
       <div className="p-2 space-y-1.5 shrink-0">

@@ -457,12 +457,10 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       return store.run(async (cs) => {
         const s = await snap.takeSnapshot(store, n.id);
         const name = String(body.name ?? "").trim().slice(0, 80) || nextSpawnName(store, n);
-        const copy = await snap.createFromSnapshot(store, s, { name, folder: n.folder, ownerIds: [...n.ownerIds] }, cs);
-        // Marked as one that came off a sheet, so it goes when its token does.
-        await store.putField({
-          id: randomUUID(), noteId: copy.id, key: "spawned_from", label: "One of", type: "text", value: n.id,
-          formula: null, options: {}, acl: { view: "gm", edit: "gm" }, sortOrder: -1, templateFieldId: null,
-        }, cs);
+        // Marked as one that came off a sheet: the browser leaves it out, so
+        // nobody picks up the wounded copy by mistake, and it goes when its
+        // token does.
+        const copy = await snap.createFromSnapshot(store, s, { name, folder: n.folder, ownerIds: [...n.ownerIds], spawnedFrom: n.id }, cs);
         return { noteId: copy.id };
       });
     }

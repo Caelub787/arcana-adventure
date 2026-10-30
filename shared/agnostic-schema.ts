@@ -29,6 +29,12 @@ export const agnosticNotes = pgTable("agnostic_notes", {
   copyOf: varchar("copy_of"),
   /** The size its window opens at (a template's, passed on to every sheet made from it). */
   windowSize: jsonb("window_size").$type<{ width: number; height: number } | null>(),
+  /**
+   * Set on one of a kind of creature put on the table (a beast): the sheet it
+   * came off. It lives on the map and nowhere else — the browser leaves it out,
+   * so the only one anybody can reach is the original.
+   */
+  spawnedFrom: varchar("spawned_from"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({ scopeIdx: index("agnostic_notes_scope_idx").on(t.scope, t.scopeId) }));
@@ -164,6 +170,7 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
     doc_epoch integer NOT NULL DEFAULT 0,
     copy_of varchar,
     window_size jsonb,
+    spawned_from varchar,
     created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now()
   )`,
@@ -276,6 +283,7 @@ export const AGNOSTIC_SCHEMA_STATEMENTS = [
   `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS user_ids text[] NOT NULL DEFAULT '{}'::text[]`,
   // The size a sheet's window opens at (set on a template, passed on to its sheets).
   `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS window_size jsonb`,
+  `ALTER TABLE IF EXISTS agnostic_notes ADD COLUMN IF NOT EXISTS spawned_from varchar`,
   // Agnostic sheets in the campaign's initiative order (they aren't rows in characters).
   `ALTER TABLE IF EXISTS initiative_entries ALTER COLUMN character_id DROP NOT NULL`,
   `ALTER TABLE IF EXISTS initiative_entries ADD COLUMN IF NOT EXISTS agnostic_note_id varchar`,

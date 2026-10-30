@@ -466,7 +466,9 @@ export async function removeSpawnedNote(campaignId: string, noteId: string | nul
   const store = peekStore(scope) ?? (await getStore(scope));
   const note = store.notes.get(noteId);
   if (!note) return false;
-  const spawned = Array.from(store.fieldsByNote.get(noteId)?.values() ?? []).some((f) => f.key === "spawned_from" && !!f.value);
+  // Newer ones say so on the note itself; the first beasts said so in a field.
+  const spawned = !!note.spawnedFrom
+    || Array.from(store.fieldsByNote.get(noteId)?.values() ?? []).some((f) => f.key === "spawned_from" && !!f.value);
   if (!spawned) return false;
   await store.run((cs) => store.removeNote(noteId, cs));
   return true;
