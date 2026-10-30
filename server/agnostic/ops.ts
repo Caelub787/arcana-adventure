@@ -333,27 +333,33 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   switch (body.op) {
     // ------------------------------------------------------------------ notes
     case "note.create": {
-      requireGM(viewer);
+      const type = labelKey(body.type) || "note";
+      // Notes are everybody's: a player keeps their own, and it is theirs.
+      // Everything else a campaign is made of is the GM's to make.
+      if (type !== "note" || body.isTemplate) requireGM(viewer);
       const name = cleanLabel(body.name) || "Untitled";
       const hiddenByDefault = (await systemOfScope(store.scope).catch(() => null)) === "ca-agnostic";
-      const type = labelKey(body.type) || "note";
       return store.run(async (cs) => {
         if (body.templateId) {
           const t = noteOf(store, body.templateId);
           if (!t.isTemplate) fail("That isn't a template");
           const s = await snap.takeSnapshot(store, t.id);
           const n = await snap.createFromSnapshot(store, s, {
-            name, folder: body.folder ?? null, portrait: body.portrait ?? null, ownerIds: (body.ownerIds ?? []).slice(0, 50),
+            name, folder: body.folder ?? null, portrait: body.portrait ?? null,
+            ownerIds: viewer.isGM ? (body.ownerIds ?? []).slice(0, 50) : [viewer.userId],
           }, cs, { fromTemplateId: t.id });
           return { noteId: n.id };
         }
         const n = newNote(store, {
-          type, name, folder: body.folder ?? null, portrait: body.portrait ?? null, ownerIds: (body.ownerIds ?? []).slice(0, 50),
+          type, name, folder: body.folder ?? null, portrait: body.portrait ?? null,
+          ownerIds: viewer.isGM ? (body.ownerIds ?? []).slice(0, 50) : [viewer.userId],
           isTemplate: !!body.isTemplate, templateMeta: body.isTemplate ? { version: 1 } : null,
           // A template's own permissions are what its sheets start with; the
           // template itself is always GM-only (see acl.ts templateGuard).
           // CA Agnostic: nothing is visible to players until the GM shares it.
-          acl: { view: hiddenByDefault ? "owners" : "everyone", edit: "gm" },
+          // A player's own note is theirs to write in, and nobody else's to read
+          // until they share it.
+          acl: viewer.isGM ? { view: hiddenByDefault ? "owners" : "everyone", edit: "gm" } : { view: "owners", edit: "owners" },
         });
         await store.putNote(n, cs);
         let order = 0;

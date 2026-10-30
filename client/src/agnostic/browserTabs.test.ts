@@ -94,3 +94,42 @@ describe("naming one of a kind of creature", () => {
     expect(next(["Wolf (Alpha) 1"], "Wolf (Alpha)")).toBe("Wolf (Alpha) 2");
   });
 });
+
+/**
+ * Notes are the one thing a player makes for themselves, so the New button
+ * stays on the Notes tab whichever view they're in. Everything else a
+ * campaign is built out of is still the GM's.
+ */
+describe("who may press New", () => {
+  const mayCreate = (tab: string, isGM: boolean) => isGM || tab === "notes";
+
+  it("lets a player start a note of their own", () => {
+    expect(mayCreate("notes", false)).toBe(true);
+  });
+
+  it("does not let a player make characters or items", () => {
+    for (const tab of ["characters", "items", "more", "templates"]) {
+      expect(mayCreate(tab, false)).toBe(false);
+    }
+  });
+
+  it("leaves the GM able to make anything", () => {
+    for (const tab of ["characters", "items", "notes", "more", "templates"]) {
+      expect(mayCreate(tab, true)).toBe(true);
+    }
+  });
+});
+
+/** A panel pinned to one tab has nothing to choose, so the row is hidden. */
+describe("the tab row", () => {
+  const shows = (allowed?: string[]) => (allowed?.length ?? 2) > 1;
+
+  it("is hidden when the panel is pinned to a single tab", () => {
+    expect(shows(["notes"])).toBe(false);
+  });
+
+  it("shows when there is more than one tab", () => {
+    expect(shows()).toBe(true);
+    expect(shows(["characters", "items"])).toBe(true);
+  });
+});

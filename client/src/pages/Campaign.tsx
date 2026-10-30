@@ -40,6 +40,7 @@ import { useKeybind, useBindingLabel } from '@/lib/keybinds';
 import { KeybindsPanel } from '@/components/KeybindsPanel';
 import { openAgNoteWindow } from "@/agnostic/AgWindows";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
+import { AgNotesPanel } from "@/agnostic/AgNotesPanel";
 import { isSpeech, said, forgetSpeech } from "@/agnostic/speech";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
@@ -14419,7 +14420,16 @@ export default function Campaign() {
               {activeSidePanel === 'deck' && effectiveCampaignId && isSwampy && (
                 <SwampyDeckPanel campaignId={effectiveCampaignId} />
               )}
-              {activeSidePanel === 'notes' && effectiveCampaignId && (
+              {/* Agnostic: notes are sheets, so the Notes panel is the sheet
+                  browser on its Notes tab. Everything a note needs — words,
+                  values, images, tables, a free canvas — a sheet page already
+                  does, and sharing one works like sharing anything else. */}
+              {activeSidePanel === 'notes' && effectiveCampaignId && isAgnostic && (
+                <div className="h-full overflow-hidden flex flex-col" data-testid="notes-panel-agnostic">
+                  <AgNotesPanel />
+                </div>
+              )}
+              {activeSidePanel === 'notes' && effectiveCampaignId && !isAgnostic && (
                 <div className="h-full overflow-hidden flex flex-col">
                   {/* The side panel is a column; the workspace is the screen.
                       Same notes either way - this just says which one you

@@ -43,20 +43,26 @@ export interface BrowserOptions {
   showTrackerPin?: boolean;
   /** Offer importing from My Library / Admin (campaigns). */
   importSources?: boolean;
+  /** Only these tabs. One tab, and its row is hidden — there is nothing to choose. */
+  tabs?: Tab[];
 }
 
 export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const { state, viewer, openNote, system } = useAg();
-  const [tabState, setTab] = useState<Tab>("characters");
+  const allowed = opts.tabs;
+  const [tabState, setTab] = useState<Tab>(allowed?.[0] ?? "characters");
   const play = usePlayView();
   // Player view: just the sheets — templates, components and imports are building tools.
-  const tab: Tab = play && !isContentTab(tabState) ? "characters" : tabState;
+  const tab: Tab = allowed && !allowed.includes(tabState) ? allowed[0] : play && !isContentTab(tabState) ? "characters" : tabState;
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [creating, setCreating] = useState<null | { template: boolean; type?: string }>(null);
   const [io, setIo] = useState(false);
   const [importing, setImporting] = useState(false);
   const isGM = viewer.isGM;
+  /** Who may press New here: anyone on a tab of notes, the GM anywhere.
+   *  Notes are a playing thing, not a building one, so Player view keeps New. */
+  const mayCreate = (t: Tab) => isGM || t === "notes";
   const all = [...Array.from(state.notes.values())];
   const typeIds = useMemo(() => {
     const base = opts.types ?? AG_BUILTIN_TYPES.map((t) => t.id);
@@ -89,18 +95,18 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
 
   return (
     <div className="h-full flex flex-col text-stone-200" data-testid="ag-browser">
-      {isGM && !play && (
+      {isGM && !play && (allowed?.length ?? 2) > 1 && (
         <div className="flex items-center gap-1 px-2 pt-2 shrink-0">
-          {([...CONTENT_TABS, ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).map(([t, label]) => (
+          {([...CONTENT_TABS, ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).filter(([t]) => !allowed || allowed.includes(t)).map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
           <GuideButton compact topic={tab === "components" ? "components" : tab === "templates" ? "templates" : "start"} className="ml-auto" />
           <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
         </div>
       )}
-      {play && (
+      {(play || !isGM) && (allowed?.length ?? 2) > 1 && (
         <div className="flex gap-1 p-2 pb-0 shrink-0" data-testid="ag-browser-tabs-play">
-          {CONTENT_TABS.map(([t, label]) => (
+          {CONTENT_TABS.filter(([t]) => !allowed || allowed.includes(t)).map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
         </div>
@@ -113,7 +119,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-9 pl-7 pr-2 rounded bg-stone-900 border border-stone-700 text-sm" data-testid="ag-browser-search" />
               </div>
-              {isGM && <button type="button" onClick={() => setCreating({ template: tab === "templates", type: tabTypes.length === 1 ? tabTypes[0] : undefined })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
+              {mayCreate(tab) && <button type="button" onClick={() => setCreating({ template: tab === "templates", type: tabTypes.length === 1 ? tabTypes[0] : undefined })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
             </div>
             {/* CA Agnostic: every type chip shows, wrapping onto more lines, whatever the panel's width. */}
             {chipTypes.length > 0 && <div className={`flex gap-1 ${system === "ca-agnostic" ? "flex-wrap" : "overflow-x-auto no-scrollbar"}`} data-testid="ag-type-chips">
@@ -126,7 +132,7 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
             {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
-            {!list.length && <div className="text-sm text-stone-500 p-3 text-center" data-testid="ag-browser-empty">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
+            {!list.length && <div className="text-sm text-stone-500 p-3 text-center" data-testid="ag-browser-empty">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : mayCreate(tab) ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
             {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
             {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
             {tab === "templates" && isGM && !opts.types && <StarterKits />}
