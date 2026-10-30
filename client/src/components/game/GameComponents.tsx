@@ -44,6 +44,7 @@ import { sceneLevels, levelForElevation, findLevel, visibleLevelStack, BASE_LEVE
 import { setViewLevel } from "@/battlemap/levelStore";
 import { useAgMaybe } from "@/agnostic/hooks";
 import { mayPlayNote } from "@shared/agnostic/acl";
+import { findMyToken } from "@shared/agnostic/tokens";
 import { LevelsPanel, ElevationStepper } from "@/battlemap/LevelsPanel";
 import { Building2 } from "lucide-react";
 import { Sword, Shield, Scroll, Map as MapIcon, Settings, Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera, BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban, MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Beaker, Coins, Dices, Edit3, ZoomIn, ZoomOut, Monitor, Hammer, Ruler, Triangle, Circle, Square, Wrench, Route, Pin, PinOff, PanelRight, GraduationCap, Crosshair, Gem, Wand2 } from "lucide-react";
@@ -1438,18 +1439,23 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
     }
   }, [gmSeeAllVision, campaignId]);
 
+  // Agnostic: a note-backed token is controlled — and followed — by whoever
+  // the sheet is assigned to.
+  const agCtx = useAgMaybe();
+  /**
+   * The viewer's own token: the character assigned to them in the older
+   * systems, or an Agnostic sheet assigned to them. The camera centres on it,
+   * the fog sees through its eyes, and the ruler measures from it.
+   */
+  const myToken = useMemo(() => findMyToken(tokens as any[], {
+    characterId: assignedCharacterId,
+    userId: agCtx?.viewer?.userId || currentUserId || null,
+    noteOf: agCtx ? (id: string) => agCtx.state.notes.get(id) : undefined,
+  }), [tokens, assignedCharacterId, agCtx, currentUserId]);
+
   useEffect(() => {
-    if (assignedCharacterId && tokens.length > 0) {
-      const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
-      if (assignedToken) {
-        setSelectedVisionTokenId(assignedToken.id);
-      } else {
-        setSelectedVisionTokenId(null);
-      }
-    } else {
-      setSelectedVisionTokenId(null);
-    }
-  }, [assignedCharacterId, tokens]);
+    setSelectedVisionTokenId(myToken?.id ?? null);
+  }, [myToken?.id]);
 
   // ---- Battlemap levels (shared/battlemapLevels.ts) ----
   // Which level this viewer sees: a player follows the level their own token
@@ -1459,8 +1465,6 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
   const levels = useMemo(() => sceneLevels((scene as any)?.levels), [(scene as any)?.levels]);
   const multiLevel = levels.length > 1;
   const tokenLevelId = useCallback((t: any) => levelForElevation(levels, t?.elevation).id, [levels]);
-  // Agnostic: a note-backed token is controlled by the note's owners.
-  const agCtx = useAgMaybe();
   const canControl = useCallback((t: any) => {
     if (role === 'gm') return true;
     if (canControlToken?.(t)) return true;
@@ -2961,9 +2965,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             let targetZoom = defaultZoom;
 
             const fogActive = scene?.fogEnabled && !isGM;
-            const assignedToken = fogActive && assignedCharacterId
-              ? tokens.find(t => t.characterId === assignedCharacterId)
-              : null;
+            const assignedToken = fogActive ? myToken : null;
 
             if (assignedToken) {
               const tokenWorldX = assignedToken.x;
@@ -2993,7 +2995,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
         };
 
         const handleCenterOnToken = () => {
-          const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
+          const assignedToken = myToken;
           if (!assignedToken) return;
 
           const targetZoom = Math.max(zoomRef.current, 1);
@@ -3068,7 +3070,7 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
             label: 'Center on my token (fit vision range)',
             icon: <Target className="h-4 w-4 md:h-5 md:w-5" />,
             onSelect: handleCenterOnToken,
-            disabled: !assignedCharacterId,
+            disabled: !myToken,
           },
           {
             key: 'reset',

@@ -45,6 +45,7 @@ import { isSpeech, said, forgetSpeech } from "@/agnostic/speech";
 import { GmSpeechBubble } from "@/agnostic/GmSpeech";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
+import { findMyToken } from "@shared/agnostic/tokens";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -8503,6 +8504,13 @@ export default function Campaign() {
 
   // ===== Ruler / AOE Measurement Tool (pure measurement, no damage) =====
   // Resolve the token that the current user's "active" character controls.
+  /** The token of an Agnostic sheet assigned to me, if one is on the map. */
+  const myAgnosticToken = () => {
+    const scope = effectiveCampaignId ? agClient.getScope(`campaign:${effectiveCampaignId}`) : undefined;
+    if (!scope) return null;
+    return findMyToken(tokens as any[], { userId: user?.id ?? null, noteOf: (id: string) => scope.notes.get(id) });
+  };
+
   const getActiveRulerCasterToken = () => {
     const casterCharId = role === 'gm'
       ? (inspectedChar?.id || currentTurnCharacterId || character?.id)
@@ -8511,6 +8519,11 @@ export default function Campaign() {
       const byChar = tokens.find((t: any) => t.characterId === casterCharId);
       if (byChar) return byChar;
     }
+    // Agnostic: a cone or a line is measured from your own token, and whose it
+    // is comes off the sheet it stands for — there are no character records to
+    // read here, so without this the ruler had nothing to aim from.
+    const mine = myAgnosticToken();
+    if (mine) return mine;
     // Fallback: anchor to the currently selected token on the map (helps GMs
     // who aren't inspecting a character and players whose token is selected).
     if (selectedTokenId) {
