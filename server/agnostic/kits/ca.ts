@@ -278,7 +278,10 @@ function framed(sheet: Sheet, id: string, iconName: string, title: string, right
 }
 
 // --------------------------------------------------------------------------- the character
-function characterTemplate(): AgSnapshot {
+export const BEAST_TEMPLATE_DESCRIPTION = "A kind of creature rather than one creature — a wolf, a bandit, a swarm. The same sheet a character has. Drop it on the map as many times as you like: each one put out there gets a copy of this sheet, so they can be hurt, healed and killed one at a time without touching this one or each other. A copy goes when its token does.";
+
+/** The character sheet, and the beast sheet, which is the same thing by another name. */
+function characterTemplate(beast = false): AgSnapshot {
   const s = new Sheet();
   // Identity
   s.text("race", "Race", "Human").num("dc", "DC", 5).choice("size", "Size", ["Tiny", "Small", "Medium", "Large", "Huge"], "Medium")
@@ -402,7 +405,7 @@ function characterTemplate(): AgSnapshot {
       { title: "Inventory", icon: "Backpack", content: inventoryTab },
     ], { color: GILT }),
   ];
-  return s.snapshot({ type: "character", name: "CA Character", description: "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: identityChips(), cv_attributes: attrBoxes });
+  return s.snapshot({ type: beast ? "beast" : "character", name: beast ? "CA Beast" : "CA Character", description: beast ? BEAST_TEMPLATE_DESCRIPTION : "The Cultivator's Adventure character sheet: rank, health, energy, focus, wounds, attributes, skills, abilities, inventory and traits." }, page, { cv_identity: identityChips(), cv_attributes: attrBoxes });
 }
 
 // ---- Crafting on the character (also used to bring existing characters up to date)
@@ -705,6 +708,9 @@ export function effectsNodes(via: string, condition: string, help: string): DocN
 export function itemRollsNodes(): DocNode[] {
   return [h(3, icon("Dices", GILT, 16), " Rolls"), rolls("owner", [], "#b45309", SECTION_LOOK)];
 }
+export const CA_BEAST_TEMPLATE_NAME = "CA Beast";
+/** The beast sheet on its own, for bringing an older campaign up to date. */
+export const beastTemplateSnapshot = (): AgSnapshot => characterTemplate(true);
 export const CA_ITEM_TEMPLATE_NAMES = ["CA Weapon", "CA Ranged Weapon", "CA Armor", "CA Consumable", "CA Rune", "CA Container", "CA Currency", "CA Ammunition", "CA Item", "CA Training Item"];
 export function trainingTemplateSnapshot(): AgSnapshot { return itemTemplate("Training"); }
 
@@ -1003,6 +1009,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   const made: Record<string, AgNote> = {};
   const add = async (key: string, s: AgSnapshot) => { made[key] = await snap.createFromSnapshot(store, s, {}, cs); };
   await add("character", characterTemplate());
+  await add("beast", characterTemplate(true));
   for (const k of ["Weapon", "Ranged Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
   await add("trait", traitTemplate());
@@ -1101,11 +1108,12 @@ export async function applyCATrackerSettings(store: ScopeStore, cs: ChangeSet) {
     const cards = [...st.tracker.cards.filter((c) => c.id !== CA_TRACKER_CARD.id), CA_TRACKER_CARD];
     await store.putSettings({
       ...st,
-      tracker: { ...st.tracker, cards, cardByType: { ...st.tracker.cardByType, character: CA_TRACKER_CARD.id, npc: CA_TRACKER_CARD.id } },
+      tracker: { ...st.tracker, cards, cardByType: { ...st.tracker.cardByType, character: CA_TRACKER_CARD.id, npc: CA_TRACKER_CARD.id, beast: CA_TRACKER_CARD.id } },
       tokenBarsByType: {
         ...st.tokenBarsByType,
         character: [{ id: "hp", value: "hp", max: "hp_max", color: "#f43f5e" }, { id: "en", value: "energy", max: "usable_energy", color: "#06b6d4" }],
         npc: [{ id: "hp", value: "hp", max: "hp_max", color: "#dc2626" }],
+        beast: [{ id: "hp", value: "hp", max: "hp_max", color: "#dc2626" }],
       },
     }, cs);
   }

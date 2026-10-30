@@ -14,6 +14,12 @@ export type AgOp =
   | { op: "note.update"; id: string; patch: Partial<Pick<AgNote, "name" | "portrait" | "folder" | "sortOrder" | "ownerIds" | "acl" | "bodyAcl" | "tokenBars" | "type" | "templateMeta" | "windowSize">> }
   | { op: "note.delete"; id: string }
   | { op: "note.duplicate"; id: string }
+  /**
+   * One of a kind of creature, put on the table: a copy of the sheet that
+   * stands on its own, so it can be wounded and killed without touching the
+   * sheet it came from or any of its fellows. It goes when its token does.
+   */
+  | { op: "note.spawn"; id: string; name?: string }
   | { op: "note.copyFrom"; sourceNoteId: string; sourceScope: AgScope; asTemplate?: boolean }
   | { op: "note.switchTemplate"; id: string; templateId: string | null }
   /** Add a new sheet (from a template) connected to a host sheet — an item into an inventory. */

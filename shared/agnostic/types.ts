@@ -81,6 +81,10 @@ export interface AgNoteTypeDef {
 export const AG_BUILTIN_TYPES: AgNoteTypeDef[] = [
   { id: "character", label: "Character", plural: "Characters", icon: "User", library: true },
   { id: "npc", label: "NPC", plural: "NPCs", icon: "Skull", library: false },
+  // A kind of creature rather than one creature: dropping it on the map puts a
+  // copy of it there, so a pack of wolves is one sheet and six tokens that can
+  // be hurt and killed one at a time.
+  { id: "beast", label: "Beast", plural: "Beasts", icon: "PawPrint", library: true },
   { id: "item", label: "Item", plural: "Items", icon: "Package", library: true },
   { id: "species", label: "Species", plural: "Species", icon: "Dna", library: true },
   { id: "location", label: "Location", plural: "Locations", icon: "MapPin", library: false },

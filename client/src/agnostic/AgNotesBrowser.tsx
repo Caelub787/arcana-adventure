@@ -22,7 +22,19 @@ import { ComponentsManager } from "./ComponentsManager";
 import { ImportExportDialog } from "./ImportExport";
 import { GuideButton } from "./AgGuide";
 
-type Tab = "sheets" | "templates" | "components";
+/**
+ * The browser's own tabs. The three kinds of sheet a table reaches for most get
+ * one each; everything else shares "More", where the type chips still are.
+ */
+type Tab = "characters" | "items" | "notes" | "more" | "templates" | "components";
+/** The sheet types each content tab holds. "more" takes whatever is left over. */
+const TAB_TYPES: Record<string, string[]> = {
+  characters: ["character", "npc", "beast"],
+  items: ["item"],
+  notes: ["note"],
+};
+const CONTENT_TABS: Array<[Tab, string]> = [["characters", "Characters"], ["items", "Items"], ["notes", "Notes"], ["more", "More"]];
+const isContentTab = (t: Tab) => t !== "templates" && t !== "components";
 
 export interface BrowserOptions {
   /** Only these note types are offered (libraries: character/item/species). */
@@ -35,13 +47,13 @@ export interface BrowserOptions {
 
 export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const { state, viewer, openNote, system } = useAg();
-  const [tabState, setTab] = useState<Tab>("sheets");
+  const [tabState, setTab] = useState<Tab>("characters");
   const play = usePlayView();
   // Player view: just the sheets — templates, components and imports are building tools.
-  const tab: Tab = play ? "sheets" : tabState;
+  const tab: Tab = play && !isContentTab(tabState) ? "characters" : tabState;
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
-  const [creating, setCreating] = useState<null | { template: boolean }>(null);
+  const [creating, setCreating] = useState<null | { template: boolean; type?: string }>(null);
   const [io, setIo] = useState(false);
   const [importing, setImporting] = useState(false);
   const isGM = viewer.isGM;
@@ -50,12 +62,24 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
     const base = opts.types ?? AG_BUILTIN_TYPES.map((t) => t.id);
     return [...Array.from(new Set([...base, ...all.map((n) => n.type).filter((t) => !opts.types || opts.types.includes(t))]))];
   }, [all.length, opts.types]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Which types this tab shows: its own, or everything the others don't take. */
+  const tabTypes = useMemo(() => {
+    if (!isContentTab(tab) || tab === "more") {
+      const taken = new Set(Object.values(TAB_TYPES).flat());
+      return tab === "more" ? typeIds.filter((t) => !taken.has(t)) : typeIds;
+    }
+    return TAB_TYPES[tab] ?? typeIds;
+  }, [tab, typeIds]);
+  // Chips only where there is a choice to make: a tab of one type needs none.
+  const chipTypes = tab === "templates" ? typeIds : tabTypes.length > 1 ? tabTypes : [];
   const list = all
     .filter((n) => (tab === "templates" ? n.isTemplate : !n.isTemplate))
+    .filter((n) => tab === "templates" || tabTypes.includes(n.type))
     .filter((n) => !typeFilter || n.type === typeFilter)
     .filter((n) => !opts.types || opts.types.includes(n.type))
     .filter((n) => !q.trim() || n.name.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
+  useEffect(() => { if (typeFilter && !chipTypes.includes(typeFilter)) setTypeFilter(""); }, [chipTypes, typeFilter]);
   const groups = new Map<string, AgNote[]>();
   for (const n of list) {
     const key = n.folder || agTypeLabel(n.type);
@@ -67,11 +91,18 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
     <div className="h-full flex flex-col text-stone-200" data-testid="ag-browser">
       {isGM && !play && (
         <div className="flex items-center gap-1 px-2 pt-2 shrink-0">
-          {([["sheets", "Sheets"], ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).map(([t, label]) => (
+          {([...CONTENT_TABS, ["templates", "Templates"], ["components", "Components"]] as [Tab, string][]).map(([t, label]) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
           ))}
           <GuideButton compact topic={tab === "components" ? "components" : tab === "templates" ? "templates" : "start"} className="ml-auto" />
           <button type="button" onClick={() => setIo(true)} className="h-8 w-8 grid place-items-center rounded bg-stone-800/80 text-stone-300" title="Import / export templates" data-testid="ag-io"><Download className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+      {play && (
+        <div className="flex gap-1 p-2 pb-0 shrink-0" data-testid="ag-browser-tabs-play">
+          {CONTENT_TABS.map(([t, label]) => (
+            <button key={t} type="button" onClick={() => setTab(t)} className={`h-8 px-2.5 rounded text-xs ${tab === t ? "bg-amber-600/90 text-white" : "bg-stone-800/80 text-stone-300"}`} data-testid={`ag-browser-tab-${t}`}>{label}</button>
+          ))}
         </div>
       )}
       {tab === "components" ? <div className="flex-1 min-h-0 overflow-y-auto"><ComponentsManager /></div> : (
@@ -82,27 +113,27 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
                 <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-stone-500" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="w-full h-9 pl-7 pr-2 rounded bg-stone-900 border border-stone-700 text-sm" data-testid="ag-browser-search" />
               </div>
-              {isGM && <button type="button" onClick={() => setCreating({ template: tab === "templates" })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
+              {isGM && <button type="button" onClick={() => setCreating({ template: tab === "templates", type: tabTypes.length === 1 ? tabTypes[0] : undefined })} className="h-9 px-3 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm inline-flex items-center gap-1" data-testid="ag-new"><Plus className="h-4 w-4" /> New</button>}
             </div>
             {/* CA Agnostic: every type chip shows, wrapping onto more lines, whatever the panel's width. */}
-            <div className={`flex gap-1 ${system === "ca-agnostic" ? "flex-wrap" : "overflow-x-auto no-scrollbar"}`} data-testid="ag-type-chips">
+            {chipTypes.length > 0 && <div className={`flex gap-1 ${system === "ca-agnostic" ? "flex-wrap" : "overflow-x-auto no-scrollbar"}`} data-testid="ag-type-chips">
               <button type="button" onClick={() => setTypeFilter("")} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${!typeFilter ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>All</button>
-              {typeIds.map((t) => (
+              {chipTypes.map((t) => (
                 <button key={t} type="button" onClick={() => setTypeFilter(typeFilter === t ? "" : t)} className={`h-7 px-2.5 rounded-full text-[11px] border shrink-0 ${typeFilter === t ? "border-amber-500 text-amber-300" : "border-stone-700 text-stone-400"}`}>{AG_BUILTIN_TYPES.find((x) => x.id === t)?.plural ?? agTypeLabel(t)}</button>
               ))}
-            </div>
+            </div>}
             {isGM && !play && opts.importSources && <button type="button" onClick={() => setImporting(true)} className="h-8 w-full rounded border border-dashed border-stone-700 text-xs text-stone-300 hover:border-amber-600 inline-flex items-center justify-center gap-1.5" data-testid="ag-import-from-library"><Library className="h-3.5 w-3.5" /> Bring in from My Library / Admin</button>}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-3 space-y-2">
             {[...Array.from(groups.entries())].map(([group, notes]) => <Group key={group} title={group} notes={notes} opts={opts} onOpen={openNote} />)}
-            {!list.length && <div className="text-sm text-stone-500 p-3 text-center">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
+            {!list.length && <div className="text-sm text-stone-500 p-3 text-center" data-testid="ag-browser-empty">{tab === "templates" ? "No templates yet. A template is a sheet whose values, layout and buttons every new sheet starts with." : isGM ? "Nothing here yet — press New." : "Nothing has been shared with you yet."}</div>}
             {!all.length && isGM && <div className="text-center"><GuideButton label="New to Agnostic? Open the step-by-step guide" /></div>}
             {tab === "templates" && isGM && !all.some((n) => n.isTemplate) && <StarterTemplates types={(opts.types ?? ["character", "npc", "item"]).filter((t) => t !== "species" || !!opts.types)} />}
             {tab === "templates" && isGM && !opts.types && <StarterKits />}
           </div>
         </>
       )}
-      {creating && <CreateDialog template={creating.template} types={typeIds} onClose={() => setCreating(null)} />}
+      {creating && <CreateDialog template={creating.template} types={tab === "templates" ? typeIds : tabTypes} startType={creating.type} onClose={() => setCreating(null)} />}
       {io && <ImportExportDialog onClose={() => setIo(false)} />}
       {importing && <ImportFromLibraryDialog onClose={() => setImporting(false)} />}
     </div>
@@ -269,11 +300,11 @@ function RenameDialog({ note, onClose }: { note: AgNote; onClose: () => void }) 
   );
 }
 
-function CreateDialog({ template, types, onClose }: { template: boolean; types: string[]; onClose: () => void }) {
+function CreateDialog({ template, types, startType, onClose }: { template: boolean; types: string[]; startType?: string; onClose: () => void }) {
   const { state, request, openNote } = useAg();
   const { toast } = useToast();
   const [name, setName] = useState("");
-  const [type, setType] = useState(types[0] ?? "character");
+  const [type, setType] = useState(startType ?? types[0] ?? "character");
   const templates = [...Array.from(state.notes.values())].filter((n) => n.isTemplate && n.type === type);
   const [templateId, setTemplateId] = useState<string>("");
   const [owners, setOwners] = useState<string[]>([]);

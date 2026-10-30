@@ -24,7 +24,7 @@ import { isWoundSystem } from "@shared/systemRules";
 import { caAuraOf, isCASkillKey, normalizeCAWounds, normalizeCAConsumableWoundOptions, makeCAWound, CA_WOUND_SEVERITY_RANK, caNormalizeItemType, normalizeCASocketedRunes, normalizeCARuneBoosts, caMaxFocus } from "@shared/ca";
 import { isKnownSound, normalizeSoundscapeState, normalizeSceneLayers, EMPTY_SOUNDSCAPE, type SoundscapeState } from "@shared/soundscape";
 import { initCanvasRealtime, handleRealtimeUpgrade } from "./canvasrealms/realtime/server";
-import { initAgnosticRealtime, handleAgnosticUpgrade } from "./agnostic/realtime";
+import { initAgnosticRealtime, handleAgnosticUpgrade, removeSpawnedNote } from "./agnostic/realtime";
 import { deleteAgnosticCampaignData } from "./agnostic/repo";
 import { resolveScopeAccessCached as resolveAgnosticScopeAccess } from "./agnostic/access";
 import { getStore as getAgnosticStore } from "./agnostic/store";
@@ -7484,6 +7484,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaignId = token?.campaignId;
       
       await storage.deleteToken(req.params.id);
+      
+      // A beast put on the table has a sheet of its own: it goes with the token.
+      if (campaignId) await removeSpawnedNote(campaignId, (token as any)?.agnosticNoteId).catch(() => false);
       
       // Broadcast token deletion to all campaign members
       if (campaignId) {

@@ -10782,8 +10782,19 @@ export default function Campaign() {
     // Agnostic: any note can be a token ("ag:<noteId>").
     if (characterId.startsWith('ag:')) {
       const noteId = characterId.slice(3);
-      const note = agClient.getScope(`campaign:${effectiveCampaignId}`)?.notes.get(noteId);
-      createTokenMutation.mutate({ type: note?.type === 'character' ? 'player' : 'enemy', agnosticNoteId: noteId, x: gridX, y: gridY, image: note?.portrait || goblinToken });
+      const scope = agClient.getScope(`campaign:${effectiveCampaignId}`);
+      const note = scope?.notes.get(noteId);
+      const place = (id: string, portrait?: string | null) =>
+        createTokenMutation.mutate({ type: note?.type === 'character' ? 'player' : 'enemy', agnosticNoteId: id, x: gridX, y: gridY, image: portrait || note?.portrait || goblinToken });
+      // A beast is a kind of creature, not one creature: each one put on the
+      // table gets a copy of the sheet, so they can be wounded one at a time.
+      if (note?.type === 'beast') {
+        void agClient.request({ kind: 'campaign', id: effectiveCampaignId! }, { op: 'note.spawn', id: noteId })
+          .then((r: any) => place(r?.noteId ?? noteId, note.portrait))
+          .catch(() => place(noteId));
+        return;
+      }
+      place(noteId);
       return;
     }
     const character = characters?.find((c: any) => c.id.toString() === characterId);

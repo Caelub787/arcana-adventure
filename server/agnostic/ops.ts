@@ -316,6 +316,18 @@ function sameAsOriginal(store: ScopeStore, copy: AgNote, original: AgNote, holde
   return true;
 }
 
+/** "Wolf 3": the next free number among the ones already on the table. */
+function nextSpawnName(store: ScopeStore, source: AgNote): string {
+  const taken = new Set<number>();
+  for (const n of Array.from(store.notes.values())) {
+    const m = n.name.match(new RegExp(`^${source.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (\\d+)$`));
+    if (m) taken.add(Number(m[1]));
+  }
+  let i = 1;
+  while (taken.has(i)) i++;
+  return `${source.name} ${i}`;
+}
+
 export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
   const { store, viewer } = ctx;
   switch (body.op) {
@@ -420,6 +432,24 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         }
         const s = await snap.takeSnapshot(store, n.id);
         const copy = await snap.createFromSnapshot(store, s, { name: `${n.name} (copy)` }, cs);
+        return { noteId: copy.id };
+      });
+    }
+    case "note.spawn": {
+      // One of a kind of creature, put on the table. Players put beasts out too
+      // (the GM decides who sees the sheet), so this isn't GM-only — but it
+      // only ever copies a sheet the viewer can already see.
+      const n = noteOf(store, body.id);
+      if (!canViewNote(n, viewer)) fail("You can't see that sheet");
+      return store.run(async (cs) => {
+        const s = await snap.takeSnapshot(store, n.id);
+        const name = String(body.name ?? "").trim().slice(0, 80) || nextSpawnName(store, n);
+        const copy = await snap.createFromSnapshot(store, s, { name, folder: n.folder, ownerIds: [...n.ownerIds] }, cs);
+        // Marked as one that came off a sheet, so it goes when its token does.
+        await store.putField({
+          id: randomUUID(), noteId: copy.id, key: "spawned_from", label: "One of", type: "text", value: n.id,
+          formula: null, options: {}, acl: { view: "gm", edit: "gm" }, sortOrder: -1, templateFieldId: null,
+        }, cs);
         return { noteId: copy.id };
       });
     }

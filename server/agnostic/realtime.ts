@@ -451,3 +451,23 @@ export async function noteForViewer(scope: AgScope, noteId: string, userId: stri
   return n && canViewNote(n, viewer) ? n : null;
 }
 
+
+/**
+ * A sheet that only existed because a token did. A beast put on the table gets
+ * a copy of its sheet so it can be wounded on its own; when its token goes, the
+ * copy goes with it, or a campaign fills up with the dead.
+ *
+ * Does nothing for an ordinary sheet, so the token routes can call it for every
+ * token they remove without knowing which is which.
+ */
+export async function removeSpawnedNote(campaignId: string, noteId: string | null | undefined): Promise<boolean> {
+  if (!noteId) return false;
+  const scope: AgScope = { kind: "campaign", id: campaignId };
+  const store = peekStore(scope) ?? (await getStore(scope));
+  const note = store.notes.get(noteId);
+  if (!note) return false;
+  const spawned = Array.from(store.fieldsByNote.get(noteId)?.values() ?? []).some((f) => f.key === "spawned_from" && !!f.value);
+  if (!spawned) return false;
+  await store.run((cs) => store.removeNote(noteId, cs));
+  return true;
+}

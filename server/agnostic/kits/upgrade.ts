@@ -29,7 +29,7 @@ import {
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
-  itemTemplate, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
+  itemTemplate, beastTemplateSnapshot, applyCATrackerSettings, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, LEGACY_RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, LEGACY_CRAFTING_HELP_2, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
@@ -40,7 +40,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 32;
+export const CA_KIT_LEVEL = 33;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -84,6 +84,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 30) await upgrade30(store);
   if (level < 31) await upgrade31(store);
   if (level < 32) await upgrade32(store);
+  if (level < 33) await upgrade33(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1847,4 +1848,17 @@ async function upgrade32(store: ScopeStore) {
       retext(frag, [[LEGACY_RUNE_SPACE_HELP, RUNE_SPACE_HELP]]);
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 33
+// Beasts: a kind of creature rather than one creature. The same sheet a
+// character has, but dropping it on the map puts a copy of it out there, so a
+// pack of wolves is one sheet and six tokens that die one at a time.
+async function upgrade33(store: ScopeStore) {
+  const has = Array.from(store.notes.values()).some((n) => n.isTemplate && n.name === "CA Beast");
+  await store.run(async (cs) => {
+    if (!has) await snap.createFromSnapshot(store, beastTemplateSnapshot(), {}, cs);
+    // A beast on the table reads like an NPC: a card on the tracker and a health bar.
+    await applyCATrackerSettings(store, cs);
+  });
 }

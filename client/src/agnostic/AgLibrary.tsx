@@ -11,7 +11,7 @@ import { GuideButton, AgGuideHost } from "./AgGuide";
 import { AgConfirmHost } from "./float";
 import { AgCraftHost } from "./craft/CraftHost";
 
-export const AG_LIBRARY_TYPES = ["character", "npc", "item", "species"];
+export const AG_LIBRARY_TYPES = ["character", "npc", "beast", "item", "species"];
 
 function Inner({ scope }: { scope: AgScope }) {
   const win = useAgWindows();
