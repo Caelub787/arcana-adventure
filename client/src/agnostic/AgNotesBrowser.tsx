@@ -88,7 +88,8 @@ export function AgNotesBrowser({ opts = {} }: { opts?: BrowserOptions }) {
   const [mine, setMine] = useRememberedFolders(scopeKey);
 
   const fail = (e: any) => toast({ title: "Couldn't do that", description: e?.message, variant: "destructive" });
-  const all = [...Array.from(state.notes.values())];
+  // A card on the player tracker is not a sheet you have — it never lists.
+  const all = [...Array.from(state.notes.values())].filter((n) => !n.trackerOnly);
   const typeIds = useMemo(() => {
     const base = opts.types ?? AG_BUILTIN_TYPES.map((t) => t.id);
     return [...Array.from(new Set([...base, ...all.map((n) => n.type).filter((t) => !opts.types || opts.types.includes(t))]))];

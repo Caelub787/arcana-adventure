@@ -6,10 +6,15 @@ import { useKeybind } from "@/lib/keybinds";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { bringFloatingPanelToFront } from "@/components/ui/floating-panel";
-import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices } from "lucide-react";
+import { Settings2, Plus, Trash2, Copy, ArrowUp, ArrowDown, X, LayoutTemplate, Dices, ExternalLink } from "lucide-react";
+import { MenuAt, type MenuItem } from "./menu";
+
+/** Dragging a card along the player tracker (the GM's running order). */
+const DND_PINNED = "application/ag-pinned";
 import type { AgNote } from "@shared/agnostic/types";
 import type { AgCampaignSettings, AgTrackerCard } from "@shared/agnostic/types";
 import { DEFAULT_TRACKER_CARD, agTypeLabel } from "@shared/agnostic/types";
+import { reorderPinned, nudgePinned } from "@shared/agnostic/tracker";
 import { AgPanel, AgSelector, PickField } from "./float";
 import { NotePicker, noteItems } from "./pickers";
 import { useToast } from "@/hooks/use-toast";
@@ -38,11 +43,12 @@ export function AgTracker(props: { rollFeed?: RollFeedLike[]; isMobile?: boolean
 }
 
 function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }: { rollFeed?: RollFeedLike[]; isMobile?: boolean; leftOffset?: number; rightInset?: number }) {
-  const { state, openNote, viewer, system } = useAg();
+  const { state, openNote, viewer, system, request } = useAg();
   const [designing, setDesigning] = useState(false);
   // Bindable in Settings > Keyboard shortcuts (GM).
   useKeybind("panel.playerTracker", () => setDesigning((d: boolean) => !d), !!viewer.isGM);
   const [history, setHistory] = useState<string | null>(null);
+  const [menu, setMenu] = useState<null | { id: string; x: number; y: number }>(null);
   // CA Agnostic: the tracker card keeps a roll history button.
   const ca = system === "ca-agnostic";
   const play = usePlayView();
@@ -65,6 +71,13 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
     return r ? { label: r.text || r.label || "Roll", total: Number(r.total ?? 0), ts: r.ts ?? r.timestamp ?? Date.now() } : null;
   };
   const tray = t.diceTray !== false;
+  /** A click on a card: the sheet if it's yours to open, its rolls if it isn't. */
+  const press = (n: AgNote) => { if (n.trackerOnly) setHistory(n.id); else openNote(n.id); };
+  const savePinned = (pinned: string[]) =>
+    settings && request({ op: "settings.update", settings: { ...settings, tracker: { ...t, pinned } } }).catch(() => { /* the GM sees it snap back */ });
+  /** Dragged one card onto another: put it there, and shuffle the rest along. */
+  const movePinnedBefore = (fromId: string, toId: string) => void savePinned(reorderPinned(t.pinned, fromId, toId));
+  const nudge = (id: string, d: -1 | 1) => void savePinned(nudgePinned(t.pinned, id, d));
   // Rolls slide out from the card toward the middle of the screen.
   const trayFrom: TraySide = t.placement === "bottom" ? "above" : t.placement === "left" ? "right" : t.placement === "right" ? "left" : "below";
   const vertical = t.placement === "left" || t.placement === "right";
@@ -89,8 +102,16 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
                   role="button"
                   tabIndex={0}
                   // Cards hold live controls (bars, buttons); only a click on the card itself opens the sheet.
-                  onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a")) openNote(n.id); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") openNote(n.id); }}
+                  // A card you only have because it's pinned here opens its rolls instead — that much is the
+                  // table's to read, the sheet isn't.
+                  onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, select, a")) press(n); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") press(n); }}
+                  // The GM puts them in the order they want: drag one onto another to move it.
+                  draggable={viewer.isGM && !play}
+                  onDragStart={(e) => { e.dataTransfer.setData(DND_PINNED, n.id); e.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(e) => { if (e.dataTransfer.types.includes(DND_PINNED)) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }}
+                  onDrop={(e) => { const from = e.dataTransfer.getData(DND_PINNED); if (from) { e.preventDefault(); movePinnedBefore(from, n.id); } }}
+                  onContextMenu={viewer.isGM ? (e) => { e.preventDefault(); setMenu({ id: n.id, x: e.clientX, y: e.clientY }); } : undefined}
                   className="shrink-0 text-left rounded-[10px] shadow-lg hover:brightness-110 transition cursor-pointer"
                   style={{ width: card.layout.width * scale }}
                   data-testid={`ag-tracker-card-${n.name}`}
@@ -105,6 +126,21 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
           )}
         </div>
       </div>
+      {menu && (() => {
+        const n = state.notes.get(menu.id);
+        const first = t.pinned[0] === menu.id, last = t.pinned[t.pinned.length - 1] === menu.id;
+        return (
+          <MenuAt at={menu} title={n?.name || "Untitled"} testId="ag-tracker-menu" onClose={() => setMenu(null)} items={[
+            { icon: <ExternalLink className="h-4 w-4" />, label: "Open the sheet", run: () => openNote(menu.id), testId: "open" },
+            { icon: <Dices className="h-4 w-4" />, label: "Roll history", run: () => setHistory(menu.id), testId: "history" },
+            "sep",
+            ...(first ? [] : [{ icon: <ArrowUp className="h-4 w-4" />, label: "Move it earlier", run: () => nudge(menu.id, -1), testId: "earlier" } as MenuItem]),
+            ...(last ? [] : [{ icon: <ArrowDown className="h-4 w-4" />, label: "Move it later", run: () => nudge(menu.id, 1), testId: "later" } as MenuItem]),
+            { icon: <Settings2 className="h-4 w-4" />, label: "Design the player tracker…", run: () => setDesigning(true), testId: "design" },
+            { icon: <X className="h-4 w-4" />, label: "Take it off the tracker", danger: true, run: () => void savePinned(t.pinned.filter((x) => x !== menu.id)), testId: "unpin" },
+          ]} />
+        );
+      })()}
       {designing && <TrackerDesigner onClose={() => setDesigning(false)} />}
       {history && <RollHistory notes={notes} rollsOf={rollsOf} first={history} onClose={() => setHistory(null)} />}
     </>

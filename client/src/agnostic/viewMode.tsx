@@ -30,7 +30,12 @@ function stored(key: string): AgViewMode | null {
 }
 
 export function getAgViewMode(key: string, isGM: boolean): AgViewMode {
-  return stored(key) ?? (isGM ? "gm" : "player");
+  // Only a GM builds. A player plays: their sheets are theirs to use, not to
+  // rebuild, so there is no switch for them and nothing stored can let them
+  // past it. (Notes are the exception, and they don't go through this at all —
+  // a note is a page to write on, see AgEditor.)
+  if (!isGM) return "player";
+  return stored(key) ?? "gm";
 }
 
 export function setAgViewMode(key: string, mode: AgViewMode) {
@@ -61,7 +66,7 @@ export function usePlayView(): boolean {
   return useAgViewMode(key, !!ctx?.realViewer.isGM) === "player" || forced;
 }
 
-/** The switch in the map's left button column. */
+/** The switch in the map's left button column — the GM's, and only theirs. */
 export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; isGM: boolean }) {
   const key = scopeKey(scope);
   // The server's word on who's a GM (assistant GMs, admins) once connected.
@@ -75,6 +80,8 @@ export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; is
     setAgViewMode(key, getAgViewMode(key, isGM) === "player" ? "gm" : "player");
   }, isGM);
   const shortcut = useBindingLabel("view.gmPlayer");
+  // Building is the GM's job, so the switch is the GM's button.
+  if (!isGM) return null;
   return (
     <TooltipProvider>
       <Tooltip>

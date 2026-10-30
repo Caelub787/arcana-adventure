@@ -848,7 +848,20 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "settings.update": {
       requireGM(viewer);
       if (store.scope.kind !== "campaign") fail("Settings belong to a campaign");
-      return store.run(async (cs) => { await store.putSettings(cleanSettings(body.settings), cs); return { ok: true as const }; });
+      return store.run(async (cs) => {
+        const before = store.settings?.tracker.pinned ?? [];
+        const next = cleanSettings(body.settings);
+        await store.putSettings(next, cs);
+        // Putting a sheet on the player tracker shows its card to the whole
+        // table, taking it off takes it away again, and redesigning a card
+        // changes which of its values are on show. All of that is a change in
+        // who may see what, so every sheet involved is sent round afresh.
+        for (const id of Array.from(new Set([...before, ...next.tracker.pinned]))) {
+          cs.notes.add(id);
+          store.fieldsOf(id).forEach((f) => cs.fields.add(f.id));
+        }
+        return { ok: true as const };
+      });
     }
     case "component.upsert": {
       requireGM(viewer);

@@ -4041,7 +4041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.clearChatMessages(campaignId);
       campaignRollFeeds.set(campaignId, []);
       await storage.updateCampaign(campaignId, { rollFeed: [] });
-      broadcastToCampaign(campaignId, { type: 'chat_cleared' });
+      broadcastToCampaign(campaignId, { type: 'chat_cleared', campaignId });
       res.json({ success: true });
     } catch (err) {
       console.error('Error clearing chat messages:', err);

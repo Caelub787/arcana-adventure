@@ -231,6 +231,13 @@ export interface AgNote {
    * only one anybody can pick up is the original, with its full stats.
    */
   spawnedFrom?: string | null;
+  /**
+   * Set per viewer, never stored: all this person gets of this sheet is its
+   * card on the player tracker, because the GM pinned it there. They can watch
+   * it and read its rolls; they can't open it, change it, or see a value the
+   * card doesn't show.
+   */
+  trackerOnly?: boolean;
   createdAt: number;
   updatedAt: number;
 }

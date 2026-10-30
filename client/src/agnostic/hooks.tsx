@@ -71,7 +71,11 @@ export function AgScopeProvider({ scope, children, onOpenNote, blocking = true, 
     return previewUserId && realViewer.isGM ? filterState(raw, viewer) : raw;
   }, [raw, previewUserId, realViewer.isGM]); // eslint-disable-line react-hooks/exhaustive-deps
   const request = useCallback(<T,>(op: AgOp) => agClient.request<T>(scope, op), [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const openNote = useCallback((id: string) => onOpenNote?.(id), [onOpenNote]);
+  // A sheet you only see as a card on the player tracker doesn't open.
+  const openNote = useCallback((id: string) => {
+    if (state?.notes.get(id)?.trackerOnly) return;
+    onOpenNote?.(id);
+  }, [onOpenNote, state]);
   const value = useMemo<AgCtx | null>(() => state ? ({ scope, key, system, state, viewer, realViewer, previewUserId, setPreviewUserId, request, openNote }) : null,
     [state, viewer.userId, viewer.isGM, realViewer, previewUserId, request, openNote, system]); // eslint-disable-line react-hooks/exhaustive-deps
   const usable = !!value && value.state.ready && !value.state.denied;

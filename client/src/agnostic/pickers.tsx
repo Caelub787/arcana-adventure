@@ -131,7 +131,9 @@ export function ComponentPicker({ value, onChange, testId = "ag-component-picker
 }
 
 export function noteItems(notes: AgNote[]): SelItem[] {
-  return notes.slice().sort((a, b) => a.name.localeCompare(b.name)).map((n) => ({
+  // A sheet you only have because it's on the player tracker isn't yours to
+  // pick, connect or put anywhere: it's a card to watch.
+  return notes.filter((n) => !n.trackerOnly).slice().sort((a, b) => a.name.localeCompare(b.name)).map((n) => ({
     id: n.id, name: n.name || "Untitled", image: n.portrait, group: agTypeLabel(n.type),
     sub: n.isTemplate ? `${agTypeLabel(n.type)} template · v${n.templateMeta?.version ?? 1}` : agTypeLabel(n.type),
   }));

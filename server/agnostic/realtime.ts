@@ -13,13 +13,14 @@ import type { IncomingMessage } from "http";
 import type { Socket } from "net";
 import { WebSocketServer, WebSocket } from "ws";
 import * as Y from "yjs";
-import type { AgScope, AgViewer, AgNote, AgField, AgAction } from "@shared/agnostic/types";
+import type { AgScope, AgViewer, AgNote, AgField, AgAction, AgTrackerCard } from "@shared/agnostic/types";
 import { parseDocName, scopeKey } from "@shared/agnostic/types";
 import {
   canViewNote, canViewField, canViewRegion, canEditRegion, canViewBody, canEditBody, canViewLink, canSeeAction, mayPlayNote,
 } from "@shared/agnostic/acl";
 import type { AgClientMsg, AgServerMsg, AgActionView, AgEntityKind } from "@shared/agnostic/protocol";
 import { getStore, peekStore, sweepStores, type ChangeSet, type ScopeStore } from "./store";
+import { cardForNote, trackerRefs } from "@shared/agnostic/tracker";
 import { resolveScopeAccess, resolveScopeAccessCached, scopeMembers } from "./access";
 import { runOp, OpError, type HostHooks } from "./ops";
 import * as docs from "./docs";
@@ -78,12 +79,52 @@ function actionView(a: AgAction, viewer: AgViewer): AgActionView {
   return { ...a, steps: viewer.isGM ? a.steps : null, asks: a.steps.some((st) => st.type === "choose") };
 }
 
+/**
+ * A sheet pinned to the player tracker is the table's to watch: everyone gets
+ * its card — the name, the portrait and the values the card shows — even
+ * without the run of the sheet. That is all they get. The sheet itself stays
+ * shut (`trackerOnly` tells the screen to keep it shut), nothing is editable,
+ * and a value the card doesn't show is never sent.
+ */
+function trackerCard(store: ScopeStore, noteId: string): AgTrackerCard | null {
+  if (store.scope.kind !== "campaign" || !store.settings) return null;
+  const note = store.notes.get(noteId);
+  if (!note || note.isTemplate || !store.settings.tracker.pinned.includes(noteId)) return null;
+  return cardForNote(store.settings, noteId, note.type);
+}
+
+function trackerNoteView(store: ScopeStore, note: AgNote): AgNote | null {
+  if (!trackerCard(store, note.id)) return null;
+  return {
+    ...note,
+    // Only what a card is made of. The page, its links and its settings aren't
+    // theirs to see, so the body stays GM-only and nothing here is editable.
+    userIds: [],
+    acl: { view: "everyone", edit: "gm" },
+    bodyAcl: { view: "gm", edit: "gm" },
+    tokenBars: note.tokenBars,
+    trackerOnly: true,
+  };
+}
+
+function trackerFieldView(store: ScopeStore, f: AgField, note: AgNote): AgField | null {
+  const card = trackerCard(store, note.id);
+  if (!card || !trackerRefs(card, (id) => store.components.get(id)).includes(f.key)) return null;
+  return { ...f, formula: null, acl: { view: "everyone", edit: "gm" } };
+}
+
 function visible(store: ScopeStore, kind: Kind, id: string, viewer: AgViewer): unknown | null {
   switch (kind) {
-    case "note": { const n = store.notes.get(id); return n && canViewNote(n, viewer) ? n : null; }
+    case "note": {
+      const n = store.notes.get(id);
+      if (!n) return null;
+      return canViewNote(n, viewer) ? n : viewer.isGM ? null : trackerNoteView(store, n);
+    }
     case "field": {
       const f = store.fields.get(id); const n = f && store.notes.get(f.noteId);
-      return f && n && canViewField(f, n, viewer) ? fieldView(f, viewer) : null;
+      if (!f || !n) return null;
+      if (canViewField(f, n, viewer)) return fieldView(f, viewer);
+      return viewer.isGM ? null : trackerFieldView(store, f, n);
     }
     case "region": {
       const r = store.regions.get(id); const n = r && store.notes.get(r.noteId);

@@ -46,6 +46,7 @@ import { GmSpeechBubble } from "@/agnostic/GmSpeech";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
 import { findMyToken } from "@shared/agnostic/tokens";
+import { useChatLog, ensureChatLoaded, chatCleared } from "@/lib/chatLog";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
@@ -1015,37 +1016,13 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
   const { toast } = useToast();
   const { user } = useAuth();
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string; recipientId?: string; recipientName?: string }>>([]);
+  // The log is kept outside this panel (lib/chatLog.ts), so opening it shows
+  // the table's chat at once instead of fetching it again every time.
+  const messages = useChatLog(campaignId);
   const [chatTarget, setChatTarget] = useState<string>('all');
   const [filter, setFilter] = useState<'all' | 'rolls' | 'chat'>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!campaignId) return;
-    const fetchMessages = async () => {
-      try {
-        const data = await api.getChatMessages(campaignId);
-        setMessages(data);
-      } catch (err) {
-        console.error('Failed to fetch chat messages:', err);
-      }
-    };
-    fetchMessages();
-  }, [campaignId]);
-
-  useEffect(() => {
-    if (!campaignId) return;
-    const unsubscribe = gameWs.onMessage((data: any) => {
-      if (data.type === 'chat_message' && data.message) {
-        setMessages(prev => [...prev, data.message]);
-      }
-      if (data.type === 'chat_cleared') {
-        setMessages([]);
-      }
-    });
-    return () => { unsubscribe(); };
-  }, [campaignId]);
 
   useEffect(() => {
     setTimeout(() => {
@@ -1088,7 +1065,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
   const handleClearChat = async () => {
     try {
       await api.clearChatMessages(campaignId);
-      setMessages([]);
+      chatCleared(campaignId);
       toast({ title: "Chat cleared" });
     } catch (err) {
       toast({ title: "Failed to clear chat", variant: "destructive" });
@@ -10803,6 +10780,10 @@ export default function Campaign() {
 
   // Nothing anyone said follows you out of the campaign.
   useEffect(() => forgetSpeech, [effectiveCampaignId]);
+
+  // The chat log is fetched as soon as the table opens, not when the panel
+  // does, so pressing Chat shows the conversation rather than an empty box.
+  useEffect(() => { ensureChatLoaded(effectiveCampaignId); }, [effectiveCampaignId]);
 
   const handleDropCharacterOnMap = useCallback((characterId: string, gridX: number, gridY: number) => {
     // Agnostic: any note can be a token ("ag:<noteId>").
