@@ -58,8 +58,9 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
 function SpeechBubble({ note, tokenSize }: { note: AgNote; tokenSize: number }) {
   const [, bump] = React.useState(0);
   React.useEffect(() => onSpeech(() => bump((n) => n + 1)), []);
-  // Fading is a second of animation: redraw while there is something to fade.
-  const owner = note.ownerIds.find((id) => !!speechOf(id));
+  // The GM's lines belong to the table, not to a token, even when the GM owns
+  // the sheet: those go across the top of the screen instead (GmSpeech).
+  const owner = note.ownerIds.find((id) => { const s = speechOf(id); return !!s && !s.gm; });
   const said = speechOf(owner);
   React.useEffect(() => {
     if (!said) return;

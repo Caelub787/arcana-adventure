@@ -8,7 +8,10 @@
  * for a whisper, a leak.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { isSpeech, speechText, said, speechOf, speechOpacity, onSpeech, forgetSpeech, SPEECH_HOLD_MS, SPEECH_FADE_MS, SPEECH_MAX_CHARS } from "./speech";
+import {
+  isSpeech, speechText, said, speechOf, gmSpeech, speechOpacity, onSpeech, forgetSpeech,
+  SPEECH_HOLD_MS, SPEECH_FADE_MS, SPEECH_MAX_CHARS, SPEECH_GM_MAX_CHARS,
+} from "./speech";
 
 beforeEach(() => forgetSpeech());
 
@@ -114,7 +117,7 @@ describe("fading", () => {
   });
 
   it("stops being anyone's once it has faded", () => {
-    said("u1", "Gone soon", "", Date.now() - (SPEECH_HOLD_MS + SPEECH_FADE_MS + 10));
+    said("u1", "Gone soon", "", { at: Date.now() - (SPEECH_HOLD_MS + SPEECH_FADE_MS + 10) });
     expect(speechOf("u1")).toBeNull();
   });
 });
@@ -135,5 +138,44 @@ describe("watching for someone to speak", () => {
     said("u1", "Still here");
     forgetSpeech();
     expect(speechOf("u1")).toBeNull();
+  });
+});
+
+/**
+ * The GM talks as the table. Their line is kept apart so it can go across the
+ * top of the screen rather than over whatever token they happen to own.
+ */
+describe("when the GM is the one talking", () => {
+  beforeEach(forgetSpeech);
+
+  it("keeps it off the tokens", () => {
+    said("gm", "The door creaks open.", "Caelub", { gm: true });
+    expect(speechOf("gm")?.gm).toBe(true);
+    expect(gmSpeech()?.text).toBe("The door creaks open.");
+  });
+
+  it("leaves a player's line where it was", () => {
+    said("p1", "I draw my sword");
+    expect(speechOf("p1")?.gm).toBe(false);
+    expect(gmSpeech()).toBeNull();
+  });
+
+  it("shows the newest line when two GMs talk", () => {
+    said("gm1", "First", "", { gm: true, at: Date.now() - 500 });
+    said("gm2", "Second", "", { gm: true });
+    expect(gmSpeech()?.text).toBe("Second");
+  });
+
+  it("gives the GM room for a longer line, since the top of the screen is wide", () => {
+    const long = "word ".repeat(80).trim();
+    said("gm", long, "", { gm: true });
+    said("p1", long);
+    expect(gmSpeech()!.text.length).toBeGreaterThan(speechOf("p1")!.text.length);
+    expect(gmSpeech()!.text.length).toBeLessThanOrEqual(SPEECH_GM_MAX_CHARS);
+  });
+
+  it("fades like anyone else's", () => {
+    said("gm", "Gone", "", { gm: true, at: Date.now() - (SPEECH_HOLD_MS + SPEECH_FADE_MS + 10) });
+    expect(gmSpeech()).toBeNull();
   });
 });

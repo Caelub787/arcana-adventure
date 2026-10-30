@@ -42,6 +42,7 @@ import { openAgNoteWindow } from "@/agnostic/AgWindows";
 import { AgTokenOverlay } from "@/agnostic/AgToken";
 import { AgNotesPanel } from "@/agnostic/AgNotesPanel";
 import { isSpeech, said, forgetSpeech } from "@/agnostic/speech";
+import { GmSpeechBubble } from "@/agnostic/GmSpeech";
 import { setAgTargets } from "@/agnostic/widgets";
 import { agClient } from "@/agnostic/client";
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
@@ -10204,8 +10205,13 @@ export default function Campaign() {
         
         // Handle chat messages - real-time chat
         if (data.type === 'chat_message' && data.message) {
-          // Said out loud: it shows over the speaker's token for a moment too.
-          if (isSpeech(data.message)) said(data.message.userId, data.message.text, data.message.sender);
+          // Said out loud: it shows over the speaker's token for a moment too —
+          // or across the top of the table, when the GM is the one talking.
+          if (isSpeech(data.message)) {
+            const who = (membersRef.current as any[] | undefined)?.find((m: any) => m.userId === data.message.userId);
+            const fromGM = data.message.userId === gmUserIdRef.current || who?.role === 'gm';
+            said(data.message.userId, data.message.text, data.message.sender, { gm: fromGM });
+          }
           // Immediately add the new message to the cache
           queryClientRef.current.setQueryData(
             [`/api/campaigns/${effectiveCampaignIdRef.current}/messages`],
@@ -14847,6 +14853,8 @@ export default function Campaign() {
       {campaignId && (
         <SoundscapePanel campaignId={campaignId} isGM={role === 'gm'} hideControls={spectatorMode} />
       )}
+      {/* The GM's last line, under the Soundscape button, for everyone. */}
+      {campaignId && isAgnostic && <GmSpeechBubble />}
       {/* Settings > Keyboard shortcuts (per user, same in every campaign). */}
       {keybindsOpen && <KeybindsPanel onClose={() => setKeybindsOpen(false)} isGM={role === 'gm'} />}
 
