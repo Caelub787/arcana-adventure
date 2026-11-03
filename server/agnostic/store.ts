@@ -49,6 +49,12 @@ export class ScopeStore {
   private listeners = new Set<(c: ChangeSet) => void>();
   /** Last activity, for unloading idle scopes. */
   touchedAt = Date.now();
+  /**
+   * Bumped on every write. Anything derived from the whole scope (who may play
+   * which shapeshifted form, say) caches itself against this rather than
+   * walking every sheet again for each thing it's asked about.
+   */
+  revision = 0;
 
   constructor(readonly scope: AgScope) {
     this.key = scopeKey(scope);
@@ -173,6 +179,7 @@ export class ScopeStore {
   // Memory first (what everyone sees, at once); the database follows in the
   // background, in order (writeQueue.ts).
   async putNote(n: AgNote, cs: ChangeSet, aclChanged = false) {
+    this.revision++;
     n.updatedAt = Date.now();
     repo.later.note(this.key, n);
     this.notes.set(n.id, n);
@@ -180,6 +187,7 @@ export class ScopeStore {
     if (aclChanged) cs.aclNotes.add(n.id);
   }
   async removeNote(id: string, cs: ChangeSet) {
+    this.revision++;
     const n = this.notes.get(id);
     if (!n) return;
     for (const f of this.fieldsOf(id)) { this.unindexField(f.id); cs.fields.add(f.id); }
@@ -202,17 +210,20 @@ export class ScopeStore {
     }
   }
   async putField(f: AgField, cs: ChangeSet) {
+    this.revision++;
     repo.later.field(this.key, f);
     this.indexField(f);
     cs.fields.add(f.id);
   }
   async removeField(id: string, cs: ChangeSet) {
+    this.revision++;
     if (!this.fields.has(id)) return;
     repo.later.deleteField(this.key, id);
     this.unindexField(id);
     cs.fields.add(id);
   }
   async putRegion(r: AgRegion, cs: ChangeSet) {
+    this.revision++;
     repo.later.region(this.key, r);
     this.regions.set(r.id, r);
     cs.regions.add(r.id);
@@ -223,11 +234,13 @@ export class ScopeStore {
     cs.regions.add(id);
   }
   async putLink(l: AgLink, cs: ChangeSet) {
+    this.revision++;
     repo.later.link(this.key, l);
     this.links.set(l.id, l);
     cs.links.add(l.id);
   }
   async removeLink(id: string, cs: ChangeSet) {
+    this.revision++;
     repo.later.deleteLink(this.key, id);
     this.links.delete(id);
     cs.links.add(id);
@@ -243,6 +256,7 @@ export class ScopeStore {
     cs.modifiers.add(id);
   }
   async putAction(a: AgAction, cs: ChangeSet) {
+    this.revision++;
     repo.later.action(this.key, a);
     this.actions.set(a.id, a);
     cs.actions.add(a.id);

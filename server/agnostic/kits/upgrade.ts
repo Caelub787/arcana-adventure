@@ -14,6 +14,7 @@ import { syncCopyOwners } from "../copies";
 import { appendNodes, insertNodes, p, h, icon, muted, val, button, pAlign, hr, section, tip, type DocNode } from "./doc";
 import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints, CA_CRAFT_FOLDER } from "./caCrafting";
 import { ensureCraftGuide } from "./caGuide";
+import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -36,13 +37,14 @@ import {
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, LEGACY_RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, LEGACY_CRAFTING_HELP_2, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
+  shiftNodes, SHIFT_HELP,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 36;
+export const CA_KIT_LEVEL = 37;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -90,6 +92,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 34) await upgrade34(store);
   if (level < 35) await upgrade35(store);
   if (level < 36) await upgrade36(store);
+  if (level < 37) await upgrade37(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1918,4 +1921,42 @@ async function upgrade35(store: ScopeStore) {
 // that say what to make. A note like any other — rewrite it, share it, bin it.
 async function upgrade36(store: ScopeStore) {
   await store.run((cs) => ensureCraftGuide(store, cs));
+}
+
+// --------------------------------------------------------------------------- level 37
+// Shapeshifting. An ability can tick it on and take a number; every character
+// or beast holding one with the same number is a shape of the same creature,
+// and the block on the ability (and on each of its aspects) lists them with a
+// Shift button. Existing abilities get the two values and the block.
+async function upgrade37(store: ScopeStore) {
+  const pages: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (n.type !== "ability" && n.type !== "aspect") continue;
+      if (n.type === "ability") {
+        const have = store.fieldsByNote.get(n.id);
+        const order = Math.max(0, ...Array.from(have?.values() ?? []).map((x) => x.sortOrder)) + 1;
+        if (!have?.get(SHIFT_KEY)) await store.putField({
+          id: randomUUID(), noteId: n.id, key: SHIFT_KEY, label: "Shapeshifting", type: "boolean", value: false, formula: null,
+          options: { tooltip: SHIFT_HELP }, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null,
+        }, cs);
+        if (!have?.get(SHIFT_GROUP_KEY)) await store.putField({
+          id: randomUUID(), noteId: n.id, key: SHIFT_GROUP_KEY, label: "Creature", type: "number", value: 0, formula: null,
+          options: { min: 0, max: 9999, tooltip: "Which creature this is. Every character or beast holding a shapeshifting ability with the same number is a shape of it. 0: not linked to anything." },
+          acl: { view: "inherit", edit: "inherit" }, sortOrder: order + 1, templateFieldId: null,
+        }, cs);
+      }
+      pages.push(n);
+    }
+  });
+  for (const n of pages) {
+    await editPage(n, (_doc, frag) => {
+      if (hasType(frag, "agShift")) return;
+      // Above the GM's own notes where there are any, otherwise at the end.
+      const region = findAll(frag, (e) => e.nodeName === "agRegion")[0];
+      const at = region ? frag.toArray().indexOf(region) : -1;
+      const nodes = shiftNodes();
+      if (at >= 0) insertNodes(frag, at, nodes); else appendNodes(frag, nodes);
+    });
+  }
 }

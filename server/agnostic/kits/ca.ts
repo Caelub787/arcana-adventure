@@ -8,6 +8,7 @@
 // each wound is its own small sheet connected to the character, and its
 // effects are modifiers on the character.
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
+import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
 import { randomUUID } from "crypto";
 import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale, AgRollUses } from "@shared/agnostic/types";
 import { defaultScaleStep } from "@shared/agnostic/types";
@@ -589,6 +590,13 @@ export function attackAspectTemplateSnapshot(): AgSnapshot { return attackAspect
 export const ABILITY_ASPECTS_HELP = "Each aspect is one use of this ability, with its own rolls and Energy / Focus costs. Press Add to make one (or drag one here from the sidebar); open it to set its rolls up. The character who has this ability rolls and pays.";
 /** An ability's tag colour (its ? explains it). */
 export const tagColourLine = (): DocNode => p(muted("Tag colour "), val("tag_color", { display: "input" }));
+export const SHIFT_HELP = "One creature, several sheets. Tick this on, give the creature a number, and every character or beast holding an ability with the same number is a shape it can take. Press **Shift** on one to become it: the share of each pool carries across (1 of 10 health arrives as 10 of 100), the token on the map and the place in the turn order change with you, and the new sheet is yours to play.";
+/** Shapeshifting: the shapes of this creature, and the button that becomes one. */
+export const shiftNodes = (): DocNode[] => [
+  h(3, icon("Shuffle", "#a78bfa", 16), " Shapeshifting ", tip(SHIFT_HELP)),
+  { type: "agShift", attrs: {} },
+];
+
 /** An ability's page: what it is, its tag colour, its aspects, passive effects, GM notes. */
 export function abilityPage(gmRegionId: string | null): DocNode[] {
   return [
@@ -596,6 +604,7 @@ export function abilityPage(gmRegionId: string | null): DocNode[] {
     tagColourLine(),
     h(3, icon("Swords", GILT, 16), " Ability Aspects ", tip(ABILITY_ASPECTS_HELP)),
     links("aspects", ASPECT_COLUMNS, ABILITY_ASPECTS_CONFIG),
+    ...shiftNodes(),
     ...subAbilityNodes(),
     ...effectsNodes("holder*", "", "Passive changes this ability makes to the character who has it (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
@@ -623,6 +632,7 @@ export function aspectPage(gmRegionId: string | null): DocNode[] {
     p(muted("Range "), val("range", { look: { bold: true } }), "    ", muted("Duration "), val("duration", { look: { bold: true } })),
     h(3, icon("Dices", GILT, 16), " Rolls ", tip(ASPECT_ROLLS_HELP)),
     rolls(ASPECT_VIA, ["energy", "focus"], "#9f1239", SECTION_LOOK),
+    ...shiftNodes(),
     ...effectsNodes(ASPECT_VIA, "", "Passive changes this aspect makes to whoever has its ability (leave empty if none)."),
     ...(gmRegionId ? [section(gmRegionId, { bg: "#451a0322", outline: "#f59e0b66", radius: 8, padding: 8 })] : []),
   ];
@@ -631,6 +641,8 @@ export function aspectPage(gmRegionId: string | null): DocNode[] {
 function abilityTemplate(): AgSnapshot {
   const s = new Sheet();
   s.text("description", "Description", "").text("tag_color", "Tag colour", DEFAULT_ABILITY_COLOR, { isColor: true, tooltip: "The colour of this ability's tag on its aspects, and of their cards on the character sheet." });
+  s.bool(SHIFT_KEY, "Shapeshifting").tip(SHIFT_KEY, SHIFT_HELP)
+    .num(SHIFT_GROUP_KEY, "Creature", 0, { min: 0, max: 9999, tooltip: "Which creature this is. Every character or beast holding a shapeshifting ability with the same number is a shape of it. 0: not linked to anything." });
   s.region("r_gm", "GM notes", [p(t("GM only: ", { bold: {}, textStyle: { color: "#fbbf24" } }), i("notes about this ability only the GM sees."))], { view: "gm", edit: "gm" });
   return s.snapshot({ type: "ability", name: "CA Ability", description: "An ability: a set of aspects (its single uses), each with its own rolls and costs." }, abilityPage("r_gm"));
 }

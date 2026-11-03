@@ -232,6 +232,13 @@ export interface AgNote {
    */
   spawnedFrom?: string | null;
   /**
+   * Set per viewer, never stored: which creature this sheet is a shape of
+   * (see shapeshift.ts). It comes off the shapeshifting ability the sheet
+   * holds, which not everyone at the table is allowed to see — so the server
+   * works it out and says, and the screen doesn't have to go looking.
+   */
+  shiftGroup?: number;
+  /**
    * Set per viewer, never stored: all this person gets of this sheet is its
    * card on the player tracker, because the GM pinned it there. They can watch
    * it and read its rolls; they can't open it, change it, or see a value the

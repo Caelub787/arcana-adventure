@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  BookOpen, Minus, Rocket, Backpack, Package, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
+  BookOpen, Minus, Rocket, Backpack, Package, FileText, Hash, Paintbrush, Puzzle, Copy, Dices, Link2, EyeOff, LayoutPanelTop, Shuffle, Library, Sigma, Search, X, Lightbulb, Check, Loader2, HelpCircle,
 } from "lucide-react";
 import type { AgLayout } from "@shared/agnostic/types";
 import { FloatingPanel, bringFloatingPanelToFront, isFloatingPanelOnTop, usePhoneScreen } from "@/components/ui/floating-panel";
@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAgMaybe } from "./hooks";
 
 export type GuideTopic =
-  | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "inventory" | "kits" | "privacy" | "tracker" | "libraries" | "formulas";
+  | "start" | "sheets" | "values" | "look" | "components" | "templates" | "buttons" | "connections" | "inventory" | "kits" | "privacy" | "shapeshift" | "tracker" | "libraries" | "formulas";
 
 // --------------------------------------------------------------------------- open from anywhere
 // One guide panel for the page, opened from any GuideButton. It's a floating,
@@ -517,6 +517,27 @@ const TOPICS: Topic[] = [
         ]} />
         <P>Audiences are <b>Everyone</b>, <b>Owners + GM</b>, <b>GM only</b>, or <b>specific people</b>.</P>
         <Tip>Use <Ui>View as …</Ui> at the top of a sheet (or <Ui>Preview as …</Ui> in the campaign panel) to see the sheets, tracker and tokens exactly as a player does.</Tip>
+      </>
+    ),
+  },
+  {
+    id: "shapeshift", title: "Shapeshifting", icon: <Shuffle className="h-4 w-4" />, words: "shapeshift shift form forms wild shape werewolf transform beast change into druid polymorph",
+    body: (
+      <>
+        <P>A druid who becomes a bear isn't one sheet with a bear mode — the bear has its own health, its own values, its own rolls. So each shape is an ordinary sheet, and an ability ties them together.</P>
+        <Steps>
+          <li>Make the ability (“Wild Shape”) and put it on the character. On its page, under <Ui>Shapeshifting</Ui>, tick <Ui>This ability shapeshifts</Ui> and give the creature a <b>number</b> — any number but 0.</li>
+          <li>Put an ability with <b>the same number</b> on every other shape: a character, an NPC or a beast. Nothing else connects them; the number is the whole of it.</li>
+          <li>Each shape now lists the others, on the ability and on any of its aspects. Click one to open it; press <Ui>Shift</Ui> to become it.</li>
+        </Steps>
+        <H>What a shift does</H>
+        <Bullets>
+          <li><b>The state of the creature carries</b>, as a share rather than a number: at 1 of 10 health you arrive at 10 of 100, just as badly hurt. Health, Energy and Focus all travel that way.</li>
+          <li><b>The token changes with you</b> — same square, new sheet, new face, new bars — and so do your place in the turn order and your card on the player tracker.</li>
+          <li><b>The new shape is yours to play</b> and the old one is let go, so the creature is in one place at a time. A shape somebody else is in can't be taken.</li>
+          <li>Whoever plays one shape can open and change <b>all</b> of them while the numbers match. Change a number, or take the ability off a sheet, and that shape is a stranger again.</li>
+        </Bullets>
+        <Tip>Any sheet can hold the block: <Ui>+ Insert</Ui> → <Ui>Shapeshifting</Ui>. Numbers are just labels — 1 for the druid, 2 for the vampire — and two creatures that share a number would become one, so give each its own.</Tip>
       </>
     ),
   },

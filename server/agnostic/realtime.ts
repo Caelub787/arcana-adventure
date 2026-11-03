@@ -21,6 +21,8 @@ import {
 import type { AgClientMsg, AgServerMsg, AgActionView, AgEntityKind } from "@shared/agnostic/protocol";
 import { getStore, peekStore, sweepStores, type ChangeSet, type ScopeStore } from "./store";
 import { cardForNote, trackerRefs } from "@shared/agnostic/tracker";
+import { asPlayable, shiftIndexOf, shiftWorld } from "./shift";
+import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
 import { resolveScopeAccess, resolveScopeAccessCached, scopeMembers } from "./access";
 import { runOp, OpError, type HostHooks } from "./ops";
 import * as docs from "./docs";
@@ -114,30 +116,38 @@ function trackerFieldView(store: ScopeStore, f: AgField, note: AgNote): AgField 
 }
 
 function visible(store: ScopeStore, kind: Kind, id: string, viewer: AgViewer): unknown | null {
+  // Every sheet is weighed as the person playing it sees it: whoever plays one
+  // form of a shapeshifted creature plays them all (see shift.ts). The sheet
+  // itself is sent as it really is — this only decides who gets it.
+  const seen = (id: string) => asPlayable(store, store.notes.get(id));
   switch (kind) {
     case "note": {
       const n = store.notes.get(id);
       if (!n) return null;
-      return canViewNote(n, viewer) ? n : viewer.isGM ? null : trackerNoteView(store, n);
+      if (!canViewNote(seen(id)!, viewer)) return viewer.isGM ? null : trackerNoteView(store, n);
+      // Which creature it's a shape of: the ability that says so may be one
+      // this person can't see, so the sheet carries the answer.
+      const g = shiftIndexOf(store).group.get(n.id);
+      return g ? { ...n, shiftGroup: g } : n;
     }
     case "field": {
-      const f = store.fields.get(id); const n = f && store.notes.get(f.noteId);
+      const f = store.fields.get(id); const n = f && seen(f.noteId);
       if (!f || !n) return null;
       if (canViewField(f, n, viewer)) return fieldView(f, viewer);
-      return viewer.isGM ? null : trackerFieldView(store, f, n);
+      return viewer.isGM ? null : trackerFieldView(store, f, store.notes.get(f.noteId)!);
     }
     case "region": {
-      const r = store.regions.get(id); const n = r && store.notes.get(r.noteId);
+      const r = store.regions.get(id); const n = r && seen(r.noteId);
       return r && n && canViewRegion(r, n, viewer) ? r : null;
     }
     case "link": {
       const l = store.links.get(id);
-      return l && canViewLink(l, store.notes.get(l.fromNoteId), store.notes.get(l.toNoteId), viewer) ? l : null;
+      return l && canViewLink(l, seen(l.fromNoteId), seen(l.toNoteId), viewer) ? l : null;
     }
     // A sheet's effects (a wound's −2 Athletics) are seen by whoever can see the sheet.
-    case "modifier": { const m = store.modifiers.get(id); const n = m && store.notes.get(m.noteId); return m && n && (viewer.isGM || canViewNote(n, viewer)) ? m : null; }
+    case "modifier": { const m = store.modifiers.get(id); const n = m && seen(m.noteId); return m && n && (viewer.isGM || canViewNote(n, viewer)) ? m : null; }
     case "action": {
-      const a = store.actions.get(id); const n = a && store.notes.get(a.noteId);
+      const a = store.actions.get(id); const n = a && seen(a.noteId);
       return a && n && canSeeAction(a, n, viewer) ? actionView(a, viewer) : null;
     }
     case "component": return store.components.get(id) ?? null;
@@ -159,8 +169,54 @@ function entityChange(sub: ScopeSub, kind: Kind, id: string): BatchItem | null {
   return null;
 }
 
+/**
+ * Shapeshifting moves permission about: whoever plays one form of a creature
+ * plays all of them. So when a shapeshifting ability is switched on, given a
+ * different number or handed to somebody else — and whenever a form's owners
+ * change — every form of that creature is weighed again, for everybody.
+ */
+function expandShift(store: ScopeStore, cs: ChangeSet) {
+  const ix = shiftIndexOf(store);
+  const w = shiftWorld(store);
+  const forms = new Set<string>();
+  const addSheet = (id: string) => {
+    forms.add(id);
+    const g = ix.group.get(id);
+    if (g) for (const f of ix.forms.get(g) ?? []) forms.add(f);
+  };
+  /** Whoever holds this ability — through any ability it sits inside. */
+  const addAbility = (abilityId: string) => {
+    const seen = new Set([abilityId]);
+    let level = [abilityId];
+    for (let d = 0; d < 4 && level.length; d++) {
+      const next: string[] = [];
+      for (const id of level) for (const up of w.linked(id, "holder")) {
+        if (seen.has(up)) continue;
+        seen.add(up); addSheet(up); next.push(up);
+      }
+      level = next;
+    }
+  };
+  let unlinked = false;
+  for (const id of Array.from(cs.fields)) {
+    const f = store.fields.get(id);
+    if (f && (f.key === SHIFT_KEY || f.key === SHIFT_GROUP_KEY)) addAbility(f.noteId);
+  }
+  for (const id of Array.from(cs.links)) {
+    const l = store.links.get(id);
+    // Gone: there is no telling what it joined, so every creature is re-weighed.
+    if (!l) { unlinked = true; continue; }
+    if (store.notes.get(l.fromNoteId)?.type === "ability") addAbility(l.fromNoteId);
+    if (store.notes.get(l.toNoteId)?.type === "ability") addAbility(l.toNoteId);
+  }
+  for (const id of Array.from(cs.aclNotes)) if (ix.group.has(id)) addSheet(id);
+  if (unlinked) for (const list of Array.from(ix.forms.values())) for (const id of list) forms.add(id);
+  for (const id of Array.from(forms)) { cs.notes.add(id); cs.aclNotes.add(id); }
+}
+
 /** Expand a ChangeSet so permission changes re-evaluate everything beneath them. */
 function expand(store: ScopeStore, cs: ChangeSet) {
+  expandShift(store, cs);
   for (const noteId of Array.from(cs.aclNotes)) {
     cs.notes.add(noteId);
     store.fieldsOf(noteId).forEach((f) => cs.fields.add(f.id));
@@ -195,12 +251,13 @@ function docAccess(store: ScopeStore, viewer: AgViewer, name: string): { ok: boo
   const p = parseDocName(name);
   if (!p) return { ok: false, readOnly: true, noteId: "", regionId: null };
   if (p.kind === "note") {
-    const n = store.notes.get(p.id);
-    if (!n || n.docEpoch !== p.epoch || !canViewBody(n, viewer)) return { ok: false, readOnly: true, noteId: p.id, regionId: null };
-    return { ok: true, readOnly: !canEditBody(n, viewer), noteId: n.id, regionId: null };
+    const real = store.notes.get(p.id);
+    const n = asPlayable(store, real);
+    if (!real || !n || real.docEpoch !== p.epoch || !canViewBody(n, viewer)) return { ok: false, readOnly: true, noteId: p.id, regionId: null };
+    return { ok: true, readOnly: !canEditBody(n, viewer), noteId: real.id, regionId: null };
   }
   const r = store.regions.get(p.id);
-  const n = r && store.notes.get(r.noteId);
+  const n = r && asPlayable(store, store.notes.get(r.noteId));
   if (!r || !n || n.docEpoch !== p.epoch || !canViewRegion(r, n, viewer)) return { ok: false, readOnly: true, noteId: r?.noteId ?? "", regionId: p.id };
   return { ok: true, readOnly: !canEditRegion(r, n, viewer), noteId: n.id, regionId: r.id };
 }
@@ -489,7 +546,7 @@ export async function noteForViewer(scope: AgScope, noteId: string, userId: stri
   if (!viewer) return null;
   const store = peekStore(scope) ?? (await getStore(scope));
   const n = store.notes.get(noteId);
-  return n && canViewNote(n, viewer) ? n : null;
+  return n && canViewNote(asPlayable(store, n)!, viewer) ? n : null;
 }
 
 

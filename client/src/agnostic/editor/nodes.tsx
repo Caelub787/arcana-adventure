@@ -25,6 +25,7 @@ import { BlockFrame, LookEditor, TooltipEditor, type LookKind } from "../look";
 import { TipIcon, TipContent } from "../tips";
 import { CraftStation, CraftBench, ExperimentControls } from "../craft/CraftHost";
 import { CraftDefBlock } from "../craft/CraftDefEditor";
+import { ShiftBlock } from "../Shapeshift";
 import { mergeLook } from "../lookUtil";
 // Circular by design: regions contain editors that contain regions.
 import { AgEditor } from "./AgEditor";
@@ -742,6 +743,24 @@ export const AgCraftDef = Node.create({
   renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-craft-def": "" })],
   addNodeView: () => ReactNodeViewRenderer(CraftDefView, { stopEvent: stopInside }),
 });
+// One creature, several sheets: the shapes it can take, and the button that
+// takes it there (see Shapeshift.tsx).
+function ShiftView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="shapeshifting" tools={<ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>}>
+      <div contentEditable={false}><ShiftBlock noteId={ctx.noteId} /></div>
+    </Shell>
+  );
+}
+export const AgShift = Node.create({
+  name: "agShift", group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "div[data-ag-shift]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-shift": "" })],
+  addNodeView: () => ReactNodeViewRenderer(ShiftView, { stopEvent: stopInside }),
+});
+
 function CraftExperimentView(p: NodeViewProps) {
   const ctx = useDocCtx();
   if (!ctx) return <NodeViewWrapper />;
@@ -938,5 +957,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftBench, AgCraftDef, AgCraftExperiment, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftBench, AgCraftDef, AgCraftExperiment, AgShift, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

@@ -8,7 +8,7 @@ import type {
 } from "@shared/agnostic/types";
 import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost } from "@shared/agnostic/types";
 import {
-  canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, normalizeAcl, normalizeAudience,
+  canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, mayPlayNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
 import { FormulaError, interpolate, parseFormula, toFieldValue, asNumber, isTruthy } from "@shared/agnostic/formula";
 import { rollDie } from "@shared/agnostic/compute";
@@ -16,6 +16,8 @@ import { normalizeFolder } from "@shared/agnostic/folders";
 import type { AgOp, AgOpResult } from "@shared/agnostic/protocol";
 import { getStore, type ChangeSet, type ScopeStore } from "./store";
 import { resolveScopeAccess } from "./access";
+import { asPlayable, formsOfNote, shiftIndexOf, shiftWorld } from "./shift";
+import { carryPool, sameCreature, SHIFT_POOLS } from "@shared/agnostic/shapeshift";
 import * as snap from "./snapshot";
 import * as docs from "./docs";
 import { copySheet, markAsCopy, syncCopyOwners, syncCopiesOn } from "./copies";
@@ -31,6 +33,11 @@ export interface HostHooks {
   saveImage?(dataUrl: string): Promise<string>;
   /** A sheet's picture changed: its battlemap tokens show the new one for everyone. */
   refreshNoteTokens?(campaignId: string, noteId: string, portrait: string | null): Promise<void>;
+  /**
+   * A creature changed shape: its tokens on the map, and its place in the
+   * fight, now stand for the new sheet (see note.shift).
+   */
+  swapNoteTokens?(campaignId: string, fromNoteId: string, toNoteId: string, portrait: string | null, name: string): Promise<void>;
   /** Put a sheet into the campaign's initiative order (or update its place). */
   joinInitiative?(campaignId: string, sheet: { noteId: string; name: string; portrait: string | null }, value: number): Promise<void>;
   /** A line in the campaign's chat — for everyone, or only the GMs (who can act on it there). */
@@ -48,6 +55,20 @@ function requireGM(viewer: AgViewer) {
 }
 function noteOf(store: ScopeStore, id: string): AgNote {
   return store.notes.get(id) ?? fail("That sheet no longer exists");
+}
+/**
+ * The same sheet, as a permission check should see it: whoever plays any form
+ * of this creature plays this one too (shapeshifting). Never written back —
+ * the borrowed owners belong to the question, not to the sheet.
+ */
+function playable(store: ScopeStore, note: AgNote): AgNote {
+  return asPlayable(store, note) ?? note;
+}
+/** What a value actually comes to right now (a maximum is usually a formula). */
+function numberOf(f: AgField | undefined): number {
+  if (!f) return 0;
+  const n = asNumber(f.eff ?? f.value);
+  return Number.isFinite(n) ? n : 0;
 }
 function fieldOf(store: ScopeStore, id: string): AgField {
   return store.fields.get(id) ?? fail("That field no longer exists");
@@ -233,7 +254,7 @@ function chooseOptions(store: ScopeStore, action: AgAction, step: Extract<AgActi
   const { noteIds } = comp.targetsOf(action.noteId, [...path, "_"], undefined, roots);
   return noteIds.filter((id) => {
     const n = store.notes.get(id);
-    if (!n || !canViewNote(n, viewer)) return false;
+    if (!n || !canViewNote(playable(store, n), viewer)) return false;
     if (!step.filter) return true;
     try { return isTruthy(comp.evalIn(id, step.filter, { locals, roots }).value as any); } catch { return false; }
   });
@@ -379,7 +400,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       // Filing a sheet is tidying, not building: anyone who may rename it may
       // also say which folder it sits in.
       const headerOnly = Object.keys(p).every((k) => k === "name" || k === "portrait" || k === "folder" || k === "sortOrder");
-      if (headerOnly ? !canEditNoteHeader(n, viewer) : !viewer.isGM) fail("You can't change that");
+      if (headerOnly ? !canEditNoteHeader(playable(store, n), viewer) : !viewer.isGM) fail("You can't change that");
       return store.run(async (cs) => {
         const note = noteOf(store, body.id);
         let aclChanged = false;
@@ -448,12 +469,58 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         return { noteId: copy.id };
       });
     }
+    case "note.shift": {
+      // One creature, another shape. Only between forms of the same creature,
+      // and only for whoever is playing it (the GM may shift anyone).
+      const from = noteOf(store, body.fromId);
+      const to = noteOf(store, body.toId);
+      if (!sameCreature(shiftWorld(store), from.id, to.id)) fail("Those aren't two forms of the same creature");
+      if (!viewer.isGM && !mayPlayNote(playable(store, from), viewer.userId)) fail("That isn't yours to shift");
+      // A shape somebody else is already in isn't free to take.
+      if (!viewer.isGM && to.ownerIds.length && !to.ownerIds.includes(viewer.userId)) fail(`Somebody else is in ${to.name || "that shape"}`);
+      return store.run(async (cs) => {
+        // The share of each pool, not the number in it: at 1 of 10 health you
+        // come out of a bigger shape at 10 of 100, hurt exactly as badly.
+        for (const pool of SHIFT_POOLS) {
+          const cur = store.fieldsByNote.get(from.id)?.get(pool.value);
+          const next = store.fieldsByNote.get(to.id)?.get(pool.value);
+          if (!cur || !next || next.type !== "number") continue;
+          const fromMax = numberOf(store.fieldsByNote.get(from.id)?.get(pool.max)) || numberOf(cur);
+          const toMax = numberOf(store.fieldsByNote.get(to.id)?.get(pool.max)) || numberOf(next);
+          await store.putField({ ...next, value: carryPool(numberOf(cur), fromMax, toMax) }, cs);
+        }
+        // Whoever was playing the old shape plays the new one, and isn't left
+        // holding the old: the creature is in one place at a time.
+        const moving = Array.from(new Set([...from.ownerIds, ...(viewer.isGM ? [] : [viewer.userId])]));
+        if (moving.length) {
+          await store.putNote({ ...to, ownerIds: Array.from(new Set([...to.ownerIds, ...moving])) }, cs, true);
+          await store.putNote({ ...from, ownerIds: from.ownerIds.filter((id) => !moving.includes(id)) }, cs, true);
+          // What's on each sheet goes with it: the shape's own items, abilities
+          // and their aspects follow the sheet's owners, both ways.
+          for (const id of [to.id, from.id]) await syncCopiesOn(store, id, cs);
+        }
+        // Its card on the player tracker is the creature's place, not the shape's.
+        if (store.settings) {
+          const t = store.settings.tracker;
+          if (t.pinned.includes(from.id)) {
+            const pinned = t.pinned.map((id) => (id === from.id ? to.id : id)).filter((id, i, a) => a.indexOf(id) === i);
+            await store.putSettings({ ...store.settings, tracker: { ...t, pinned } }, cs);
+          }
+        }
+        if (store.scope.kind === "campaign") {
+          const cid = store.scope.id;
+          void ctx.host.swapNoteTokens?.(cid, from.id, to.id, to.portrait ?? null, to.name).catch(() => {});
+          void ctx.host.postChat?.(cid, { sender: from.name || "Someone", text: `${from.name || "Someone"} shifts into ${to.name || "another shape"}.`, audience: "everyone" }).catch(() => {});
+        }
+        return { noteId: to.id };
+      });
+    }
     case "note.spawn": {
       // One of a kind of creature, put on the table. Players put beasts out too
       // (the GM decides who sees the sheet), so this isn't GM-only — but it
       // only ever copies a sheet the viewer can already see.
       const n = noteOf(store, body.id);
-      if (!canViewNote(n, viewer)) fail("You can't see that sheet");
+      if (!canViewNote(playable(store, n), viewer)) fail("You can't see that sheet");
       return store.run(async (cs) => {
         const s = await snap.takeSnapshot(store, n.id);
         const name = String(body.name ?? "").trim().slice(0, 80) || nextSpawnName(store, n);
@@ -504,7 +571,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       if (!viewer.isGM) {
         // Players: only from templates the GM opened up, only onto sheets they can edit.
         if (!template?.templateMeta?.playersCanCreate) fail("Only the GM can add that");
-        if (!canEditBody(host, viewer) && !host.ownerIds.includes(viewer.userId)) fail("You can't add to that sheet");
+        if (!canEditBody(playable(store, host), viewer) && !playable(store, host).ownerIds.includes(viewer.userId)) fail("You can't add to that sheet");
       }
       const label = labelKey(body.label) || "linked", reverse = labelKey(body.reverseLabel) || "link";
       return store.run(async (cs) => {
@@ -591,7 +658,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       if (!viewer.isGM) {
         const t = n.templateId ? store.notes.get(n.templateId) : undefined;
         if (!t?.templateMeta?.playersCanCreate || !n.ownerIds.includes(viewer.userId)) fail("Only the GM can remove that");
-        if (!canEditBody(host, viewer) && !host.ownerIds.includes(viewer.userId)) fail("You can't change that sheet");
+        if (!canEditBody(playable(store, host), viewer) && !playable(store, host).ownerIds.includes(viewer.userId)) fail("You can't change that sheet");
       }
       return store.run(async (cs) => {
         const links = store.linksOf(n.id).filter((l) => l.fromNoteId === host.id || l.toNoteId === host.id);
@@ -665,7 +732,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "field.set":
     case "field.adjust": {
       const f0 = fieldOf(store, body.id);
-      if (!canEditField(f0, noteOf(store, f0.noteId), viewer)) fail("You can't change that value");
+      if (!canEditField(f0, playable(store, noteOf(store, f0.noteId)), viewer)) fail("You can't change that value");
       return store.run(async (cs) => {
         const f = { ...fieldOf(store, body.id) };
         if (body.op === "field.adjust") {
@@ -811,7 +878,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       // What the presser has to pick before the button can run (its "choose" steps).
       const action = store.actions.get(body.id) ?? fail("That button no longer works — its action was deleted");
       const note = noteOf(store, action.noteId);
-      if (!canRunAction(action, note, viewer)) fail("You can't use that");
+      if (!canRunAction(action, playable(store, note), viewer)) fail("You can't use that");
       const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
       // @source = the sheet the button is on (so a choose filter can compare against it).
       const roots: Record<string, string[]> = { target: targets, targets, source: [action.noteId] };
@@ -831,7 +898,7 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "action.run": {
       const action = store.actions.get(body.id) ?? fail("That button no longer works — its action was deleted");
       const note = noteOf(store, action.noteId);
-      if (!canRunAction(action, note, viewer)) fail("You can't use that");
+      if (!canRunAction(action, playable(store, note), viewer)) fail("You can't use that");
       const targets = (body.targetNoteIds ?? []).filter((id) => store.notes.has(id)).slice(0, 20);
       const mods = cleanMods(body.mods);
       return store.run(async (cs) => {

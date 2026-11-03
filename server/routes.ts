@@ -505,6 +505,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await db.update(tokensTable).set({ image: portrait }).where(eq(tokensTable.agnosticNoteId, noteId)).returning();
       for (const t of updated) broadcastToCampaign(campaignId, { type: "token_updated", token: { ...t, tokenImage: portrait } });
     },
+    // A shapeshifter changed form: every token that stood for the old sheet now
+    // stands for the new one, wearing its face, and its place in the fight
+    // follows it. Both land on every screen at once.
+    swapNoteTokens: async (campaignId, fromNoteId, toNoteId, portrait, name) => {
+      const patch: Record<string, unknown> = { agnosticNoteId: toNoteId };
+      if (portrait) patch.image = portrait;
+      const moved = await db.update(tokensTable).set(patch as any)
+        .where(and(eq(tokensTable.campaignId, campaignId), eq(tokensTable.agnosticNoteId, fromNoteId))).returning();
+      for (const t of moved) broadcastToCampaign(campaignId, { type: "token_updated", token: { ...t, ...(portrait ? { tokenImage: portrait } : {}) } });
+      const inFight = await db.update(initiativeEntries).set({ agnosticNoteId: toNoteId, agnosticName: name, agnosticPortrait: portrait })
+        .where(and(eq(initiativeEntries.campaignId, campaignId), eq(initiativeEntries.agnosticNoteId, fromNoteId))).returning({ id: initiativeEntries.id });
+      if (inFight.length) broadcastToCampaign(campaignId, { type: "initiative_update", campaignId });
+    },
     // A whole image from the image library (or pasted) becomes a saved file.
     // Kept in the database: the server's disk doesn't survive a redeploy.
     saveImage: (dataUrl) => saveAgImageDataUrl(dataUrl),

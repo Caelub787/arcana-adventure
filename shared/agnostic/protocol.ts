@@ -20,6 +20,13 @@ export type AgOp =
    * sheet it came from or any of its fellows. It goes when its token does.
    */
   | { op: "note.spawn"; id: string; name?: string }
+  /**
+   * Become another form of the same creature (see shapeshift.ts): the share of
+   * each pool carries over, whoever played the old form plays the new one, and
+   * its token, its place in the fight and its card on the tracker all change
+   * with it.
+   */
+  | { op: "note.shift"; fromId: string; toId: string }
   | { op: "note.copyFrom"; sourceNoteId: string; sourceScope: AgScope; asTemplate?: boolean }
   | { op: "note.switchTemplate"; id: string; templateId: string | null }
   /** Add a new sheet (from a template) connected to a host sheet — an item into an inventory. */
