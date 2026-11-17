@@ -26,6 +26,7 @@ import { TipIcon, TipContent } from "../tips";
 import { CraftStation, CraftBench, ExperimentControls } from "../craft/CraftHost";
 import { CraftDefBlock } from "../craft/CraftDefEditor";
 import { ShiftBlock } from "../Shapeshift";
+import { SkillsBlock } from "../skills";
 import { mergeLook } from "../lookUtil";
 // Circular by design: regions contain editors that contain regions.
 import { AgEditor } from "./AgEditor";
@@ -754,6 +755,24 @@ function ShiftView(p: NodeViewProps) {
     </Shell>
   );
 }
+// Every skill the sheet has: name, what it's for, its bonus and a Roll button,
+// with an Add button for new ones (see skills.tsx).
+function SkillsView(p: NodeViewProps) {
+  const ctx = useDocCtx();
+  if (!ctx) return <NodeViewWrapper />;
+  return (
+    <Shell selected={p.selected} editable={p.editor.isEditable} label="skills" tools={<ToolButton title="Remove" danger onClick={p.deleteNode}><Trash2 className="h-3.5 w-3.5" /></ToolButton>}>
+      <div contentEditable={false}><SkillsBlock noteId={ctx.noteId} /></div>
+    </Shell>
+  );
+}
+export const AgSkills = Node.create({
+  name: "agSkills", group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "div[data-ag-skills]" }],
+  renderHTML: ({ HTMLAttributes }) => ["div", mergeAttributes(HTMLAttributes, { "data-ag-skills": "" })],
+  addNodeView: () => ReactNodeViewRenderer(SkillsView, { stopEvent: stopInside }),
+});
+
 export const AgShift = Node.create({
   name: "agShift", group: "block", atom: true, selectable: true, draggable: true,
   parseHTML: () => [{ tag: "div[data-ag-shift]" }],
@@ -957,5 +976,5 @@ export const AgTab = Node.create({
   addNodeView: () => ReactNodeViewRenderer(TabView),
 });
 
-export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftBench, AgCraftDef, AgCraftExperiment, AgShift, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
+export const AG_NODES = [AgTabs, AgTab, AgIconNode, AgTipNode, AgCraftStation, AgCraftBench, AgCraftDef, AgCraftExperiment, AgShift, AgSkills, AgField, AgFieldBlock, AgRegion, AgSecret, AgColumns, AgColumn, AgCanvas, AgButton, AgChart, AgLinks, AgRolls, AgEffects, AgNoteLink, AgComponent];
 

@@ -8,7 +8,7 @@ import type { AgActionChoice, AgField, AgFieldDisplay, AgLayout, AgLayoutItem, A
 import { scaleCost } from "@shared/agnostic/types";
 import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
-import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf } from "./hooks";
+import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf, useNoteFields } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, AgSelector, PickField, useAgPanel } from "./float";
@@ -306,7 +306,10 @@ export function EditOnDoubleClick({ field, children, empty }: { field?: AgField;
   const { canEditField, isGM } = usePerms(field?.noteId);
   const panel = useAgPanel("value");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editable = !!field && field.type !== "formula" && (field.type === "dice" ? isGM : canEditField(field));
+  // A worked-out value can open too, when it says what it's made of: a skill's
+  // bonus opens its attribute and its pick (see `reads` / `opens`).
+  const parts = (field?.options.reads?.length ?? 0) + (field?.options.opens?.length ?? 0) > 0;
+  const editable = !!field && (field.type === "formula" ? parts : field.type === "dice" ? isGM : canEditField(field));
   if (!editable) return <>{children}</>;
   if (empty) children = <span className="inline-block min-w-[1.5em] text-stone-500 font-normal border-b border-dashed border-stone-600" title="Empty — double-click to fill in">—</span>;
   const cancel = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
@@ -318,13 +321,45 @@ export function EditOnDoubleClick({ field, children, empty }: { field?: AgField;
         onTouchEnd={cancel} onTouchMove={cancel} onTouchCancel={cancel}
         data-testid={`ag-dbledit-${field!.key}`}>{children}</span>
       {panel.open && (
-        <AgPanel title={field!.label} onClose={panel.hide} panelKey={panel.panelKey} width={field!.type === "text" && !field!.options.isColor ? 460 : 300} height={field!.type === "text" && !field!.options.isColor ? 320 : field!.type === "dice" ? 200 : 180} testId="ag-value-edit">
-          {field!.type === "dice" ? <DiceFormulaInput field={field!} />
+        <AgPanel title={field!.label} onClose={panel.hide} panelKey={panel.panelKey} width={field!.type === "text" && !field!.options.isColor ? 460 : 300} height={field!.type === "text" && !field!.options.isColor ? 320 : field!.type === "dice" ? 200 : parts ? 210 : 180} testId="ag-value-edit">
+          {parts ? <PartsEditor field={field!} />
+            : field!.type === "dice" ? <DiceFormulaInput field={field!} />
             : field!.type === "text" && !field!.options.isColor ? <TextAreaInput field={field!} />
             : <FieldInput field={field!} className={field!.type === "number" ? "w-full" : ""} />}
         </AgPanel>
       )}
     </>
+  );
+}
+
+/**
+ * What a worked-out value is made of. `reads` are shown as they stand (a
+ * skill's attribute, set with the other five), `opens` can be changed here (the
+ * skill's own pick), and the total underneath is the value itself.
+ */
+function PartsEditor({ field }: { field: AgField }) {
+  const all = useNoteFields(field.noteId);
+  const find = (key: string) => all.find((f) => f.key === key);
+  const reads = (field.options.reads ?? []).map(find).filter(Boolean) as AgField[];
+  const opens = (field.options.opens ?? []).map(find).filter(Boolean) as AgField[];
+  const row = (f: AgField, body: React.ReactNode) => (
+    <div key={f.id} className="flex items-center justify-between gap-3">
+      <span className="text-sm text-stone-300 truncate" title={f.label}>{f.label}</span>
+      {body}
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      {reads.map((f) => row(f, <span className="font-mono text-base text-stone-200 tabular-nums">{formatValue(effOf(f), f.options.decimals)}</span>))}
+      {opens.map((f) => row(f, <FieldInput field={f} className="shrink-0" />))}
+      {!opens.length && <div className="text-[11px] text-stone-500">Nothing to change here — this one is worked out for you.</div>}
+      <div className="flex items-center justify-between gap-3 border-t border-stone-700 pt-2">
+        <span className="text-sm font-semibold text-stone-200">{field.label}</span>
+        <span className={`font-mono text-lg font-bold tabular-nums ${field.err ? "text-red-400" : "text-amber-300"}`} title={field.err ?? undefined} data-testid={`ag-parts-total-${field.key}`}>
+          {field.err ? "\u26a0" : formatValue(effOf(field), field.options.decimals)}
+        </span>
+      </div>
+    </div>
   );
 }
 

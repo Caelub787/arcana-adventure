@@ -280,6 +280,22 @@ export interface AgFieldOptions {
   shield?: string;
   /** Text that is a colour ("#a78bfa"): edited with a colour picker; tags showing this sheet use it. */
   isColor?: boolean;
+  /**
+   * What a worked-out value is made of, for the panel that opens when it's
+   * double-clicked. `reads` are shown as they are (a skill's attribute, which
+   * is set with the others); `opens` can be changed there (the skill's own
+   * pick). Without either, a formula value has nothing to open.
+   */
+  reads?: string[];
+  opens?: string[];
+  /**
+   * This value is a skill: the key of the attribute it hangs off ("might"), or
+   * "" for one that stands on its own. The Skills block lists every value that
+   * has it, so a character carries only the skills they've actually taken.
+   */
+  skillOf?: string;
+  /** A skill's description, shown beside its name. */
+  about?: string;
 }
 
 export interface AgField {

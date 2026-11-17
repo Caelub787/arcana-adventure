@@ -94,6 +94,11 @@ function cleanOptions(raw: unknown): AgFieldOptions {
   if (typeof o.follows === "string" && isValidKey(o.follows)) out.follows = o.follows;
   if (typeof o.shield === "string" && isValidKey(o.shield)) out.shield = o.shield;
   if (o.isColor === true) out.isColor = true;
+  if (typeof o.skillOf === "string" && (o.skillOf === "" || isValidKey(o.skillOf))) out.skillOf = o.skillOf;
+  if (typeof o.about === "string" && o.about.trim()) out.about = o.about.slice(0, 500);
+  const keys = (v: unknown) => (Array.isArray(v) ? v.filter((k: unknown) => typeof k === "string" && isValidKey(k)).slice(0, 8) : undefined);
+  if (keys(o.reads)?.length) out.reads = keys(o.reads);
+  if (keys(o.opens)?.length) out.opens = keys(o.opens);
   return out;
 }
 
@@ -754,6 +759,56 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "field.delete": {
       requireGM(viewer);
       return store.run(async (cs) => { await store.removeField(body.id, cs); return { ok: true as const }; });
+    }
+
+    // ------------------------------------------------------------------ skills
+    // A skill is three things that have to agree: the number you set, the bonus
+    // it works out to with its attribute, and the button that rolls it. They're
+    // made together here so they can't drift apart, and so a player can give
+    // their own character a skill without being handed field editing.
+    case "skill.add": {
+      const n = noteOf(store, body.noteId);
+      if (!canEditBody(n, viewer) && !n.ownerIds.includes(viewer.userId)) fail("You can't change that sheet");
+      const name = cleanLabel(body.name, 60);
+      if (!name) fail("A skill needs a name");
+      const want = body.key && isValidKey(body.key) ? body.key : slugifyKey(name);
+      const fields = store.fieldsByNote.get(n.id);
+      if (fields?.get(want) || fields?.get(`${want}_bonus`)) fail(`This sheet already has ${want}`);
+      const parent = body.parent && isValidKey(body.parent) && fields?.get(body.parent) ? body.parent : "";
+      const about = typeof body.about === "string" ? body.about.slice(0, 500) : "";
+      const min = Number.isFinite(body.min) ? Math.round(body.min as number) : 1;
+      const max = Number.isFinite(body.max) ? Math.round(body.max as number) : 4;
+      const order = Math.max(0, ...Array.from(fields?.values() ?? []).map((f) => f.sortOrder)) + 1;
+      return store.run(async (cs) => {
+        const base = { noteId: n.id, acl: { view: "inherit", edit: "inherit" } as AgAcl, templateFieldId: null };
+        await store.putField({
+          ...base, id: randomUUID(), key: want, label: `${name} pick`, type: "number", value: min, formula: null, sortOrder: order,
+          options: { min, max, skillOf: parent, ...(about ? { about } : {}), ...(about ? { tooltip: about } : {}) },
+        }, cs);
+        await store.putField({
+          ...base, id: randomUUID(), key: `${want}_bonus`, label: name, type: "formula", value: null,
+          formula: parent ? `${parent} + ${want}` : want, sortOrder: order + 1,
+          options: { skillOf: parent, ...(about ? { about } : {}), ...(parent ? { reads: [parent] } : {}), opens: [want] },
+        }, cs);
+        await store.putAction({
+          id: randomUUID(), noteId: n.id, name, color: "#78350f", acl: { view: "inherit", edit: "owners" },
+          steps: [{ type: "roll", name: "r", expr: `roll(1, 20) + ${want}_bonus`, label: name }],
+        }, cs);
+        return { ok: true as const, key: want };
+      });
+    }
+    case "skill.remove": {
+      const n = noteOf(store, body.noteId);
+      if (!canEditBody(n, viewer) && !n.ownerIds.includes(viewer.userId)) fail("You can't change that sheet");
+      const fields = store.fieldsByNote.get(n.id);
+      const pick = fields?.get(body.key);
+      if (!pick || typeof pick.options.skillOf !== "string") return fail("That isn't a skill on this sheet");
+      const name = pick.label.replace(/\s+pick$/i, "");
+      return store.run(async (cs) => {
+        for (const key of [body.key, `${body.key}_bonus`]) { const f = fields?.get(key); if (f) await store.removeField(f.id, cs); }
+        for (const a of store.actionsOf(n.id)) if (a.name === name) await store.removeAction(a.id, cs);
+        return { ok: true as const };
+      });
     }
 
     // ------------------------------------------------------------------ regions

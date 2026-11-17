@@ -9,6 +9,7 @@
 // effects are modifiers on the character.
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
+import { CA_ATTRS, CA_ABBR, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX } from "@shared/agnostic/caSkills";
 import { randomUUID } from "crypto";
 import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale, AgRollUses } from "@shared/agnostic/types";
 import { defaultScaleStep } from "@shared/agnostic/types";
@@ -28,15 +29,8 @@ const COPY = { copy: true, copyFolder: CA_COPIES_FOLDER };
 const ADD_ONLY = { ...COPY, createNew: false };
 
 // --------------------------------------------------------------------------- C.A. rules, as data
-export const ATTRS = [
-  { key: "might", name: "Might", abbr: "MIG" },
-  { key: "finesse", name: "Finesse", abbr: "FIN" },
-  { key: "constitution", name: "Constitution", abbr: "CON" },
-  { key: "will", name: "Will", abbr: "WIL" },
-  { key: "anemos", name: "Anemos", abbr: "ANE" },
-  { key: "intelligence", name: "Intelligence", abbr: "INT" },
-] as const;
-export const ABBR: Record<string, string> = Object.fromEntries(ATTRS.map((a) => [a.key, a.abbr]));
+export { CA_ATTRS as ATTRS, CA_ABBR as ABBR, CA_EXTRA_SKILLS as EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, EXTRA_SKILL_NOTE } from "@shared/agnostic/caSkills";
+const ATTRS = CA_ATTRS, ABBR = CA_ABBR;
 
 export const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }> = [
   { key: "athletics", name: "Athletics", parent: "might", desc: "Climbing, jumping, swimming, lifting, and physical exertion." },
@@ -161,6 +155,59 @@ export const ATTR_MIN = Math.min(...ATTR_ARRAY), ATTR_MAX = Math.max(...ATTR_ARR
 export const SKILL_PICKS = { plus: { value: 2, count: 6 }, best: { value: 4, count: 1 }, worst: { value: -2, count: 1 } };
 export const ATTR_ARRAY_NOTE = `Six attributes, one of each: ${ATTR_ARRAY_TEXT}, in any order. They never rise with rank — only items and wounds move them afterwards.`;
 export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${SKILL_PICKS.worst.value}. Everything else stays at 0, and nothing rises with rank.`;
+/** A number the way it's written on a sheet: +3, 0, −2. */
+export const signed = (v: number) => (v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0");
+/** The rule in one line, under the heading, so nobody has to open a tooltip. */
+export const ATTR_RULE_LINE = `Give each attribute one of these, no repeats: ${ATTR_ARRAY_TEXT}.`;
+export const SKILL_RULE_LINE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value}, one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0.`;
+
+/** How many attributes are sitting on `v` right now (the number as written). */
+const attrsAt = (v: number) => `(${ATTRS.map((a) => `if(base(${a.key}) == ${v}, 1, 0)`).join(" + ")})`;
+/** "Still to give out: +3, −1" — the numbers of the array nobody has yet. */
+const ATTR_TODO = (() => {
+  // Each one is listed only if nobody has it, and takes a comma only if
+  // something before it was listed.
+  const missing = ATTR_ARRAY.map((v) => `${attrsAt(v)} == 0`);
+  const chunks = ATTR_ARRAY.map((v, n) => {
+    const after = n ? missing.slice(0, n).join(" || ") : "";
+    const text = after ? `if(${after}, ", ${signed(v)}", " ${signed(v)}")` : `" ${signed(v)}"`;
+    return `if(${missing[n]}, ${text}, "")`;
+  });
+  return `concat("Still to give out:", ${chunks.join(", ")})`;
+})();
+export const ATTR_DONE_TEXT = "Every number given out ✓";
+/** One piece of the skill line: the picks of this kind still to make. */
+const pickShort = (have: string, want: number, value: number, after: string) => {
+  const label = signed(value), sep = after ? `if(${after}, ", ", " ")` : '" "';
+  const some = want === 1 ? `concat(${sep}, "the ${label}")` : `concat(${sep}, ${want} - ${have}, " at ${label}")`;
+  return `if(${have} < ${want}, ${some}, "")`;
+};
+/** And the other way: picks of this kind past what's allowed. */
+const pickOver = (have: string, want: number, value: number, after: string) => {
+  const sep = after ? `if(${after}, ", ", " ")` : '" "';
+  return `if(${have} > ${want}, concat(${sep}, ${have} - ${want}, " extra at ${signed(value)}"), "")`;
+};
+export const SKILL_DONE_TEXT = "Every pick made ✓";
+
+/**
+ * The two lines above the attributes. They say the same thing a person would:
+ * which numbers are still sitting in the pile, and which picks are still to
+ * make — not "+2 0/6". base() throughout, so a sword's +1 Might doesn't read
+ * as a misassigned array.
+ */
+export const ATTR_ARRAY_FORMULA =
+  `if(attr_sum == ${ATTR_ARRAY_SUM} && attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_DONE_TEXT}", ${ATTR_TODO})`;
+export const SKILL_PICKS_FORMULA = (() => {
+  const { plus, best, worst } = SKILL_PICKS;
+  const each = [["skill_plus", plus], ["skill_best", best], ["skill_worst", worst]] as const;
+  const done = each.map(([key, pick]) => `${key} == ${pick.count}`).join(" && ");
+  const spare = each.map(([key, pick]) => `${key} > ${pick.count}`).join(" || ");
+  const under = each.map(([key, pick]) => `${key} < ${pick.count}`);
+  const spareOf = each.map(([key, pick]) => `${key} > ${pick.count}`);
+  const left = each.map(([key, pick], n) => pickShort(key, pick.count, pick.value, under.slice(0, n).join(" || "))).join(", ");
+  const over = each.map(([key, pick], n) => pickOver(key, pick.count, pick.value, spareOf.slice(0, n).join(" || "))).join(", ");
+  return `if(${done}, "${SKILL_DONE_TEXT}", if(${spare}, concat("Too many picked:", ${over}), concat("Still to pick:", ${left})))`;
+})();
 export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
 
 export const ATTR_BUDGET_FORMULA = `4 + floor(rank_index / ${PILLARS}) + bonus_attr_points`;
@@ -255,7 +302,7 @@ export class Sheet {
   text(key: string, label: string, value = "", options: AgFieldOptions = {}) { return this.add(key, label, "text", value, null, options); }
   bool(key: string, label: string, value = false) { return this.add(key, label, "boolean", value); }
   choice(key: string, label: string, choices: string[], value: string, colors?: Record<string, string>) { return this.add(key, label, "select", value, null, { choices, choiceColors: colors }); }
-  calc(key: string, label: string, formula: string, resultType: "number" | "text" = "number") { return this.add(key, label, "formula", null, formula, { resultType }); }
+  calc(key: string, label: string, formula: string, resultType: "number" | "text" = "number", options: AgFieldOptions = {}) { return this.add(key, label, "formula", null, formula, { ...options, resultType }); }
   /** A tooltip (the ? beside the value wherever it's shown). */
   tip(key: string, text: string) { const f = this.fields.find((x) => x.key === key); if (f) f.options = { ...f.options, tooltip: text }; return this; }
   dice(key: string, label: string, expr: string) { return this.add(key, label, "dice", null, expr); }
@@ -335,25 +382,22 @@ function characterTemplate(beast = false): AgSnapshot {
   // sword's +1 Might doesn't look like a misassigned array.
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
   const attrSquares = ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + ");
-  const arrayFix = `"Assign ${ATTR_ARRAY_TEXT} — one each"`;
   s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
-    .calc("attr_array", "Array", `if(attr_sum == ${ATTR_ARRAY_SUM}, if(attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_ARRAY_TEXT} ✓", ${arrayFix}), ${arrayFix})`, "text");
+    .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text");
   // A skill holds the pick its owner spent on it; its bonus is that plus the
   // attribute it hangs off, and that is what the d20 is added to.
   for (const k of SKILLS) {
-    s.num(k.key, `${k.name} (${ABBR[k.parent]})`, 0, { min: SKILL_PICKS.worst.value, max: SKILL_PICKS.best.value, tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` });
-    s.calc(`${k.key}_bonus`, `${k.name} bonus`, `${k.parent} + ${k.key}`);
+    s.num(k.key, `${k.name} pick`, 0, { ...skillOptions(k), min: SKILL_PICKS.worst.value, max: SKILL_PICKS.best.value, tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` });
+    s.calc(`${k.key}_bonus`, k.name, `${k.parent} + ${k.key}`, "number", bonusOptions(k));
   }
   const picked = (v: number) => SKILLS.map((k) => `if(base(${k.key}) == ${v}, 1, 0)`).join(" + ");
   const { plus, best, worst } = SKILL_PICKS;
   s.calc("skill_plus", `+${plus.value} skills`, picked(plus.value))
     .calc("skill_best", `+${best.value} skill`, picked(best.value))
-    .calc("skill_worst", `${worst.value} skill`, picked(worst.value))
-    .calc("skill_picks", "Skill picks", `concat("+${plus.value} ", skill_plus, "/${plus.count}   +${best.value} ", skill_best, "/${best.count}   ${worst.value} ", skill_worst, "/${worst.count}", if(skill_plus == ${plus.count}, if(skill_best == ${best.count}, if(skill_worst == ${worst.count}, " ✓", " — still to pick"), " — still to pick"), " — still to pick"))`, "text");
-  // Crafting skills: standalone bonuses (no attribute), added to Quick Craft rolls.
-  s.num("blacksmithing", "Blacksmithing", 0, { tooltip: CRAFT_SKILL_HELP.blacksmithing })
-    .num("alchemy", "Alchemy", 0, { tooltip: CRAFT_SKILL_HELP.alchemy })
-    .num("rune_making", "Rune Making", 0, { tooltip: CRAFT_SKILL_HELP.rune_making });
+    .calc("skill_worst", `${signed(worst.value)} skill`, picked(worst.value))
+    .calc("skill_picks", "Skill picks", SKILL_PICKS_FORMULA, "text");
+  // Crafting and the like are skills too, added on the Skills tab when they're
+  // wanted (see EXTRA_SKILLS) — a fresh character carries none of them.
   // Cultivation (abilities are their own sheets — see the Ability tab)
   s.text("cultivation", "Cultivation", "");
   // Inventory totals
@@ -413,15 +457,23 @@ function characterTemplate(beast = false): AgSnapshot {
 
 // ---- Crafting on the character (also used to bring existing characters up to date)
 export const CRAFT_SKILL_HELP = {
-  blacksmithing: "Your Blacksmithing bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this, plus whatever the tool in hand is worth. It also steadies your hammer at the anvil.",
-  alchemy: "Your Alchemy bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
-  rune_making: "Your Rune Making bonus — its own number, not tied to an attribute. A Quick Craft rolls d20 + this.",
+  blacksmithing: "Your Blacksmithing bonus, 1 to 4. A Quick Craft rolls d20 + this, plus whatever the tool in hand is worth, and it steadies your hammer at the anvil. Its roll on the Skills tab adds Might on top.",
+  alchemy: "Your Alchemy bonus, 1 to 4. A Quick Craft rolls d20 + this. Its roll on the Skills tab adds Intelligence on top.",
+  rune_making: "Your Rune Making bonus, 1 to 4. A Quick Craft rolls d20 + this. Its roll on the Skills tab adds Finesse on top.",
+  orb_hunting: "Your Orb Hunting bonus, 1 to 4: finding, drawing in and keeping hold of loose Anemos orbs.",
 };
 export const LEGACY_CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto an item with a free rune socket). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
 export const LEGACY_CRAFTING_HELP_2 = "Three crafts, each a tool you play: **Blacksmithing** (forge weapon parts at the anvil, then assemble them)', **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto any item with room left for it). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
 export const CRAFTING_HELP = "Three crafts, each a tool you play: **Blacksmithing** (draw your own mold at the forge and work the metal down to it — the shape you draw is the weapon), **Alchemy** (brew a recipe step by step, or experiment) and **Rune Making** (trace a rune's sigil, or draw one freehand, onto any item with room left for it). Everything they use and make is ordinary items in your inventory. The GM (and anyone it's shared with) can watch you craft, live.\n\n## Quick Craft · d20 + the craft's skill\nRoll | Result\nNatural 1 | Failed (no effect)\n2–11 | Weak\n12–19 | Standard\n20–24 | Fine\n25+ | Masterwork\n\nA natural 20 is at least Fine. A failed craft still makes the item — it just does nothing.";
+/** What a skill's own number carries: what it is, and what it's for. */
+export const skillOptions = (k: { key: string; parent: string; desc: string }): AgFieldOptions =>
+  ({ skillOf: k.parent, about: k.desc });
+/** And its worked-out bonus: double-click opens the attribute and the pick. */
+export const bonusOptions = (k: { key: string; parent: string; desc: string }): AgFieldOptions =>
+  ({ skillOf: k.parent, about: k.desc, reads: [k.parent], opens: [k.key], tooltip: SKILL_BONUS_NOTE });
+
 export const CRAFT_SKILLS_TIP = "Standalone bonuses (not tied to an attribute). Each craft's Quick Craft rolls d20 + its skill.";
-/** The crafting skills box at the bottom of the Skills tab. */
+/** The crafting skills box the Skills tab used to end with (kit levels up to 38). */
 export function craftingSkillNodes(): DocNode[] {
   const cell = (iconName: string, color: string, key: string, label: string) => [p(icon(iconName, color, 16), " ", b(label)), p(val(key, { display: "input" }))];
   return [
@@ -519,13 +571,19 @@ export function traitsNodes(): DocNode[] {
   return [h(3, icon("Star", GILT, 18), " Traits ", tip(TRAITS_HELP)), links("traits", TRAIT_ICON_COLUMNS, TRAIT_ICON_CONFIG)];
 }
 /** The six attribute boxes on the Skills tab's canvas: a name and a number each. */
+/** The attributes box: three across, two down, each one line of its own. */
+export const ATTR_BOX = { w: 208, h: 40, gapX: 8, gapY: 8, pad: 4 };
+export const ATTR_CANVAS_W = ATTR_BOX.pad * 2 + ATTR_BOX.w * 3 + ATTR_BOX.gapX * 2;
+export const ATTR_CANVAS_H = ATTR_BOX.pad * 2 + ATTR_BOX.h * 2 + ATTR_BOX.gapY;
 export function attrCanvasItems(): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
+  const { w, h, gapX, gapY, pad } = ATTR_BOX;
   ATTRS.forEach((a, n) => {
-    const x = 4 + (n % 3) * 216, y = 4 + Math.floor(n / 3) * 84;
-    out.push({ id: `bg_${a.key}`, x, y, w: 208, h: 76, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
-    out.push({ id: `n_${a.key}`, x, y: y + 8, w: 208, h: 16, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "center" } });
-    out.push({ id: `v_${a.key}`, x: x + 79, y: y + 28, w: 50, h: 36, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 26, bold: true, color: GILT } } });
+    const x = pad + (n % 3) * (w + gapX), y = pad + Math.floor(n / 3) * (h + gapY);
+    out.push({ id: `bg_${a.key}`, x, y, w, h, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
+    // Name on the left, number on the right — the box is one line tall now.
+    out.push({ id: `n_${a.key}`, x: x + 10, y: y + 11, w: w - 70, h: 18, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "left" } });
+    out.push({ id: `v_${a.key}`, x: x + w - 58, y: y + 6, w: 48, h: 28, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 20, bold: true, color: GILT } } });
   });
   return out;
 }
@@ -535,32 +593,29 @@ export function attrCanvasItems(): Record<string, unknown>[] {
  * skill with its pick, its bonus and its roll. What a skill is *for* lives
  * behind its ? rather than under its name, so the whole list fits on a screen.
  */
-export function skillsTabContent(rollIdOf: (skillKey: string) => string | undefined | null): DocNode[] {
-  const rows: Array<Array<DocNode[]>> = [[[p(b("Skill"))], [p(b("Pick"))], [p(b("Bonus"))], [p(b("Roll"))]]];
-  for (const k of SKILLS) {
-    const id = rollIdOf(k.key);
-    rows.push([
-      [p(b(k.name), muted(` (${ABBR[k.parent]})`), " ", tip(k.desc))],
-      [p(val(k.key, { display: "input" }))],
-      [p(val(`${k.key}_bonus`, { look: { color: GILT, bold: true } }))],
-      [id ? p(button(id, "Roll", { height: 26, fontSize: 12 })) : p()],
-    ]);
-  }
+/** Name, what it's for, its bonus and a button — one row a skill. */
+export const skillsBlock = (): DocNode => ({ type: "agSkills", attrs: {} });
+export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | undefined | null): DocNode[] {
   return [
     budgetNodes(),
-    canvas("cv_attributes", 652, 172),
+    canvas("cv_attributes", ATTR_CANVAS_W, ATTR_CANVAS_H),
     hr(),
     h(3, icon("Zap", GILT, 18), " Skills ", tip(SKILL_ROLL_NOTE)),
-    table(rows),
-    ...craftingSkillNodes(),
+    skillsBlock(),
   ];
 }
 
 /** The array and the picks, at the top of the Skills tab. */
 export function budgetNodes(): DocNode {
+  // Heading, then the rule in plain words, then what's still left to do —
+  // reading down, not a row of numbers to decode.
   return columns([
-    [p(b("Attributes"), " ", tip(ATTR_ARRAY_NOTE), "  ", val("attr_array", { look: { color: GILT, bold: true } }))],
-    [p(b("Skill picks"), " ", tip(`${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`), "  ", val("skill_picks", { look: { color: GILT, bold: true } }))],
+    [p(b("Attributes"), " ", tip(ATTR_ARRAY_NOTE)),
+     p(muted(ATTR_RULE_LINE)),
+     p(val("attr_array", { look: { color: GILT, bold: true } }))],
+    [p(b("Skill picks"), " ", tip(`${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`)),
+     p(muted(SKILL_RULE_LINE)),
+     p(val("skill_picks", { look: { color: GILT, bold: true } }))],
   ], { gap: 12 });
 }
 /** The Inventory tab's heading over the items. */

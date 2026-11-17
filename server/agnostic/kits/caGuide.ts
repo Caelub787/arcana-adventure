@@ -51,6 +51,7 @@ const overview: DocNode[] = [
   p(muted("Every one of those templates is on the "), ui("Items"), muted(" tab, in the “Cultivator's Adventure — Crafting” folder. To make one of something: "), ui("New"), muted(" → pick the template → name it. To make a new kind of template: "), ui("New"), muted(" → tick "), ui("Make this a template"), muted(".")),
   h(3, icon("Dices", GILT, 16), " Quick Craft, and the five tiers"),
   p("Every craft can be played out or rolled through. ", ui("Quick Craft"), " rolls d20 + the craft's skill (+ the station's Quick Craft bonus, + any tool's skill points) and lands on a tier. Playing it out scores you against the recipe and lands on the same five."),
+  p("The craft's skill is one you add on the character's Skills tab — ", ui("Add a skill"), ", then Blacksmithing, Alchemy or Rune Making. It is worth 1 to 4, and that plain number is what a Quick Craft adds; its own roll on the Skills tab adds the attribute it hangs off on top."),
   table([
     row("Roll", "Tier", "What it does to what's made"),
     row("Natural 1", "Failed", "It's made, and it does nothing"),

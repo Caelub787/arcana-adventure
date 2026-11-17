@@ -39,15 +39,17 @@ import {
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
   shiftNodes, SHIFT_HELP,
   // Level 38: one array of attributes, picked skills, every roll a d20.
-  ATTRS, SKILLS, ATTR_MIN, ATTR_MAX, ATTR_ARRAY_TEXT, ATTR_ARRAY_SUM, ATTR_ARRAY_SQUARES, ATTR_ARRAY_NOTE,
+  ATTRS, SKILLS, ATTR_MIN, ATTR_MAX, ATTR_ARRAY_NOTE, signed,
   SKILL_PICKS, SKILL_PICK_NOTE, attrCanvasItems, skillsTabContent,
+  // Level 39: the two lines above the attributes, in words.
+  ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 38;
+export const CA_KIT_LEVEL = 39;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -97,6 +99,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 36) await upgrade36(store);
   if (level < 37) await upgrade37(store);
   if (level < 38) await upgrade38(store);
+  if (level < 39) await upgrade39(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2011,8 +2014,7 @@ async function upgrade38(store: ScopeStore) {
       }
       await calc(n, "attr_sum", "Attributes total", ATTRS.map((a) => `base(${a.key})`).join(" + "), cs);
       await calc(n, "attr_squares", "Attributes spread", ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + "), cs);
-      const fix = `"Assign ${ATTR_ARRAY_TEXT} — one each"`;
-      await calc(n, "attr_array", "Array", `if(attr_sum == ${ATTR_ARRAY_SUM}, if(attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_ARRAY_TEXT} ✓", ${fix}), ${fix})`, cs, true);
+      await calc(n, "attr_array", "Array", ATTR_ARRAY_FORMULA, cs, true);
 
       for (const k of SKILLS) {
         const f = fields.get(k.key);
@@ -2026,8 +2028,8 @@ async function upgrade38(store: ScopeStore) {
       const { plus, best, worst } = SKILL_PICKS;
       await calc(n, "skill_plus", `+${plus.value} skills`, picked(plus.value), cs);
       await calc(n, "skill_best", `+${best.value} skill`, picked(best.value), cs);
-      await calc(n, "skill_worst", `${worst.value} skill`, picked(worst.value), cs);
-      await calc(n, "skill_picks", "Skill picks", `concat("+${plus.value} ", skill_plus, "/${plus.count}   +${best.value} ", skill_best, "/${best.count}   ${worst.value} ", skill_worst, "/${worst.count}", if(skill_plus == ${plus.count}, if(skill_best == ${best.count}, if(skill_worst == ${worst.count}, " ✓", " — still to pick"), " — still to pick"), " — still to pick"))`, cs, true);
+      await calc(n, "skill_worst", `${signed(worst.value)} skill`, picked(worst.value), cs);
+      await calc(n, "skill_picks", "Skill picks", SKILL_PICKS_FORMULA, cs, true);
 
       for (const key of DEAD_SKILL_FIELDS) { const f = fields.get(key); if (f) await store.removeField(f.id, cs); }
 
@@ -2094,6 +2096,89 @@ async function upgrade38(store: ScopeStore) {
       if (!tab || !kits) return;
       tab.delete(0, tab.length);
       appendNodes(tab, skillsTabContent((key) => rolls.get(key)));
+      const root = doc.getMap<Y.Map<any>>("canvases");
+      let m = root.get("cv_attributes");
+      if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set("cv_attributes", m); }
+      const items = attrCanvasItems();
+      const ids = new Set(items.map((c) => String(c.id)));
+      for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
+      for (const c of items) m.set(String(c.id), c);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 39
+// The Skills tab, laid out the way you read it.
+//
+// A row is now the skill's name, what it's for, its bonus and a Roll button —
+// the pick has moved inside the bonus, which opens on a double-click and shows
+// the attribute and the pick that make it up. The two lines above said
+// "+2 0/6   +4 1/1   -2 0/1"; they now say what's actually left. The attribute
+// boxes are half the height they were, and the table itself is built from the
+// sheet's own values, so a skill can be added or dropped without rewriting the
+// page.
+//
+// Crafting stops being a box of its own: Blacksmithing, Alchemy and Rune Making
+// are skills like any other (on Might, Intelligence and Finesse), joined by Orb
+// Hunting on Anemos. Nobody starts with them — a sheet keeps one only if it was
+// already worth something — and the number keeps its name and its 1–4 range, so
+// the forge, the cauldron and the rune pen read it exactly as before.
+const SKILL_LABEL = (name: string) => `${name} pick`;
+
+async function upgrade39(store: ScopeStore) {
+  const pages: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      const array = fields?.get("attr_array"), picks = fields?.get("skill_picks");
+      if (!array || !picks || !fields) continue;
+      await store.putField({ ...array, formula: ATTR_ARRAY_FORMULA }, cs);
+      await store.putField({ ...picks, formula: SKILL_PICKS_FORMULA }, cs);
+
+      // Every skill says what it is, so the block can list it.
+      for (const k of SKILLS) {
+        const pick = fields.get(k.key);
+        if (pick) await store.putField({ ...pick, label: SKILL_LABEL(k.name), options: { ...pick.options, ...skillOptions(k) } }, cs);
+        const bonus = fields.get(`${k.key}_bonus`);
+        if (bonus) await store.putField({ ...bonus, label: k.name, options: { ...bonus.options, ...bonusOptions(k) } }, cs);
+      }
+
+      // Crafting: a skill if it was ever set, gone if it was left at 0.
+      for (const k of EXTRA_SKILLS) {
+        const pick = fields.get(k.key);
+        if (!pick) continue;
+        if (Math.round(Number(pick.value) || 0) < EXTRA_SKILL_MIN) {
+          for (const key of [k.key, `${k.key}_bonus`]) { const f = fields.get(key); if (f) await store.removeField(f.id, cs); }
+          for (const a of store.actionsOf(n.id)) if (a.name === k.name) await store.removeAction(a.id, cs);
+          continue;
+        }
+        await store.putField({
+          ...pick, label: SKILL_LABEL(k.name),
+          options: { ...pick.options, ...skillOptions(k), min: EXTRA_SKILL_MIN, max: EXTRA_SKILL_MAX, tooltip: CRAFT_SKILL_HELP[k.key as keyof typeof CRAFT_SKILL_HELP] ?? k.desc },
+        }, cs);
+        const bonusKey = `${k.key}_bonus`, had = fields.get(bonusKey);
+        const bonus = { label: k.name, type: "formula" as const, value: null, formula: `${k.parent} + ${k.key}`, options: { ...(had?.options ?? {}), ...bonusOptions(k) } };
+        if (had) await store.putField({ ...had, ...bonus }, cs);
+        else await store.putField({ ...bonus, id: randomUUID(), noteId: n.id, key: bonusKey, acl: { view: "inherit", edit: "inherit" }, sortOrder: pick.sortOrder + 1, templateFieldId: null }, cs);
+        if (!store.actionsOf(n.id).some((a) => a.name === k.name)) {
+          await store.putAction({
+            id: randomUUID(), noteId: n.id, name: k.name, color: "#78350f", acl: { view: "inherit", edit: "owners" },
+            steps: [{ type: "roll", name: "r", expr: `roll(1, 20) + ${bonusKey}`, label: k.name }],
+          }, cs);
+        }
+      }
+      pages.push(n);
+    }
+  });
+
+  // The Skills tab: the two lines, the smaller attribute boxes, and the table
+  // that is now a block. A GM who rebuilt their own tab keeps it.
+  for (const note of pages) {
+    await editPage(note, (doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab || !(hasType(tab, "agCanvas") || /Athletics/.test(textOf(tab)))) return;
+      tab.delete(0, tab.length);
+      appendNodes(tab, skillsTabContent());
       const root = doc.getMap<Y.Map<any>>("canvases");
       let m = root.get("cv_attributes");
       if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set("cv_attributes", m); }

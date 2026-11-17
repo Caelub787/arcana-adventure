@@ -49,6 +49,13 @@ export type AgOp =
   | { op: "field.set"; id: string; value: AgValue }
   | { op: "field.adjust"; id: string; delta: number }
   | { op: "field.delete"; id: string }
+  /**
+   * Put a skill on a sheet (or take one off): the number itself, the bonus it
+   * works out to with its attribute, and the button that rolls it. Whoever owns
+   * the sheet can do it, not only the GM — it's their character's skill.
+   */
+  | { op: "skill.add"; noteId: string; key?: string; name: string; parent: string; about?: string; min?: number; max?: number }
+  | { op: "skill.remove"; noteId: string; key: string }
   | { op: "region.create"; noteId: string; inline: boolean; acl?: AgAcl; label?: string | null }
   | { op: "region.update"; id: string; patch: Partial<Pick<AgRegion, "acl" | "label">> }
   | { op: "region.delete"; id: string }
