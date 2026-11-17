@@ -357,7 +357,7 @@ function DiceFormulaInput({ field }: { field: AgField }) {
     <div className="space-y-1">
       <CommitInput value={field.formula ?? ""} className="w-full h-9 bg-stone-950 border border-stone-700 rounded px-2 font-mono text-sky-200" placeholder="e.g. 1d8 + 2"
         onCommit={(v) => request({ op: "field.update", id: field.id, patch: { formula: v } }).catch((e: any) => toast({ title: "Couldn't change it", description: e.message, variant: "destructive" }))} />
-      <div className="text-[11px] text-stone-500">Dice like 2d6 + 3, or roll(1, might_die) + athletics. Press Enter to save.</div>
+      <div className="text-[11px] text-stone-500">Dice like 2d6 + 3, or roll(1, 20) + athletics_bonus. Press Enter to save.</div>
     </div>
   );
 }

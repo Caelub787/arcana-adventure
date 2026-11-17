@@ -394,7 +394,7 @@ const TOPICS: Topic[] = [
         <Bullets>
           <li><Code>@owner.hp</Code>, <Code>@items</Code>… reach through connections, just like formulas.</li>
           <li><Code>@source</Code> is the sheet the button is on (handy inside a filter, which runs on each choice).</li>
-          <li><Code>roll(1, might_die)</Code> rolls a die whose size comes from a value. Rolling a Dice value (<Code>damage</Code>) rolls what's written in it.</li>
+          <li><Code>roll(1, weapon_die)</Code> rolls a die whose size comes from a value. Rolling a Dice value (<Code>damage</Code>) rolls what's written in it.</li>
         </Bullets>
         <Steps>
           <li><Ui>+ Insert</Ui> → <Ui>Button / roll</Ui> → <Ui>Choose what it does…</Ui> → <Ui>New action…</Ui> (or a sheet's <Ui>Settings → Buttons</Ui>).</li>
@@ -442,7 +442,7 @@ const TOPICS: Topic[] = [
           <li>A column shown as <Ui>Sheets it's connected to (tags)</Ui> names a connection of each row (e.g. <Code>ability</Code>) and shows those sheets as tags — click one to open it. Filter chips and edge colours can use it too.</li>
           <li>Tags are coloured by the connected sheet's colour value: a text value with <Ui>It's a colour</Ui> ticked in Values (edited with a colour picker).</li>
           <li><Code>*</Code> after a connection follows it as far as it goes: <Code>ability.holder*</Code> is its ability's holder — and if that's another ability, its holder, up to the character. <Code>+</Code> takes every sheet along the way: <Code>abilities+.aspects</Code> is the aspects of a character's abilities and of the abilities inside them.</li>
-          <li>Paths work everywhere a connection goes: a Rolls block's <Ui>Who rolls</Ui> (<Code>ability.holder</Code> on an aspect), an Effects block, and formulas (<Code>@ability.holder.anemos_die</Code>).</li>
+          <li>Paths work everywhere a connection goes: a Rolls block's <Ui>Who rolls</Ui> (<Code>ability.holder</Code> on an aspect), an Effects block, and formulas (<Code>@ability.holder.arcana_bonus</Code>).</li>
         </Bullets>
         <Tip>Drag a sheet from the sidebar onto an open sheet to put it in that sheet's list for its kind — an item into the inventory, a trait into the traits. It's connected the way that list's <Ui>Add</Ui> would. Drag a card from one sheet's list onto another sheet to move it there (off the first).</Tip>
         <Tip>A list's <Ui>Add</Ui> → <Ui>Give this sheet its own copy</Ui>: an original added there (picked or dragged) becomes this sheet's own copy, kept in the folder you name, and the original stays as it is. A copy added somewhere else moves; taken off, it stays in that folder. Whoever owns the sheet sees its copies and uses their buttons (they're its <b>users</b>); only a copy's owners can change it.</Tip>
@@ -464,7 +464,7 @@ const TOPICS: Topic[] = [
         <P>A starter kit drops a complete, ready-to-play game into the campaign, built from ordinary Agnostic pieces, so every part of it can be opened, changed or copied. Find kits at the bottom of the <Ui>Characters</Ui> tab (GM only).</P>
         <H>Cultivator's Adventure</H>
         <Table rows={[
-          [<b>CA Character</b>, "Tabs for Overview, Skills, Ability, Inventory and Traits. Rank, Max HP, Focus and Lifespan come from the Energy Pool by themselves; attributes set each skill's die; attribute and skill points are counted for you."],
+          [<b>CA Character</b>, "Tabs for Overview, Skills, Ability, Inventory and Traits. Rank, Max HP, Focus and Lifespan come from the Energy Pool by themselves. Attributes take one each of +3, +2, +1, 0, −1 and −2; six skills are picked for +2, one for +4 and one for −2, and a skill's bonus is its attribute plus its pick. Neither moves with rank — only items do."],
           [<b>CA items</b>, "Weapon (Attack, Damage), Ranged Weapon (Attack uses up one equipped ammo of its type, Damage), Armor (adds to DC while equipped), Consumable (Heal HP, Heal a wound), Rune, Container (adds carry weight), Currency, Ammunition, Miscellaneous."],
           [<b>Wound</b>, "Severity, location and effects. Its effects are modifiers on the bearer (−2 Athletics…) that end when it's treated or healed."],
           [<b>Trait</b>, "A named trait with a summary."],
@@ -472,10 +472,10 @@ const TOPICS: Topic[] = [
         <H>How it's built (copy these ideas)</H>
         <Bullets>
           <li>Rank: <Code>tier(energy_pool, 0, 10, 20, …)</Code> finds the Pillar on the ladder (nine ranks, Mortal to Paragon, of nine Pillars); <Code>choose(floor(rank_index / 9), 50, 100, …)</Code> reads Max HP off a list, one per rank.</li>
-          <li>Skill rolls: <Code>roll(1, might_die) + athletics</Code>.</li>
-          <li>Points spent use <Code>base(athletics)</Code>, so a wound's −2 doesn't give points back.</li>
-          <li><b>Abilities</b> (<b>CA Ability</b>) are sets — gravity control, ember arts — each with a tag colour; their single uses are <b>Ability Aspects</b> (<b>CA Ability Aspect</b>). Open an ability to see its aspects and <Ui>Add</Ui> new ones. The character's Ability tab lists the abilities, then every aspect of every ability, tagged with (and filterable by) its ability. Each aspect has <b>Rolls</b>: as many as you like (an attack and its damage, two with different costs…), each with its own name, dice, die (fixed or the character's attribute die), a value it adds (a skill), a bonus and an Energy / Focus cost. Pressing one spends the cost first — or says why it can't. Tick <Ui>Button on the character sheet</Ui> for the ones that show on the Ability tab. The character who has its ability rolls and pays (<Code>ability.holder</Code>). Items have the same Rolls (a weapon starts with Attack and Damage). There are two aspect templates: <b>CA Ability Aspect</b> for a normal use (one <b>Use</b> roll, 1d20) and <b>CA Attack Aspect</b> for one that deals damage (an <b>Attack</b> roll, 1d20, and a <b>Damage</b> roll with a Damage Die: spend Energy on it to roll more dice).</li>
-          <li>Usable Energy is <Code>choose(rank_index, …)</Code> — the floor of the Pillar you're on, so it only rises on a breakthrough. Each rank up adds 1 Max Focus, 1 Skill Point and 1 Attribute Point; within a rank, Max Focus rises on Pillars 3, 5, 7 and 9 and Skill Points on Pillars 2, 4, 6 and 8 (<Code>focus_max</Code>, <Code>skill_budget</Code>, <Code>attr_budget</Code>).</li>
+          <li>Skill rolls: <Code>roll(1, 20) + athletics_bonus</Code>, where <Code>athletics_bonus</Code> is <Code>might + athletics</Code>.</li>
+          <li>The array and the picks are counted with <Code>base(athletics)</Code>, so a wound's −2 doesn't look like a mis-spent pick.</li>
+          <li><b>Abilities</b> (<b>CA Ability</b>) are sets — gravity control, ember arts — each with a tag colour; their single uses are <b>Ability Aspects</b> (<b>CA Ability Aspect</b>). Open an ability to see its aspects and <Ui>Add</Ui> new ones. The character's Ability tab lists the abilities, then every aspect of every ability, tagged with (and filterable by) its ability. Each aspect has <b>Rolls</b>: as many as you like (an attack and its damage, two with different costs…), each with its own name, dice, die, a value it adds (a skill’s bonus), a bonus and an Energy / Focus cost. Pressing one spends the cost first — or says why it can't. Tick <Ui>Button on the character sheet</Ui> for the ones that show on the Ability tab. The character who has its ability rolls and pays (<Code>ability.holder</Code>). Items have the same Rolls (a weapon starts with Attack and Damage). There are two aspect templates: <b>CA Ability Aspect</b> for a normal use (one <b>Use</b> roll, 1d20) and <b>CA Attack Aspect</b> for one that deals damage (an <b>Attack</b> roll, 1d20, and a <b>Damage</b> roll with a Damage Die: spend Energy on it to roll more dice).</li>
+          <li>Usable Energy is <Code>choose(rank_index, …)</Code> — the floor of the Pillar you're on, so it only rises on a breakthrough. Each rank up adds 1 Max Focus, and within a rank Max Focus rises on Pillars 3, 5, 7 and 9 (<Code>focus_max</Code>). Attributes and skills don’t move with rank at all.</li>
           <li><b>Ranged weapons</b> (<b>CA Ranged Weapon</b>): their <Ui>Attack</Ui> uses up one <b>CA Ammunition</b> the owner has <b>equipped</b>, of the weapon's Ammo category (Arrow, Bolt, Dart, Pistol Round, Rifle Round) — none of that category equipped, no attack.</li>
           <li><b>Damage Die</b>: a weapon's Damage roll (and any roll you tick it on) lets the wielder spend Energy to roll more of its die — the 1st extra die costs the step (d6 20, d8 25, d10 30, d12 35), the 2nd twice that, the 3rd three times… Daggers d6, Short Swords d8, Longswords d10, Warhammers d12; Bows d8, Longbows d10, Warbows d12.</li>
           <li>Items' <b>Rank</b> is their rarity — Unranked, or a rank name (Mortal … Paragon), never a Pillar. It colours the item's card. Anything crafted takes the rank of what its recipe makes. Rank has nothing to do with runes: what limits those is the room left on the item.</li>
@@ -600,7 +600,7 @@ const TOPICS: Topic[] = [
           [<Code>concat(a, b, …)</Code>, "Join text."],
           [<Code>choose(i, a, b, c…)</Code>, "The i-th option, counting from 0 (past the end → the last)."],
           [<Code>tier(x, t0, t1, …)</Code>, "How far up a ladder x is: 0 below t1, 1 from t1, 2 from t2…"],
-          [<Code>roll(n, sides)</Code>, "Dice whose size is a value (buttons only): roll(1, might_die)."],
+          [<Code>roll(n, sides)</Code>, "Dice whose size is a value (buttons only): roll(1, weapon_die)."],
           [<Code>base(x)</Code>, "x as written on the sheet, before modifiers from connected sheets."],
         ]} />
         <P>Examples: <Code>floor((str - 10) / 2)</Code> (a modifier), <Code>10 + con * 2</Code> (max HP), <Code>{'if(hp <= 0, "Down", "Up")'}</Code>.</P>

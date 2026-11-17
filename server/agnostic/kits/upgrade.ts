@@ -6,7 +6,7 @@
 import * as Y from "yjs";
 import { randomUUID } from "crypto";
 import { noteDocName, regionDocName, type AgNote } from "@shared/agnostic/types";
-import type { ScopeStore } from "../store";
+import type { ScopeStore, ChangeSet } from "../store";
 import * as repo from "../repo";
 import * as docs from "../docs";
 import * as snap from "../snapshot";
@@ -38,13 +38,16 @@ import {
   vitalsNodes, identityChips, traitsNodes, budgetNodes, itemsHeading, tagColourLine, consumableLine, traitRollsNodes,
   LEVEL_ATTR_BUDGET_FORMULA, LEVEL_SKILL_BUDGET_FORMULA, WOUNDS_HELP, CULTIVATION_HELP, CONSUMABLE_HELP,
   shiftNodes, SHIFT_HELP,
+  // Level 38: one array of attributes, picked skills, every roll a d20.
+  ATTRS, SKILLS, ATTR_MIN, ATTR_MAX, ATTR_ARRAY_TEXT, ATTR_ARRAY_SUM, ATTR_ARRAY_SQUARES, ATTR_ARRAY_NOTE,
+  SKILL_PICKS, SKILL_PICK_NOTE, attrCanvasItems, skillsTabContent,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 37;
+export const CA_KIT_LEVEL = 38;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -93,6 +96,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 35) await upgrade35(store);
   if (level < 36) await upgrade36(store);
   if (level < 37) await upgrade37(store);
+  if (level < 38) await upgrade38(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -1957,6 +1961,146 @@ async function upgrade37(store: ScopeStore) {
       const at = region ? frag.toArray().indexOf(region) : -1;
       const nodes = shiftNodes();
       if (at >= 0) insertNodes(frag, at, nodes); else appendNodes(frag, nodes);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 38
+// Attributes and skills are made once and then left alone.
+//
+// Six attributes take one each of +3, +2, +1, 0, −1 and −2, in any order. Six
+// skills take +2, one takes +4 and one takes −2. A skill's bonus is its
+// attribute plus its pick, and every roll is 1d20 + that bonus — no attribute
+// dice any more. Nothing rises with rank, so the point budgets, the bonus
+// points and the dice all go, and a training item simply moves the value.
+//
+// Numbers already on a sheet are kept, only pulled back inside the new range;
+// the line at the top of the Skills tab says what is still to assign.
+const SHEET_TYPES = new Set(["character", "npc", "beast"]);
+const DEAD_SKILL_FIELDS = ["attr_budget", "attr_used", "attr_points", "skill_budget", "skill_used", "skill_points", "skill_reclaimed", "bonus_attr_points", "bonus_skill_points"];
+const clampTo = (v: unknown, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+// The six attribute dice. A path can walk connections on the way to one
+// ("@ability.holder*.will_die"), so the whole reference goes, not just the key.
+const ATTR_DICE = new RegExp(`(?:@[\\w.*+]*\\.)?\\b(?:${ATTRS.map((a) => a.key).join("|")})_(?:die|dice)\\b`, "g");
+const noDice = (expr: unknown) => (typeof expr === "string" && /_(?:die|dice)\b/.test(expr) ? expr.replace(ATTR_DICE, "20") : null);
+
+async function upgrade38(store: ScopeStore) {
+  /** A formula field: put it right, or make it. */
+  const calc = async (n: AgNote, key: string, label: string, formula: string, cs: ChangeSet, text = false) => {
+    const have = store.fieldsByNote.get(n.id);
+    const f = have?.get(key);
+    const options = { resultType: text ? "text" : "number" } as AgField["options"];
+    if (f) { await store.putField({ ...f, type: "formula", value: null, formula, options: { ...f.options, ...options } }, cs); return; }
+    const order = Math.max(0, ...Array.from(have?.values() ?? []).map((x) => x.sortOrder)) + 1;
+    await store.putField({ id: randomUUID(), noteId: n.id, key, label, type: "formula", value: null, formula, options, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null }, cs);
+  };
+  const rebuild: Array<{ note: AgNote; rolls: Map<string, string> }> = [];
+
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      // A C.A. sheet, not somebody's own character sheet of another make.
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+
+      for (const a of ATTRS) {
+        const f = fields.get(a.key);
+        if (f) await store.putField({ ...f, value: clampTo(f.value, ATTR_MIN, ATTR_MAX), options: { ...f.options, min: ATTR_MIN, max: ATTR_MAX, tooltip: ATTR_ARRAY_NOTE } }, cs);
+        // The die each attribute used to roll; everything rolls a d20 now.
+        for (const key of [`${a.key}_die`, `${a.key}_dice`]) { const d = fields.get(key); if (d) await store.removeField(d.id, cs); }
+      }
+      await calc(n, "attr_sum", "Attributes total", ATTRS.map((a) => `base(${a.key})`).join(" + "), cs);
+      await calc(n, "attr_squares", "Attributes spread", ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + "), cs);
+      const fix = `"Assign ${ATTR_ARRAY_TEXT} — one each"`;
+      await calc(n, "attr_array", "Array", `if(attr_sum == ${ATTR_ARRAY_SUM}, if(attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_ARRAY_TEXT} ✓", ${fix}), ${fix})`, cs, true);
+
+      for (const k of SKILLS) {
+        const f = fields.get(k.key);
+        if (f) await store.putField({
+          ...f, value: clampTo(f.value, SKILL_PICKS.worst.value, SKILL_PICKS.best.value),
+          options: { ...f.options, min: SKILL_PICKS.worst.value, max: SKILL_PICKS.best.value, tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` },
+        }, cs);
+        await calc(n, `${k.key}_bonus`, `${k.name} bonus`, `${k.parent} + ${k.key}`, cs);
+      }
+      const picked = (v: number) => SKILLS.map((k) => `if(base(${k.key}) == ${v}, 1, 0)`).join(" + ");
+      const { plus, best, worst } = SKILL_PICKS;
+      await calc(n, "skill_plus", `+${plus.value} skills`, picked(plus.value), cs);
+      await calc(n, "skill_best", `+${best.value} skill`, picked(best.value), cs);
+      await calc(n, "skill_worst", `${worst.value} skill`, picked(worst.value), cs);
+      await calc(n, "skill_picks", "Skill picks", `concat("+${plus.value} ", skill_plus, "/${plus.count}   +${best.value} ", skill_best, "/${best.count}   ${worst.value} ", skill_worst, "/${worst.count}", if(skill_plus == ${plus.count}, if(skill_best == ${best.count}, if(skill_worst == ${worst.count}, " ✓", " — still to pick"), " — still to pick"), " — still to pick"))`, cs, true);
+
+      for (const key of DEAD_SKILL_FIELDS) { const f = fields.get(key); if (f) await store.removeField(f.id, cs); }
+
+      // The rolls: 1d20 + the skill's bonus, whatever die they used to take.
+      const rolls = new Map<string, string>();
+      for (const act of store.actionsOf(n.id)) {
+        // Named after the skill, or — if the GM renamed the button — a lone
+        // roll that adds that skill and nothing else.
+        const lone = act.steps.length === 1 && act.steps[0].type === "roll" ? String(act.steps[0].expr ?? "") : "";
+        const k = SKILLS.find((k) => k.name === act.name)
+          ?? (lone ? SKILLS.find((k) => new RegExp(`\\b${k.key}\\b`).test(lone) && !rolls.has(k.key)) : undefined);
+        if (!k) continue;
+        rolls.set(k.key, act.id);
+        const steps = act.steps.map((st) => (st.type === "roll" ? { ...st, expr: `roll(1, 20) + ${k.key}_bonus` } : st));
+        await store.putAction({ ...act, steps }, cs);
+      }
+      rebuild.push({ note: n, rolls });
+    }
+
+    // Everything else that rolled an attribute's die — an ability's Use, a
+    // weapon's Attack — rolls a d20 and adds the skill's bonus instead.
+    for (const n of Array.from(store.notes.values())) {
+      for (const act of store.actionsOf(n.id)) {
+        let hit = false;
+        const steps = act.steps.map((st) => {
+          const next = noDice((st as any).expr);
+          if (next === null) return st;
+          hit = true;
+          return { ...st, expr: next };
+        });
+        const roll = act.options?.roll;
+        const die = roll ? noDice(roll.die) : null;
+        const add = roll && SKILLS.some((k) => k.key === roll.add) ? `${roll.add}_bonus` : null;
+        if (!hit && die === null && add === null) continue;
+        await store.putAction({
+          ...act, steps,
+          ...(roll && (die !== null || add !== null)
+            ? { options: { ...act.options!, roll: { ...roll, ...(die !== null ? { die } : {}), ...(add !== null ? { add } : {}) } } }
+            : {}),
+        }, cs);
+      }
+    }
+
+    // Training items hand out points into a budget that no longer exists.
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("raise_key")) continue;
+      for (const key of ["grants_attr_points", "grants_skill_points"]) { const f = fields.get(key); if (f) await store.removeField(f.id, cs); }
+      const by = fields.get("raise_by");
+      if (by) await store.putField({ ...by, options: { ...by.options, min: -10, max: 10 } }, cs);
+      for (const act of store.actionsOf(n.id)) {
+        const steps = act.steps.filter((st) => !(st.type === "modify" && /bonus_(attr|skill)_points/.test(String((st as any).target ?? ""))));
+        if (steps.length !== act.steps.length) await store.putAction({ ...act, steps }, cs);
+      }
+    }
+  });
+
+  // The Skills tab, rebuilt around the array and the picks.
+  for (const { note, rolls } of rebuild) {
+    await editPage(note, (doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      // Only where it is still the kit's own tab: a GM who has rebuilt it keeps theirs.
+      const kits = tab && (hasType(tab, "agCanvas") || /Athletics/.test(textOf(tab)));
+      if (!tab || !kits) return;
+      tab.delete(0, tab.length);
+      appendNodes(tab, skillsTabContent((key) => rolls.get(key)));
+      const root = doc.getMap<Y.Map<any>>("canvases");
+      let m = root.get("cv_attributes");
+      if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set("cv_attributes", m); }
+      const items = attrCanvasItems();
+      const ids = new Set(items.map((c) => String(c.id)));
+      for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
+      for (const c of items) m.set(String(c.id), c);
     });
   }
 }

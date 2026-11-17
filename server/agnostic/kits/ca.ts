@@ -28,7 +28,7 @@ const COPY = { copy: true, copyFolder: CA_COPIES_FOLDER };
 const ADD_ONLY = { ...COPY, createNew: false };
 
 // --------------------------------------------------------------------------- C.A. rules, as data
-const ATTRS = [
+export const ATTRS = [
   { key: "might", name: "Might", abbr: "MIG" },
   { key: "finesse", name: "Finesse", abbr: "FIN" },
   { key: "constitution", name: "Constitution", abbr: "CON" },
@@ -36,9 +36,9 @@ const ATTRS = [
   { key: "anemos", name: "Anemos", abbr: "ANE" },
   { key: "intelligence", name: "Intelligence", abbr: "INT" },
 ] as const;
-const ABBR: Record<string, string> = Object.fromEntries(ATTRS.map((a) => [a.key, a.abbr]));
+export const ABBR: Record<string, string> = Object.fromEntries(ATTRS.map((a) => [a.key, a.abbr]));
 
-const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }> = [
+export const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }> = [
   { key: "athletics", name: "Athletics", parent: "might", desc: "Climbing, jumping, swimming, lifting, and physical exertion." },
   { key: "intimidation", name: "Intimidation", parent: "might", desc: "Threatening, dominating, and forcing compliance." },
   { key: "acrobatics", name: "Acrobatics", parent: "finesse", desc: "Balance, tumbling, climbing, and agile movement." },
@@ -62,8 +62,9 @@ const SKILLS: Array<{ key: string; name: string; parent: string; desc: string }>
 
 // The rank ladder: nine ranks of nine Pillars, read off the Energy Pool. A Pillar is a tenth of its rank (Pillar 9
 // holds the last two tenths); Awakened's 900 splits evenly into nine 100s. Health and Lifespan are the rank's own;
-// Usable Energy is the floor of the Pillar you're on; Focus and skill points rise on each rank up and on Pillars 2,
-// 4, 6 and 8 (+5 a rank); attribute points rise once a rank. Absorption is half a Pillar (Mortal: 20).
+// Usable Energy is the floor of the Pillar you're on; Focus rises on each rank up and on Pillars 3, 5, 7 and 9
+// (+5 a rank). Attributes and skills don't: they're set once from the array and the picks, and only items move
+// them after that. Absorption is half a Pillar (Mortal: 20).
 export interface RankRung { name: string; start: number; step: number; hp: number; lifespan: number }
 export const RANKS: RankRung[] = [
   { name: "Mortal", start: 0, step: 10, hp: 50, lifespan: 100 },
@@ -134,13 +135,34 @@ export const RANK_FORMULAS = LADDER.formulas;
 /** Max Focus: 6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9 (+5 a rank). */
 export const FOCUS_FORMULA = `6 + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS}) / 2)`;
 const focusAt = (idx: number) => 6 + LADDER.growth(idx);
-/** Skill points the ladder has given by this Pillar (beyond the 8 to start). */
-const skillsAt = (idx: number) => 5 * Math.floor(idx / PILLARS) + Math.floor(((idx % PILLARS) + 1) / 2);
+
 /** Usable Energy is the floor of the Pillar you're on (Awakened Pillar 2, 257 in the pool → 200), not the pool's every point. */
 export const USABLE_LADDER = LADDER.usable;
 // Attribute points: +1 per rank. Skill points: +1 on each rank up and on Pillars 2, 4, 6 and 8 (Focus: 3, 5, 7, 9).
 // Training items add bonus points (and pay for the values they raise directly).
 // C.A. has no levels — characters grow by rank.
+/**
+ * Attributes and skills, as of the array.
+ *
+ * Six attributes get one each of +3, +2, +1, 0, −1 and −2, in any order, and
+ * that is that: they don't grow with rank or with anything else a character
+ * does. Only items (and wounds) move them afterwards.
+ *
+ * The array is checked by two sums rather than by counting: six whole numbers
+ * from −2 to +3 that add up to 3 and whose squares add up to 19 can only be
+ * −2, −1, 0, +1, +2, +3, one of each. Two short formulas, no bookkeeping.
+ */
+export const ATTR_ARRAY = [3, 2, 1, 0, -1, -2];
+export const ATTR_ARRAY_SUM = ATTR_ARRAY.reduce((t, v) => t + v, 0);
+export const ATTR_ARRAY_SQUARES = ATTR_ARRAY.reduce((t, v) => t + v * v, 0);
+export const ATTR_ARRAY_TEXT = "+3, +2, +1, 0, −1, −2";
+export const ATTR_MIN = Math.min(...ATTR_ARRAY), ATTR_MAX = Math.max(...ATTR_ARRAY);
+/** The skills a character picks out, and what each pick is worth. */
+export const SKILL_PICKS = { plus: { value: 2, count: 6 }, best: { value: 4, count: 1 }, worst: { value: -2, count: 1 } };
+export const ATTR_ARRAY_NOTE = `Six attributes, one of each: ${ATTR_ARRAY_TEXT}, in any order. They never rise with rank — only items and wounds move them afterwards.`;
+export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${SKILL_PICKS.worst.value}. Everything else stays at 0, and nothing rises with rank.`;
+export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
+
 export const ATTR_BUDGET_FORMULA = `4 + floor(rank_index / ${PILLARS}) + bonus_attr_points`;
 export const SKILL_BUDGET_FORMULA = `8 + skill_reclaimed + 5 * floor(rank_index / ${PILLARS}) + floor((rank_index % ${PILLARS} + 1) / 2) + bonus_skill_points`;
 /** The budgets before levels went (kit levels up to 15), to recognise ones the GM hasn't changed. */
@@ -149,7 +171,8 @@ export const LEVEL_SKILL_BUDGET_FORMULA = "8 + (level - 1) + skill_reclaimed + r
 export const ATTR_BUDGET_NOTE = "Attributes can't go below 0. 4 + one per rank (Awakened, Tempered…) + bonus points from training items.";
 export const SKILL_BUDGET_NOTE = "8 + one on each rank up and on Pillars 2, 4, 6 and 8 (five a rank) + bonus points from training items; up to 6 back from skills below 0.";
 export const ATTR_DIE_NOTE = "Each attribute sets the die its skills roll: 0 → d6, 1 → d8, 2 → d10, 3 → d12, 4+ → d20. Double-click a number to change it.";
-export const SKILL_ROLL_NOTE = "Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).";
+export const LEGACY_SKILL_ROLL_NOTE = "Roll = the attribute's die + the skill. Wounds and equipped items change skills automatically (the green / red number beside a skill).";
+export const SKILL_ROLL_NOTE = `Every roll is 1d20 + the skill's bonus. ${SKILL_BONUS_NOTE}`;
 export const TEMP_HP_COLOR = "#22c55e";
 export const TEMP_ENERGY_COLOR = "#ec4899";
 export const TEMP_ENERGY_LINE = p(muted("Temp Energy "), val("temp_energy", { display: "input" }), muted("  — spent before Energy; shows in pink on the bar."));
@@ -159,14 +182,14 @@ export const USABLE_NOTE = " — the floor of your Pillar; it goes up when you b
 /** The rank ladder as a tooltip: every rung and what it's worth (shown behind the ? by Rank). */
 export function rankTooltip(): string {
   const n = (x: number) => x.toLocaleString("en-US");
-  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. Each rank has nine **Pillars**. **Usable Energy** is what you spend: the floor of the Pillar you're on, so it only goes up when you break through to the next Pillar. Each rank up adds 1 Focus, 1 skill point and 1 attribute point; within a rank, Focus rises on Pillars 3, 5, 7 and 9, skill points on Pillars 2, 4, 6 and 8.", ""];
+  const out = ["Your rank is read from your **Energy Pool** — it isn't set by hand. Each rank has nine **Pillars**. **Usable Energy** is what you spend: the floor of the Pillar you're on, so it only goes up when you break through to the next Pillar. Each rank up adds 1 Focus, and within a rank Focus rises on Pillars 3, 5, 7 and 9. Attributes and skills don't move with rank at all.", ""];
   RANKS.forEach((r, ri) => {
     out.push(`## ${r.name} · Health ${n(r.hp)} · Lifespan ${n(RANK_LIFESPAN[ri])} yrs · Absorbs ${n(RANK_ABSORB[ri])}`);
-    out.push("Pillar | Energy Pool | Usable | Max Focus | Skill points");
+    out.push("Pillar | Energy Pool | Usable | Max Focus");
     for (let k = 0; k < PILLARS; k++) {
       const idx = ri * PILLARS + k;
       const top = idx + 1 < THRESHOLDS.length ? n(THRESHOLDS[idx + 1] - 1) : "+";
-      out.push(`${k + 1} | ${n(THRESHOLDS[idx])}${top === "+" ? "+" : `–${top}`} | ${n(USABLE_LADDER[idx])} | ${focusAt(idx)} | +${skillsAt(idx)}`);
+      out.push(`${k + 1} | ${n(THRESHOLDS[idx])}${top === "+" ? "+" : `–${top}`} | ${n(USABLE_LADDER[idx])} | ${focusAt(idx)}`);
     }
     out.push("");
   });
@@ -306,25 +329,27 @@ function characterTemplate(beast = false): AgSnapshot {
     .num("temp_energy", "Temp Energy", 0, { min: 0, color: TEMP_ENERGY_COLOR })
     .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0, follows: "focus_max" })
     .calc("wounds_count", "Wounds", "count(@wounds.name)");
-  // Attributes: value → die size (0 d6, 1 d8, 2 d10, 3 d12, 4+ d20)
-  for (const a of ATTRS) {
-    s.num(a.key, a.name, 0, { min: 0, max: 5 });
-    s.calc(`${a.key}_die`, `${a.name} die`, `choose(clamp(${a.key}, 0, 4), 6, 8, 10, 12, 20)`);
-    s.calc(`${a.key}_dice`, `${a.abbr} die`, `concat("d", ${a.key}_die)`, "text");
-  }
-  // Point budgets
-  // Budgets count what was spent, so wounds and gear (modifiers) don't change them.
+  // Attributes: one each of +3, +2, +1, 0, −1, −2, and no dice — every roll is 1d20.
+  for (const a of ATTRS) s.num(a.key, a.name, 0, { min: ATTR_MIN, max: ATTR_MAX, tooltip: ATTR_ARRAY_NOTE });
+  // The array, checked by its two sums (see ATTR_ARRAY). base() so that a
+  // sword's +1 Might doesn't look like a misassigned array.
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
-  const negatives = SKILLS.map((k) => `min(base(${k.key}), 0)`).join(" + ");
-  const positives = SKILLS.map((k) => `max(base(${k.key}), 0)`).join(" + ");
-  s.num("bonus_attr_points", "Bonus attribute points", 0, { min: 0, tooltip: "Extra attribute points from training items (manuals, pills, elixirs…). They add to the budget." })
-    .num("bonus_skill_points", "Bonus skill points", 0, { min: 0, tooltip: "Extra skill points from training items. They add to the budget." });
-  s.calc("attr_budget", "Attribute budget", ATTR_BUDGET_FORMULA).calc("attr_used", "Attribute points used", attrSum)
-    .calc("attr_points", "Attribute Points", `concat(attr_used, " / ", attr_budget, if(attr_used > attr_budget, " (too many)", ""))`, "text");
-  for (const k of SKILLS) s.num(k.key, `${k.name} (${ABBR[k.parent]})`, 0, { min: -2, max: 10 });
-  s.calc("skill_reclaimed", "Skill points reclaimed", `min(6, -(${negatives}))`)
-    .calc("skill_budget", "Skill budget", SKILL_BUDGET_FORMULA).calc("skill_used", "Skill points used", positives)
-    .calc("skill_points", "Skill Points", `concat(skill_used, " / ", skill_budget, if(skill_used > skill_budget, " (too many)", ""))`, "text");
+  const attrSquares = ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + ");
+  const arrayFix = `"Assign ${ATTR_ARRAY_TEXT} — one each"`;
+  s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
+    .calc("attr_array", "Array", `if(attr_sum == ${ATTR_ARRAY_SUM}, if(attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_ARRAY_TEXT} ✓", ${arrayFix}), ${arrayFix})`, "text");
+  // A skill holds the pick its owner spent on it; its bonus is that plus the
+  // attribute it hangs off, and that is what the d20 is added to.
+  for (const k of SKILLS) {
+    s.num(k.key, `${k.name} (${ABBR[k.parent]})`, 0, { min: SKILL_PICKS.worst.value, max: SKILL_PICKS.best.value, tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` });
+    s.calc(`${k.key}_bonus`, `${k.name} bonus`, `${k.parent} + ${k.key}`);
+  }
+  const picked = (v: number) => SKILLS.map((k) => `if(base(${k.key}) == ${v}, 1, 0)`).join(" + ");
+  const { plus, best, worst } = SKILL_PICKS;
+  s.calc("skill_plus", `+${plus.value} skills`, picked(plus.value))
+    .calc("skill_best", `+${best.value} skill`, picked(best.value))
+    .calc("skill_worst", `${worst.value} skill`, picked(worst.value))
+    .calc("skill_picks", "Skill picks", `concat("+${plus.value} ", skill_plus, "/${plus.count}   +${best.value} ", skill_best, "/${best.count}   ${worst.value} ", skill_worst, "/${worst.count}", if(skill_plus == ${plus.count}, if(skill_best == ${best.count}, if(skill_worst == ${worst.count}, " ✓", " — still to pick"), " — still to pick"), " — still to pick"))`, "text");
   // Crafting skills: standalone bonuses (no attribute), added to Quick Craft rolls.
   s.num("blacksmithing", "Blacksmithing", 0, { tooltip: CRAFT_SKILL_HELP.blacksmithing })
     .num("alchemy", "Alchemy", 0, { tooltip: CRAFT_SKILL_HELP.alchemy })
@@ -336,7 +361,7 @@ function characterTemplate(beast = false): AgSnapshot {
     .calc("currency", "Currency", "sum(@items.coin_total)");
 
   // Skill roll buttons
-  const roll = (k: typeof SKILLS[number]) => s.action(`a_${k.key}`, k.name, [{ type: "roll", name: "r", expr: `roll(1, ${k.parent}_die) + ${k.key}`, label: k.name }], "#78350f");
+  const roll = (k: typeof SKILLS[number]) => s.action(`a_${k.key}`, k.name, [{ type: "roll", name: "r", expr: `roll(1, 20) + ${k.key}_bonus`, label: k.name }], "#78350f");
   const skillRolls = Object.fromEntries(SKILLS.map((k) => [k.key, roll(k)]));
   // Joins the campaign's initiative order with 1d20 + Finesse (the C.A. rule).
   const initiative = s.action("a_initiative", "Initiative", [{ type: "initiative", expr: "1d20 + finesse", label: "Initiative" }], "#b45309", "owners", { icon: "fa-solid fa-bolt", showName: true, showIcon: true, listed: false });
@@ -354,31 +379,8 @@ function characterTemplate(beast = false): AgSnapshot {
   ];
 
   // ---- Skills
-  const attrBoxes: Record<string, unknown>[] = [];
-  ATTRS.forEach((a, n) => {
-    const x = 4 + (n % 3) * 216, y = 4 + Math.floor(n / 3) * 84;
-    attrBoxes.push({ id: `bg_${a.key}`, x, y, w: 208, h: 76, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
-    attrBoxes.push({ id: `n_${a.key}`, x, y: y + 8, w: 208, h: 16, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "center" } });
-    attrBoxes.push({ id: `v_${a.key}`, x: x + 60, y: y + 28, w: 50, h: 36, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "right", look: { fontSize: 26, bold: true, color: GILT } } });
-    attrBoxes.push({ id: `d_${a.key}`, x: x + 114, y: y + 38, w: 40, h: 20, z: 1, widget: { kind: "field", ref: `${a.key}_dice`, display: "value", showLabel: false, look: { fontSize: 12, textColor: "#a8a29e" } } });
-  });
-  const skillRows: Array<Array<DocNode[]>> = [[[p(b("Skill"))], [p(b("Die"))], [p(b("Mod"))], [p(b("Roll"))]]];
-  for (const k of SKILLS) {
-    skillRows.push([
-      [p(b(k.name), muted(` (${ABBR[k.parent]})`)), p(t(k.desc, { italic: {}, textStyle: { color: "#78716c" } }))],
-      [p(val(`${k.parent}_dice`, { look: { color: GILT } }))],
-      [p(val(k.key, { display: "input" }))],
-      [p(button(skillRolls[k.key], "Roll", { height: 26, fontSize: 12 }))],
-    ]);
-  }
-  const skillsTab: DocNode[] = [
-    budgetNodes(),
-    canvas("cv_attributes", 652, 172),
-    hr(),
-    h(3, icon("Zap", GILT, 18), " Skills ", tip(SKILL_ROLL_NOTE)),
-    table(skillRows),
-    ...craftingSkillNodes(),
-  ];
+  const attrBoxes = attrCanvasItems();
+  const skillsTab: DocNode[] = skillsTabContent((key) => skillRolls[key]);
 
   // ---- Ability
   const abilityTab: DocNode[] = abilityTabContent();
@@ -450,7 +452,8 @@ export function runeSlotNodes(): DocNode[] {
 }
 
 // ---- The Overview's parts (also used to bring existing characters up to date)
-export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank. Each rank up adds 1 Focus, 1 skill point and 1 attribute point; within a rank, Focus rises on Pillars 3, 5, 7 and 9 and skill points on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.";
+export const LEGACY_RANK_HELP_2 = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank. Each rank up adds 1 Focus, 1 skill point and 1 attribute point; within a rank, Focus rises on Pillars 3, 5, 7 and 9 and skill points on Pillars 2, 4, 6 and 8. The ? beside your rank shows the whole ladder.";
+export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank, and each rank up adds 1 Focus (and more on Pillars 3, 5, 7 and 9). Attributes and skills stay as they were made — only items and wounds move them. The ? beside your rank shows the whole ladder.";
 /** The texts before Pillars, to find and replace on existing sheets. */
 export const LEGACY_RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
 export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds).";
@@ -515,11 +518,49 @@ export const TRAIT_ICON_CONFIG = {
 export function traitsNodes(): DocNode[] {
   return [h(3, icon("Star", GILT, 18), " Traits ", tip(TRAITS_HELP)), links("traits", TRAIT_ICON_COLUMNS, TRAIT_ICON_CONFIG)];
 }
-/** Attribute and skill points at the top of the Skills tab. */
+/** The six attribute boxes on the Skills tab's canvas: a name and a number each. */
+export function attrCanvasItems(): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  ATTRS.forEach((a, n) => {
+    const x = 4 + (n % 3) * 216, y = 4 + Math.floor(n / 3) * 84;
+    out.push({ id: `bg_${a.key}`, x, y, w: 208, h: 76, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
+    out.push({ id: `n_${a.key}`, x, y: y + 8, w: 208, h: 16, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "center" } });
+    out.push({ id: `v_${a.key}`, x: x + 79, y: y + 28, w: 50, h: 36, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 26, bold: true, color: GILT } } });
+  });
+  return out;
+}
+
+/**
+ * The Skills tab: the array and the picks, the six attributes, then every
+ * skill with its pick, its bonus and its roll. What a skill is *for* lives
+ * behind its ? rather than under its name, so the whole list fits on a screen.
+ */
+export function skillsTabContent(rollIdOf: (skillKey: string) => string | undefined | null): DocNode[] {
+  const rows: Array<Array<DocNode[]>> = [[[p(b("Skill"))], [p(b("Pick"))], [p(b("Bonus"))], [p(b("Roll"))]]];
+  for (const k of SKILLS) {
+    const id = rollIdOf(k.key);
+    rows.push([
+      [p(b(k.name), muted(` (${ABBR[k.parent]})`), " ", tip(k.desc))],
+      [p(val(k.key, { display: "input" }))],
+      [p(val(`${k.key}_bonus`, { look: { color: GILT, bold: true } }))],
+      [id ? p(button(id, "Roll", { height: 26, fontSize: 12 })) : p()],
+    ]);
+  }
+  return [
+    budgetNodes(),
+    canvas("cv_attributes", 652, 172),
+    hr(),
+    h(3, icon("Zap", GILT, 18), " Skills ", tip(SKILL_ROLL_NOTE)),
+    table(rows),
+    ...craftingSkillNodes(),
+  ];
+}
+
+/** The array and the picks, at the top of the Skills tab. */
 export function budgetNodes(): DocNode {
   return columns([
-    [p(b("Attribute Points"), " ", tip(`${ATTR_BUDGET_NOTE}\n\n${ATTR_DIE_NOTE}`), "  ", val("attr_points", { look: { color: GILT, bold: true } }))],
-    [p(b("Skill Points"), " ", tip(SKILL_BUDGET_NOTE), "  ", val("skill_points", { look: { color: GILT, bold: true } }))],
+    [p(b("Attributes"), " ", tip(ATTR_ARRAY_NOTE), "  ", val("attr_array", { look: { color: GILT, bold: true } }))],
+    [p(b("Skill picks"), " ", tip(`${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`), "  ", val("skill_picks", { look: { color: GILT, bold: true } }))],
   ], { gap: 12 });
 }
 /** The Inventory tab's heading over the items. */
@@ -748,7 +789,8 @@ export const TOOL_SKILL_HELP = "Temporary points on the craft's skill while this
 export const TOOL_MIN_RUNE_HELP = "Rune Making: the smallest rune this tool can cut, as a share of the item it's cut into. A broad chisel can't do fine work (set it high); a jeweller's needle can (leave it at 4%). A finer tool fits more runes on one item.";
 export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, an **Alchemist Pot** for Alchemy, a **Runemaking Pen** for Rune Making. Open its sheet to craft — the craft opens right below, for whoever carries it; the first step you take puts you at the controls (only the GM can take over). Its Quick Craft bonus adds to Quick Craft rolls. The GM's **Station setup** picks which recipes can be made at it, so a better forge can make more. Any item can be made a station (Insert → Crafting station).";
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
-export const TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
+export const LEGACY_TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
+export const TRAINING_HELP = "Using it raises that attribute or skill for good — items are the only thing that move either of them. A negative number lowers it. One is used up each time.";
 export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";
 export const consumableLine = (): DocNode => p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }));
 export const RUNE_HELP = "Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).";
@@ -805,22 +847,17 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     body.push(h(3, icon("Target", "#fb923c", 16), " Ammunition ", tip(AMMO_HELP)), p(muted("TYPE "), val("ammo_type", { display: "badge" })));
   }
   if (kind === "Training") {
-    // Manuals, pills, elixirs: using one raises a value for good, or grants points to spend.
-    // A value it raises comes with a matching bonus point, so it never eats the points already earned.
+    // Manuals, pills, elixirs: using one raises an attribute or a skill for good.
+    // There are no points to spend any more — an item is the only thing that
+    // moves either of them, so it moves the value itself.
     s.choice("raises", "Raises", ["Nothing", ...RAISABLE.map((r) => r.name)], "Nothing")
-      .num("raise_by", "Raises by", 1, { min: 1, max: 10 })
+      .num("raise_by", "Raises by", 1, { min: -10, max: 10 })
       .calc("raise_key", "Value it raises", RAISABLE.reduceRight((acc, r) => `if(raises == "${r.name}", "${r.key}", ${acc})`, `""`), "text")
-      .calc("raise_kind", "Kind it raises", RAISABLE.reduceRight((acc, r) => `if(raises == "${r.name}", "${r.kind}", ${acc})`, `""`), "text")
-      .num("grants_attr_points", "Grants attribute points", 0, { min: 0 })
-      .num("grants_skill_points", "Grants skill points", 0, { min: 0 });
+      .calc("raise_kind", "Kind it raises", RAISABLE.reduceRight((acc, r) => `if(raises == "${r.name}", "${r.kind}", ${acc})`, `""`), "text");
     const use = s.action("a_train", "Use", [
       { type: "message", text: "{name} has to be in someone's inventory to be used.", when: "count(@owner.name) == 0" },
       { type: "stop", when: "count(@owner.name) == 0" },
       { type: "modify", target: "@owner.{raise_key}", op: "add", value: "raise_by", when: 'raise_key != ""' },
-      { type: "modify", target: "@owner.bonus_attr_points", op: "add", value: "raise_by", when: 'raise_kind == "attribute"' },
-      { type: "modify", target: "@owner.bonus_skill_points", op: "add", value: "raise_by", when: 'raise_kind == "skill"' },
-      { type: "modify", target: "@owner.bonus_attr_points", op: "add", value: "grants_attr_points", when: "grants_attr_points > 0" },
-      { type: "modify", target: "@owner.bonus_skill_points", op: "add", value: "grants_skill_points", when: "grants_skill_points > 0" },
       { type: "message", text: "{@owner.name} used {name}." },
       { type: "modify", target: "qty", op: "subtract", value: "1" },
       { type: "remove", target: "self", when: "qty <= 0" },
@@ -828,7 +865,6 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
     body.push(
       h(3, icon("BookOpen", "#c084fc", 16), " Training ", tip(TRAINING_HELP)),
       p(muted("RAISES "), val("raises", { display: "input" }), muted("  BY "), val("raise_by", { display: "input" })),
-      p(muted("GRANTS "), val("grants_attr_points", { display: "input" }), muted(" attribute points  "), val("grants_skill_points", { display: "input" }), muted(" skill points")),
       p(button(use, "Use")),
     );
   }
@@ -1058,7 +1094,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
     const oath = await createFrom(store, made.ability, "Iron Oath", { description: "A sworn guardian's arts: drawing harm onto yourself and holding the line.", tag_color: "#60a5fa" }, cs);
     for (const a of [embers, oath]) await connect(store, a, hero, "holder", "abilities", cs);
     const bulwark = await createFrom(store, made.aspect, "Oathbound Bulwark", { category: "Defense", range: "Self", duration: "1 round", description: "Plant your shield and draw every eye in the room: enemies within 10 ft must target you." }, cs);
-    await setRoll(store, bulwark, "Use", { die: `@${ASPECT_VIA}.will_die`, add: "focus_skill", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
+    await setRoll(store, bulwark, "Use", { die: "20", add: "focus_skill_bonus", costs: [{ key: "energy", amount: "20" }, { key: "focus", amount: "2" }] }, cs);
     // Attack aspects: an Attack roll that pays, and a Damage roll (more dice for Energy).
     const lance = await createFrom(store, made.attackAspect, "Ember Lance", { category: "Attack", range: "30 ft", description: "A spear of burning Anemos: roll to hit, then its fire damage." }, cs);
     await setRoll(store, lance, "Attack", { costs: [{ key: "energy", amount: "30" }, { key: "focus", amount: "0" }] }, cs);
