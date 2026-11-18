@@ -42,14 +42,14 @@ import {
   ATTRS, SKILLS, ATTR_MIN, ATTR_MAX, ATTR_ARRAY_NOTE, signed,
   SKILL_PICKS, SKILL_PICK_NOTE, attrCanvasItems, skillsTabContent,
   // Level 39: the two lines above the attributes, in words.
-  ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX,
+  ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 39;
+export const CA_KIT_LEVEL = 40;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -59,6 +59,10 @@ export async function markKitCurrent(store: ScopeStore) {
 
 export async function upgradeCAKit(store: ScopeStore) {
   const level = await repo.getSeedLevel(marker(store.key));
+  // Whatever the level, make sure the Skills block is still on the sheets: a
+  // browser left open on an older build deletes blocks it doesn't recognise
+  // (see healSkillsBlock). Once per scope per run, so it costs a page read.
+  await healSkillsBlock(store).catch((e) => console.error("[agnostic] couldn't put the Skills block back", e));
   if (level >= CA_KIT_LEVEL) return;
   const characterTemplates = Array.from(store.notes.values()).filter((n) => n.isTemplate && n.name === "CA Character");
   if (!characterTemplates.length) { await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL); return; }
@@ -100,6 +104,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 37) await upgrade37(store);
   if (level < 38) await upgrade38(store);
   if (level < 39) await upgrade39(store);
+  if (level < 40) await healSkillsBlock(store, true);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2186,6 +2191,41 @@ async function upgrade39(store: ScopeStore) {
       const ids = new Set(items.map((c) => String(c.id)));
       for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
       for (const c of items) m.set(String(c.id), c);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 40
+/**
+ * Put the Skills block back when something has eaten it.
+ *
+ * A sheet's page is a shared document, and the editor builds it against the
+ * blocks the browser knows. A browser still running an older build doesn't know
+ * `agSkills`, fails to build it — and, being a collaborative document, deletes
+ * it for everyone. So anyone who had a C.A. sheet open while the kit updated
+ * lost the whole skills table, not just their own view of it.
+ *
+ * Nothing can stop an old tab doing that, so instead this checks on every run
+ * and puts the block back under the Skills heading wherever it has gone
+ * missing. Once per scope per run of the server: a page read apiece, and only
+ * for C.A. character, NPC and beast sheets.
+ */
+const healed = new Set<string>();
+async function healSkillsBlock(store: ScopeStore, force = false) {
+  if (!force && healed.has(store.key)) return;
+  healed.add(store.key);
+  for (const n of Array.from(store.notes.values())) {
+    if (!SHEET_TYPES.has(n.type)) continue;
+    const fields = store.fieldsByNote.get(n.id);
+    if (!fields?.get("might") || !fields.get("athletics")) continue;
+    await editPage(n, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab || hasType(tab, "agSkills")) return;
+      // Only where it's the kit's own tab and the table really is gone — a GM
+      // who built their own skills table keeps it.
+      if (hasType(tab, "table") || !/Skills/.test(textOf(tab))) return;
+      appendNodes(tab, [skillsBlock()]);
+      console.log(`[agnostic] CA kit: put the Skills block back on ${n.name}`);
     });
   }
 }

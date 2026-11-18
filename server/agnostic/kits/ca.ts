@@ -593,7 +593,15 @@ export function attrCanvasItems(): Record<string, unknown>[] {
  * skill with its pick, its bonus and its roll. What a skill is *for* lives
  * behind its ? rather than under its name, so the whole list fits on a screen.
  */
-/** Name, what it's for, its bonus and a button — one row a skill. */
+/**
+ * Name, what it's for, its bonus and a button — one row a skill.
+ *
+ * Careful with a block the browser has to know by name: a page is a shared
+ * document, and a browser running an older build can't build a block it has
+ * never heard of — so it deletes it, for everyone. Ship the browser's side of
+ * a new block in one release and only start writing it in the next, or leave a
+ * repair behind like healSkillsBlock in upgrade.ts.
+ */
 export const skillsBlock = (): DocNode => ({ type: "agSkills", attrs: {} });
 export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | undefined | null): DocNode[] {
   return [
