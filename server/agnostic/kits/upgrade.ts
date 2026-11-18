@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 43;
+export const CA_KIT_LEVEL = 44;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -111,6 +111,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 41) await upgrade41(store);
   if (level < 42) await upgrade42(store);
   if (level < 43) await upgrade43(store);
+  if (level < 44) await upgrade44(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2444,6 +2445,39 @@ async function upgrade43(store: ScopeStore) {
       if (!tab) return;
       // The old block, in either shape it has had: two columns or three.
       const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Attributes/.test(textOf(e)) && /Skill picks/.test(textOf(e)))[0];
+      if (!old) return;
+      const at = tab.toArray().indexOf(old);
+      if (at < 0) return;
+      tab.delete(at, 1);
+      insertNodes(tab, at, [budgetNodes()]);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 44
+// The line above the attributes says only what is wrong — a missing number, a
+// pick too many — and empties itself once a character is finished. It used to
+// go quiet only on the parts that were short; now it also speaks up when
+// something has been given out twice.
+async function upgrade44(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+      await putCalc(store, n, fields, "creation", "Still to give out", CREATION_FORMULA, cs);
+      const f = store.fieldsByNote.get(n.id)?.get("creation");
+      if (f) await store.putField({ ...f, options: { ...f.options, resultType: "text" } }, cs);
+    }
+  });
+  for (const n of Array.from(store.notes.values())) {
+    if (!SHEET_TYPES.has(n.type)) continue;
+    const fields = store.fieldsByNote.get(n.id);
+    if (!fields?.get("might") || !fields.get("athletics")) continue;
+    await editPage(n, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Character Creation|Skill picks/.test(textOf(e)))[0];
       if (!old) return;
       const at = tab.toArray().indexOf(old);
       if (at < 0) return;

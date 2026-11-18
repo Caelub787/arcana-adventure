@@ -204,9 +204,16 @@ const SKILL_PARTS = (() => {
   const spare = each.map(([key, pick]) => `${key} > ${pick.count}`).join(" || ");
   const under = each.map(([key, pick]) => `${key} < ${pick.count}`);
   const spareOf = each.map(([key, pick]) => `${key} > ${pick.count}`);
+  const wrong = each.map(([key, pick]) => `${key} != ${pick.count}`);
   const left = each.map(([key, pick], n) => pickShort(key, pick.count, pick.value, under.slice(0, n).join(" || "))).join(", ");
   const over = each.map(([key, pick], n) => pickOver(key, pick.count, pick.value, spareOf.slice(0, n).join(" || "))).join(", ");
-  return { done, spare, left, over };
+  // Both ways at once: one skill short of its six +2s and two too many +4s is
+  // two things to fix, and the line says both.
+  const both = each.map(([key, pick], n) => {
+    const after = wrong.slice(0, n).join(" || ");
+    return `if(${key} < ${pick.count}, ${pickShort(key, pick.count, pick.value, after)}, ${pickOver(key, pick.count, pick.value, after)})`;
+  }).join(", ");
+  return { done, spare, left, over, both };
 })();
 export const SKILL_DONE = SKILL_PARTS.done;
 export const SKILL_PICKS_FORMULA =
@@ -273,7 +280,7 @@ export const CREATION_FORMULA = (() => {
   const parts = [
     { done: () => ATTR_DONE, label: "Attributes", left: () => ATTR_LEFT },
     { done: () => SAVE_DONE, label: "Saving throws", left: () => SAVE_PARTS.left },
-    { done: () => SKILL_DONE, label: "Skill picks", left: () => SKILL_PARTS.left },
+    { done: () => SKILL_DONE, label: "Skill picks", left: () => SKILL_PARTS.both },
   ];
   const chunks = parts.map((part, n) => {
     const earlier = parts.slice(0, n).map((x) => `!(${x.done()})`).join(" || ");
@@ -291,7 +298,7 @@ export const CREATION_HELP = [
   "",
   `## Skills\nPick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0. A skill's bonus is its attribute plus its pick, and every roll is 1d20 + that bonus.`,
   "",
-  "Double-click a number to change it. The line beside this says what is still to give out, and clears itself when nothing is.",
+  "Double-click a number to change it. The line beside this says whatever is still wrong with the three, and empties itself when nothing is.",
 ].join("\n");
 
 export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
@@ -717,9 +724,9 @@ export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | unde
 
 /** The array and the picks, at the top of the Skills tab. */
 /**
- * One line above the attributes: what is still to give out on the left, and the
- * rules behind a "Character Creation" tooltip on the right. A finished
- * character leaves it empty but for the tooltip.
+ * Above the attributes: whatever is still wrong with the three arrays on the
+ * left, and the rules behind a "Character Creation" tooltip in the corner.
+ * A finished character is left with nothing but the tooltip.
  */
 export function budgetNodes(): DocNode {
   return columns([
