@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 45;
+export const CA_KIT_LEVEL = 46;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -113,6 +113,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 43) await upgrade43(store);
   if (level < 44) await upgrade44(store);
   if (level < 45) await upgrade45(store);
+  if (level < 46) await upgrade46(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2527,4 +2528,47 @@ async function upgrade45(store: ScopeStore) {
       insertNodes(tab, block, [skillPicksNode()]);
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 46
+// The saves array changes from 8, 8, 10, 12, 14, 16 to 8, 10, 11, 13, 14, 16:
+// no number twice, and the second-weakest save lifted off the floor.
+//
+// A sheet that had the old array in full keeps the order it was given out in —
+// the strongest save stays the strongest — and only the numbers move onto the
+// new ladder. Anything else (a blank sheet, a half-filled one, numbers somebody
+// set by hand) is left exactly as it is, and the line above the boxes says what
+// the new array is still short of.
+const OLD_SAVE_ARRAY = [8, 8, 10, 12, 14, 16];
+
+async function upgrade46(store: ScopeStore) {
+  const down = (a: number, b: number) => b - a;
+  const was = [...OLD_SAVE_ARRAY].sort(down), now = [...SAVE_ARRAY].sort(down);
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+
+      // The lines that check the array name its numbers, so they are rewritten.
+      for (const [key, label, formula] of [
+        ["save_array", "Saves array", SAVE_ARRAY_FORMULA],
+        ["creation", "Still to give out", CREATION_FORMULA],
+      ] as const) {
+        await putCalc(store, n, fields, key, label, formula, cs);
+        const f = store.fieldsByNote.get(n.id)?.get(key);
+        if (f) await store.putField({ ...f, options: { ...f.options, resultType: "text" } }, cs);
+      }
+
+      const held = ATTRS.map((a, i) => ({ key: a.key, v: Math.round(Number(fields.get(saveKey(a.key))?.value) || 0), i }));
+      const sorted = [...held].sort((p, q) => q.v - p.v || p.i - q.i);
+      // Only where the old array is all there, each number exactly once.
+      if (sorted.map((x) => x.v).join() !== was.join()) continue;
+      const given = new Map(sorted.map((x, k) => [x.key, now[k]]));
+      for (const a of ATTRS) {
+        const f = fields.get(saveKey(a.key));
+        if (f) await store.putField({ ...f, value: given.get(a.key) ?? f.value }, cs);
+      }
+    }
+  });
 }

@@ -224,10 +224,10 @@ export const SKILL_PICKS_FORMULA =
  * a trait says otherwise (see DC_SAVE_PICK). Items, armor, traits and wounds
  * move a saving throw the way they move anything else.
  *
- * 8 comes up twice, so unlike the attributes these are checked by counting:
- * two attributes on 8, one on each of the rest.
+ * These are checked by counting rather than by the attributes' two sums, so an
+ * array with the same number twice in it would still work.
  */
-export const SAVE_ARRAY = [8, 8, 10, 12, 14, 16];
+export const SAVE_ARRAY = [8, 10, 11, 13, 14, 16];
 export const SAVE_MIN = 0, SAVE_MAX = Math.max(...SAVE_ARRAY);
 export const SAVE_ARRAY_TEXT = SAVE_ARRAY.join(", ");
 /** Each number in the array once, with how many attributes it wants. */
