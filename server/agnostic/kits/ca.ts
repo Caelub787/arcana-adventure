@@ -9,7 +9,7 @@
 // effects are modifiers on the character.
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
-import { CA_ATTRS, CA_ABBR, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX } from "@shared/agnostic/caSkills";
+import { CA_ATTRS, CA_ABBR, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, DC_SAVE_EFFECT_LABEL } from "@shared/agnostic/caSkills";
 import { randomUUID } from "crypto";
 import type { AgAction, AgActionOptions, AgActionStep, AgField, AgFieldOptions, AgFieldType, AgModifier, AgNote, AgRegion, AgSnapshot, AgTrackerCard, AgValue, AgRollScale, AgRollUses } from "@shared/agnostic/types";
 import { defaultScaleStep } from "@shared/agnostic/types";
@@ -208,6 +208,29 @@ export const SKILL_PICKS_FORMULA = (() => {
   const over = each.map(([key, pick], n) => pickOver(key, pick.count, pick.value, spareOf.slice(0, n).join(" || "))).join(", ");
   return `if(${done}, "${SKILL_DONE_TEXT}", if(${spare}, concat("Too many picked:", ${over}), concat("Still to pick:", ${left})))`;
 })();
+/**
+ * Every attribute has a saving throw: the attribute + 12. A character's DC is
+ * one of them — Might's unless a trait says otherwise (see DC_SAVE_PICK).
+ */
+export const SAVE_BASE = 12;
+export const saveKey = (attr: string) => `${attr}_save`;
+export const SAVE_NOTE = `A saving throw is its attribute + ${SAVE_BASE}.`;
+/** What a trait picks when it moves the DC onto a different saving throw. */
+export const DC_SAVE_NONE = "\u2014 leave it on Might";
+export const DC_SAVE_CHOICES = [DC_SAVE_NONE, ...ATTRS.map((a) => a.name)];
+/** That choice as a number the character can read across the connection: 0 = no, 1 = Might, 2 = Finesse\u2026 */
+export const DC_SAVE_PICK = ATTRS.reduce(
+  (inner, a, n) => `if(dc_save == "${a.name}", ${n + 1}, ${inner})`,
+  "0",
+);
+/**
+ * The character's side is a plain number a trait adds to (an ordinary effect,
+ * see traitTemplate), so a trait that doesn't know about any of this simply
+ * contributes nothing. 0 means nobody has moved it and the DC stays on Might.
+ */
+export const DC_SAVE_LABEL = "DC saving throw";
+export const DC_FORMULA = `choose(clamp(dc_save_n, 0, ${ATTRS.length}) - 1, ${ATTRS.map((a) => saveKey(a.key)).join(", ")})`;
+
 export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
 
 export const ATTR_BUDGET_FORMULA = `4 + floor(rank_index / ${PILLARS}) + bonus_attr_points`;
@@ -355,7 +378,7 @@ export const BEAST_TEMPLATE_DESCRIPTION = "A kind of creature rather than one cr
 function characterTemplate(beast = false): AgSnapshot {
   const s = new Sheet();
   // Identity
-  s.text("race", "Race", "Human").num("dc", "DC", 5).choice("size", "Size", ["Tiny", "Small", "Medium", "Large", "Huge"], "Medium")
+  s.text("race", "Race", "Human").choice("size", "Size", ["Tiny", "Small", "Medium", "Large", "Huge"], "Medium")
     .num("speed", "Speed", 30).num("fly_speed", "Fly Speed", 0).num("swim_speed", "Swim Speed", 15)
     .num("age", "Age", 20).text("birthday", "Birthday").text("languages", "Languages", "Common");
   // Rank — read straight off the Energy Pool, never set by hand.
@@ -376,14 +399,22 @@ function characterTemplate(beast = false): AgSnapshot {
     .num("temp_energy", "Temp Energy", 0, { min: 0, color: TEMP_ENERGY_COLOR })
     .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0, follows: "focus_max" })
     .calc("wounds_count", "Wounds", "count(@wounds.name)");
-  // Attributes: one each of +3, +2, +1, 0, −1, −2, and no dice — every roll is 1d20.
-  for (const a of ATTRS) s.num(a.key, a.name, 0, { min: ATTR_MIN, max: ATTR_MAX, tooltip: ATTR_ARRAY_NOTE });
+  // Attributes: one each of +3, +2, +1, 0, −1, −2, and no dice — every roll is
+  // 1d20. The rule is written on the page above them, so they carry no tooltip.
+  for (const a of ATTRS) {
+    s.num(a.key, a.name, 0, { min: ATTR_MIN, max: ATTR_MAX });
+    s.calc(saveKey(a.key), `${a.name} Saving Throw`, `${a.key} + ${SAVE_BASE}`);
+  }
   // The array, checked by its two sums (see ATTR_ARRAY). base() so that a
   // sword's +1 Might doesn't look like a misassigned array.
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
   const attrSquares = ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + ");
   s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
     .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text");
+  // DC is a saving throw: Might's, or whichever one a trait moves it to.
+  // Armor and other effects still add on top of it.
+  s.num("dc_save_n", DC_SAVE_LABEL, 0, { min: 0, max: ATTRS.length, tooltip: DC_SAVE_N_HELP })
+    .calc("dc", "DC", DC_FORMULA); // the help sits on the heading above it, not on the number
   // A skill holds the pick its owner spent on it; its bonus is that plus the
   // attribute it hangs off, and that is what the d20 is added to.
   for (const k of SKILLS) {
@@ -508,7 +539,7 @@ export const LEGACY_RANK_HELP_2 = "Read off the Energy Pool: nine ranks, Mortal 
 export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank, and each rank up adds 1 Focus (and more on Pillars 3, 5, 7 and 9). Attributes and skills stay as they were made — only items and wounds move them. The ? beside your rank shows the whole ladder.";
 /** The texts before Pillars, to find and replace on existing sheets. */
 export const LEGACY_RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
-export const DC_HELP = "Your defence: an attack has to beat it. Equipped armor and other effects add to it. Beating it by 5 or more wounds you (see Wounds).";
+export const DC_HELP = "Your defence: an attack has to beat it. It is your Might Saving Throw \u2014 the attribute + 12 \u2014 unless a trait hands it to another one. Equipped armor and other effects add on top. Beating it by 5 or more wounds you (see Wounds).";
 export const INITIATIVE_HELP = "Rolls **1d20 + Finesse** and puts you in the turn order.";
 export const LEGACY_HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
 export const HEALTH_HELP = "Set by your rank: Mortal 50, Awakened 100, Tempered 150, Refined 200, Enlightened 250, Exalted 300, Ascendant 500, Transcendent 700, Paragon 1,000 — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
@@ -571,8 +602,8 @@ export function traitsNodes(): DocNode[] {
   return [h(3, icon("Star", GILT, 18), " Traits ", tip(TRAITS_HELP)), links("traits", TRAIT_ICON_COLUMNS, TRAIT_ICON_CONFIG)];
 }
 /** The six attribute boxes on the Skills tab's canvas: a name and a number each. */
-/** The attributes box: three across, two down, each one line of its own. */
-export const ATTR_BOX = { w: 208, h: 40, gapX: 8, gapY: 8, pad: 4 };
+/** The attributes box: three across, two down, each with its saving throw. */
+export const ATTR_BOX = { w: 208, h: 46, gapX: 8, gapY: 8, pad: 4 };
 export const ATTR_CANVAS_W = ATTR_BOX.pad * 2 + ATTR_BOX.w * 3 + ATTR_BOX.gapX * 2;
 export const ATTR_CANVAS_H = ATTR_BOX.pad * 2 + ATTR_BOX.h * 2 + ATTR_BOX.gapY;
 export function attrCanvasItems(): Record<string, unknown>[] {
@@ -581,9 +612,11 @@ export function attrCanvasItems(): Record<string, unknown>[] {
   ATTRS.forEach((a, n) => {
     const x = pad + (n % 3) * (w + gapX), y = pad + Math.floor(n / 3) * (h + gapY);
     out.push({ id: `bg_${a.key}`, x, y, w, h, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
-    // Name on the left, number on the right — the box is one line tall now.
-    out.push({ id: `n_${a.key}`, x: x + 10, y: y + 11, w: w - 70, h: 18, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "left" } });
-    out.push({ id: `v_${a.key}`, x: x + w - 58, y: y + 6, w: 48, h: 28, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 20, bold: true, color: GILT } } });
+    // Name on the left, the attribute next to it, its saving throw on the end.
+    out.push({ id: `n_${a.key}`, x: x + 10, y: y + 14, w: w - 112, h: 18, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "left" } });
+    out.push({ id: `v_${a.key}`, x: x + w - 104, y: y + 9, w: 42, h: 28, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 20, bold: true, color: GILT } } });
+    out.push({ id: `sl_${a.key}`, x: x + w - 58, y: y + 6, w: 48, h: 12, z: 1, widget: { kind: "text", text: "SAVE", fontSize: 8, color: "#78716c", align: "center" } });
+    out.push({ id: `s_${a.key}`, x: x + w - 58, y: y + 18, w: 48, h: 22, z: 1, widget: { kind: "field", ref: saveKey(a.key), display: "value", showLabel: false, align: "center", look: { fontSize: 15, bold: true, color: "#a8a29e" } } });
   });
   return out;
 }
@@ -1055,6 +1088,8 @@ function woundTemplate(): AgSnapshot {
   return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects that really change its bearer's values (skills, speed…). Treat removes it." }, page);
 }
 
+export const DC_SAVE_HELP = "Leave this alone unless the trait is what decides how its holder defends. Pick a saving throw and their DC becomes that one instead of Might's, for as long as they have the trait. Only give this to one of a character's traits.";
+export const DC_SAVE_N_HELP = "Which saving throw the DC comes from: 0 or 1 for Might, 2 Finesse, 3 Constitution, 4 Will, 5 Anemos, 6 Intelligence. A trait that decides how you defend sets this by itself \u2014 leave it at 0 otherwise.";
 export const TRAIT_EFFECTS_HELP = "What this trait changes on its holder, for as long as they have it.";
 export const TRAIT_ROLLS_HELP = "Rolls this trait gives the character who has it — they roll and pay. Hold a roll for advantage, disadvantage or a modifier. They show when you hover the trait on the character's Overview.";
 /** A trait's rolls heading and block (rolled and paid by its holder). */
@@ -1064,9 +1099,17 @@ export function traitRollsNodes(): DocNode[] {
 function traitTemplate(): AgSnapshot {
   const s = new Sheet();
   s.text("summary", "Summary", "");
+  // A trait can move its holder's DC onto another saving throw (a stance that
+  // defends on Finesse, say). "Leave it on Might" on every trait but the one.
+  s.choice("dc_save", DC_SAVE_LABEL, DC_SAVE_CHOICES, DC_SAVE_NONE)
+    .tip("dc_save", DC_SAVE_HELP)
+    .calc("dc_save_n", `${DC_SAVE_LABEL} (number)`, DC_SAVE_PICK);
+  s.modifier("holder", "dc_save_n", "dc_save_n", "dc_save_n > 0", DC_SAVE_EFFECT_LABEL);
   const page: DocNode[] = [
     block("summary", { display: "value", showLabel: false, look: { bold: true } }),
     p(i("Describe the trait here.")),
+    p(muted("Defends on "), val("dc_save", { display: "input" })),
+    hr(),
     ...traitRollsNodes(),
     ...effectsNodes("holder", "", TRAIT_EFFECTS_HELP),
   ];

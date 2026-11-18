@@ -29,3 +29,12 @@ export const EXTRA_SKILL_MIN = 1, EXTRA_SKILL_MAX = 4;
 export const EXTRA_SKILL_NOTE = `An added skill is worth ${EXTRA_SKILL_MIN} to ${EXTRA_SKILL_MAX} on its own, and its roll adds the attribute it hangs off. Crafting reads the plain number, the way it always has.`;
 /** The bonus that goes with a skill's own number. */
 export const bonusKey = (key: string) => `${key}_bonus`;
+
+/**
+ * The effect a trait carries when it decides how its holder defends. It is
+ * ordinary plumbing — the trait's "DC saving throw" dropdown writes it — so the
+ * Effects block leaves it out rather than inviting anyone to hand-edit it.
+ */
+export const DC_SAVE_EFFECT_LABEL = "Decides the DC";
+export const isDcSaveEffect = (m: { targetKey: string; label: string | null }) =>
+  m.targetKey === "dc_save_n" && m.label === DC_SAVE_EFFECT_LABEL;

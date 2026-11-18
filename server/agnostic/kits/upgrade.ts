@@ -15,6 +15,7 @@ import { appendNodes, insertNodes, p, h, icon, muted, val, button, pAlign, hr, s
 import { applyCACrafting, giveCopies, STARTER_SCROLLS, STARTER_BREW_EFFECTS, updateWeaponBlueprints, CA_CRAFT_FOLDER } from "./caCrafting";
 import { ensureCraftGuide } from "./caGuide";
 import { SHIFT_KEY, SHIFT_GROUP_KEY } from "@shared/agnostic/shapeshift";
+import { DC_SAVE_EFFECT_LABEL } from "@shared/agnostic/caSkills";
 import type { AgField } from "@shared/agnostic/types";
 import {
   CA_KIT_FOLDER, rankTooltip, itemRollsNodes,
@@ -43,13 +44,15 @@ import {
   SKILL_PICKS, SKILL_PICK_NOTE, attrCanvasItems, skillsTabContent,
   // Level 39: the two lines above the attributes, in words.
   ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
+  // Level 41: a saving throw per attribute, and a DC that is one of them.
+  SAVE_BASE, saveKey, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 40;
+export const CA_KIT_LEVEL = 41;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -105,6 +108,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 38) await upgrade38(store);
   if (level < 39) await upgrade39(store);
   if (level < 40) await healSkillsBlock(store, true);
+  if (level < 41) await upgrade41(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2228,4 +2232,112 @@ async function healSkillsBlock(store: ScopeStore, force = false) {
       console.log(`[agnostic] CA kit: put the Skills block back on ${n.name}`);
     });
   }
+}
+
+// --------------------------------------------------------------------------- level 41
+// Every attribute gets a saving throw — the attribute + 12 — and a character's
+// DC becomes one of them instead of a number typed in by hand. Might's, unless
+// a trait hands it to another: a trait now carries a "DC saving throw" choice,
+// and the character reads the highest any of their traits asks for. Armor and
+// the rest still add on top, so nothing about equipping changes.
+//
+// The attribute tooltips go. They repeated the rule that is written on the page
+// right above them, and covered the numbers while you read it.
+async function upgrade41(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields) continue;
+
+      // Traits: the choice that can move its holder's DC, and the effect that
+      // carries it over. An ordinary effect, so a trait left alone does nothing.
+      if (n.type === "trait") {
+        if (!fields.get("dc_save")) {
+          await makeField(store, n, fields, "dc_save", DC_SAVE_LABEL, "select", cs, {
+            value: DC_SAVE_NONE, options: { choices: DC_SAVE_CHOICES, tooltip: DC_SAVE_HELP },
+          });
+        }
+        await putCalc(store, n, fields, "dc_save_n", `${DC_SAVE_LABEL} (number)`, DC_SAVE_PICK, cs);
+        if (!store.modifiersOf(n.id).some((m) => m.targetKey === "dc_save_n")) {
+          await store.putModifier({
+            id: randomUUID(), noteId: n.id, via: "holder", targetKey: "dc_save_n",
+            op: "add", amount: "dc_save_n", condition: "dc_save_n > 0", label: DC_SAVE_EFFECT_LABEL,
+          }, cs);
+        }
+        continue;
+      }
+
+      if (!SHEET_TYPES.has(n.type) || !fields.get("might") || !fields.get("athletics")) continue;
+      for (const a of ATTRS) {
+        const f = fields.get(a.key);
+        if (f?.options.tooltip) await store.putField({ ...f, options: { ...f.options, tooltip: undefined } }, cs);
+        await putCalc(store, n, fields, saveKey(a.key), `${a.name} Saving Throw`, `${a.key} + ${SAVE_BASE}`, cs);
+      }
+      if (!fields.get("dc_save_n")) {
+        await makeField(store, n, fields, "dc_save_n", DC_SAVE_LABEL, "number", cs, {
+          value: 0, options: { min: 0, max: ATTRS.length, tooltip: DC_SAVE_N_HELP },
+        });
+      }
+      // The DC a GM typed in is gone, but armor and effects still add to this.
+      await putCalc(store, n, fields, "dc", "DC", DC_FORMULA, cs);
+      // The help sits on the DC heading, so the number itself carries none.
+      const dc = store.fieldsByNote.get(n.id)?.get("dc");
+      if (dc?.options.tooltip) await store.putField({ ...dc, options: { ...dc.options, tooltip: undefined } }, cs);
+    }
+  });
+
+  // The trait page gets the line that says what it defends on.
+  for (const n of Array.from(store.notes.values())) {
+    if (n.type !== "trait") continue;
+    await editPage(n, (_doc, frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "dc_save").length) return;
+      const top = frag.toArray();
+      let at = top.findIndex((c) => c instanceof Y.XmlElement && (c.nodeName === "agRolls" || c.nodeName === "agEffects"));
+      // Step back over the heading that block sits under, so the line doesn't
+      // land inside the Rolls section.
+      while (at > 0 && top[at - 1] instanceof Y.XmlElement && (top[at - 1] as Y.XmlElement).nodeName === "heading") at--;
+      const line = [p(muted("Defends on "), val("dc_save", { display: "input" })), hr()];
+      if (at < 0) appendNodes(frag, line); else insertNodes(frag, at, line);
+    });
+  }
+
+  // And the attribute boxes, which now carry the saving throw beside the number.
+  for (const n of Array.from(store.notes.values())) {
+    if (!SHEET_TYPES.has(n.type)) continue;
+    const fields = store.fieldsByNote.get(n.id);
+    if (!fields?.get("might") || !fields.get("athletics")) continue;
+    await editPage(n, (doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      for (const cv of findAll(tab, (e) => e.nodeName === "agCanvas" && e.getAttribute("canvasId") === "cv_attributes")) {
+        cv.setAttribute("width", String(ATTR_CANVAS_W) as any);
+        cv.setAttribute("height", String(ATTR_CANVAS_H) as any);
+      }
+      const root = doc.getMap<Y.Map<any>>("canvases");
+      let m = root.get("cv_attributes");
+      if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set("cv_attributes", m); }
+      const items = attrCanvasItems();
+      const ids = new Set(items.map((c) => String(c.id)));
+      for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
+      for (const c of items) m.set(String(c.id), c);
+    });
+  }
+}
+
+/** A formula value: put it right, or make it. */
+async function putCalc(store: ScopeStore, n: AgNote, fields: Map<string, AgField>, key: string, label: string, formula: string, cs: ChangeSet) {
+  const f = store.fieldsByNote.get(n.id)?.get(key);
+  if (f) { await store.putField({ ...f, type: "formula", value: null, formula }, cs); return; }
+  await makeField(store, n, fields, key, label, "formula", cs, { formula });
+}
+async function makeField(
+  store: ScopeStore, n: AgNote, fields: Map<string, AgField>, key: string, label: string,
+  type: AgField["type"], cs: ChangeSet, extra: { value?: unknown; formula?: string; options?: AgField["options"] } = {},
+) {
+  const order = Math.max(0, ...Array.from(fields.values()).map((x) => x.sortOrder)) + 1;
+  await store.putField({
+    id: randomUUID(), noteId: n.id, key, label, type,
+    value: (extra.value ?? null) as AgField["value"], formula: extra.formula ?? null,
+    options: extra.options ?? {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null,
+  }, cs);
 }

@@ -6,6 +6,7 @@ import React, { useMemo, useState } from "react";
 import { Trash2, Activity } from "lucide-react";
 import type { AgField, AgModifier } from "@shared/agnostic/types";
 import { asNumber, formatValue } from "@shared/agnostic/formula";
+import { isDcSaveEffect } from "@shared/agnostic/caSkills";
 import { useAg, follow, fieldsOf, resolveRef, effOf } from "./hooks";
 import { PickField, type SelItem } from "./float";
 import { useToast } from "@/hooks/use-toast";
@@ -33,7 +34,8 @@ function amountText(state: State, m: AgModifier): { text: string; n: number | nu
 /** A sheet's effects as small chips ("Athletics −2 · Speed −5"). */
 export function EffectsList({ noteId, empty }: { noteId: string; empty?: React.ReactNode }) {
   const { state } = useAg();
-  const mods = Array.from(state.modifiers.values()).filter((m) => m.noteId === noteId);
+  // A trait's "defends on" plumbing is driven by its own dropdown, not by hand.
+  const mods = Array.from(state.modifiers.values()).filter((m) => m.noteId === noteId && !isDcSaveEffect(m));
   if (!mods.length) return <>{empty ?? null}</>;
   const tgt = (m: AgModifier) => targetFields(state, noteId, m.via).fields.find((f) => f.key === m.targetKey);
   return (
@@ -64,7 +66,8 @@ export function EffectsBlock({ noteId, attrs }: { noteId: string; attrs: Effects
   const { state, request, realViewer } = useAg();
   const { toast } = useToast();
   const gm = realViewer.isGM;
-  const mods = Array.from(state.modifiers.values()).filter((m) => m.noteId === noteId);
+  // A trait's "defends on" plumbing is driven by its own dropdown, not by hand.
+  const mods = Array.from(state.modifiers.values()).filter((m) => m.noteId === noteId && !isDcSaveEffect(m));
   const target = useMemo(() => targetFields(state, noteId, attrs.via), [state, noteId, attrs.via]);
   const items: SelItem[] = target.fields
     .filter((f) => (f.type === "number" || f.type === "formula") && f.options.resultType !== "text" && !/_dice$/.test(f.key))
