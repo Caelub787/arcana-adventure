@@ -782,8 +782,10 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       return store.run(async (cs) => {
         const base = { noteId: n.id, acl: { view: "inherit", edit: "inherit" } as AgAcl, templateFieldId: null };
         await store.putField({
+          // No min / max: a value's limits are applied after items and wounds
+          // have had their say, so a ceiling would quietly eat what they add.
           ...base, id: randomUUID(), key: want, label: `${name} pick`, type: "number", value: min, formula: null, sortOrder: order,
-          options: { min, max, skillOf: parent, ...(about ? { about } : {}), ...(about ? { tooltip: about } : {}) },
+          options: { skillOf: parent, ...(about ? { about } : {}), ...(about ? { tooltip: about } : {}) },
         }, cs);
         await store.putField({
           ...base, id: randomUUID(), key: `${want}_bonus`, label: name, type: "formula", value: null,

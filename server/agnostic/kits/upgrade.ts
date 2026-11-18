@@ -45,14 +45,14 @@ import {
   // Level 39: the two lines above the attributes, in words.
   ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
   // Level 41: a saving throw per attribute, and a DC that is one of them.
-  SAVE_BASE, saveKey, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
+  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 41;
+export const CA_KIT_LEVEL = 42;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -109,6 +109,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 39) await upgrade39(store);
   if (level < 40) await healSkillsBlock(store, true);
   if (level < 41) await upgrade41(store);
+  if (level < 42) await upgrade42(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2271,7 +2272,7 @@ async function upgrade41(store: ScopeStore) {
       for (const a of ATTRS) {
         const f = fields.get(a.key);
         if (f?.options.tooltip) await store.putField({ ...f, options: { ...f.options, tooltip: undefined } }, cs);
-        await putCalc(store, n, fields, saveKey(a.key), `${a.name} Saving Throw`, `${a.key} + ${SAVE_BASE}`, cs);
+        await putCalc(store, n, fields, saveKey(a.key), `${a.name} Saving Throw`, `${a.key} + 12`, cs);
       }
       if (!fields.get("dc_save_n")) {
         await makeField(store, n, fields, "dc_save_n", DC_SAVE_LABEL, "number", cs, {
@@ -2340,4 +2341,80 @@ async function makeField(
     value: (extra.value ?? null) as AgField["value"], formula: extra.formula ?? null,
     options: extra.options ?? {}, acl: { view: "inherit", edit: "inherit" }, sortOrder: order, templateFieldId: null,
   }, cs);
+}
+
+// --------------------------------------------------------------------------- level 42
+// Saving throws stop being worked out and are given out, like the attributes:
+// one each of 8, 8, 10, 12, 14 and 16. They are ordinary numbers now, so items,
+// armor, traits and wounds move them the way they move anything else — and the
+// DC, being one of them, moves with it.
+//
+// A sheet that was already played gets the array laid over its attributes,
+// strongest to weakest, so nobody opens a character with a DC of nothing. It's
+// a valid array and a sensible one; rearranging it is a drag of the numbers.
+async function upgrade42(store: ScopeStore) {
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+
+      // Strongest attribute takes the best save, and so on down.
+      const ranked = ATTRS.map((a) => ({ key: a.key, v: Math.round(Number(fields.get(a.key)?.value) || 0) }))
+        .map((x, i) => ({ ...x, i }))
+        .sort((p, q) => q.v - p.v || p.i - q.i);
+      const best = [...SAVE_ARRAY].sort((p, q) => q - p);
+      const blank = ranked.every((x) => x.v === 0);
+      const given = new Map(ranked.map((x, i) => [x.key, blank ? 0 : best[i]]));
+
+      for (const a of ATTRS) {
+        const key = saveKey(a.key), had = fields.get(key);
+        const value = given.get(a.key) ?? 0;
+        // The rule is on the heading above the boxes, not on six numbers.
+        if (had) await store.putField({ ...had, type: "number", formula: null, value, options: { ...had.options, tooltip: undefined, min: undefined, max: undefined } }, cs);
+        else await makeField(store, n, fields, key, `${a.name} Saving Throw`, "number", cs, { value });
+        // A floor or ceiling is applied after items and wounds have had their
+        // say, so one here would quietly eat what they add. Same for the
+        // attribute and every skill pick below.
+        const attr = fields.get(a.key);
+        if (attr && (attr.options.min !== undefined || attr.options.max !== undefined)) {
+          await store.putField({ ...attr, options: { ...attr.options, min: undefined, max: undefined } }, cs);
+        }
+      }
+      for (const k of SKILLS) {
+        const pick = fields.get(k.key);
+        if (pick && (pick.options.min !== undefined || pick.options.max !== undefined)) {
+          await store.putField({ ...pick, options: { ...pick.options, min: undefined, max: undefined } }, cs);
+        }
+      }
+      for (const k of EXTRA_SKILLS) {
+        const pick = fields.get(k.key);
+        if (pick && (pick.options.min !== undefined || pick.options.max !== undefined)) {
+          await store.putField({ ...pick, options: { ...pick.options, min: undefined, max: undefined } }, cs);
+        }
+      }
+      await putCalc(store, n, fields, "save_array", "Saves array", SAVE_ARRAY_FORMULA, cs);
+      const arr = store.fieldsByNote.get(n.id)?.get("save_array");
+      if (arr) await store.putField({ ...arr, options: { ...arr.options, resultType: "text" } }, cs);
+      // The DC still reads whichever saving throw a trait points it at.
+      await putCalc(store, n, fields, "dc", "DC", DC_FORMULA, cs);
+    }
+  });
+
+  // The three lines above the attributes: what's left of each array, and the picks.
+  for (const n of Array.from(store.notes.values())) {
+    if (!SHEET_TYPES.has(n.type)) continue;
+    const fields = store.fieldsByNote.get(n.id);
+    if (!fields?.get("might") || !fields.get("athletics")) continue;
+    await editPage(n, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Attributes/.test(textOf(e)) && /Skill picks/.test(textOf(e)))[0];
+      if (!old) return;
+      const at = tab.toArray().indexOf(old);
+      if (at < 0) return;
+      tab.delete(at, 1);
+      insertNodes(tab, at, [budgetNodes()]);
+    });
+  }
 }

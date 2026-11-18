@@ -158,8 +158,8 @@ export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKI
 /** A number the way it's written on a sheet: +3, 0, −2. */
 export const signed = (v: number) => (v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0");
 /** The rule in one line, under the heading, so nobody has to open a tooltip. */
-export const ATTR_RULE_LINE = `Give each attribute one of these, no repeats: ${ATTR_ARRAY_TEXT}.`;
-export const SKILL_RULE_LINE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value}, one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0.`;
+export const ATTR_RULE_LINE = `One each of ${ATTR_ARRAY_TEXT}.`;
+export const SKILL_RULE_LINE = `${SKILL_PICKS.plus.count} skills at +${SKILL_PICKS.plus.value}, one at +${SKILL_PICKS.best.value}, one at ${signed(SKILL_PICKS.worst.value)}.`;
 
 /** How many attributes are sitting on `v` right now (the number as written). */
 const attrsAt = (v: number) => `(${ATTRS.map((a) => `if(base(${a.key}) == ${v}, 1, 0)`).join(" + ")})`;
@@ -209,12 +209,39 @@ export const SKILL_PICKS_FORMULA = (() => {
   return `if(${done}, "${SKILL_DONE_TEXT}", if(${spare}, concat("Too many picked:", ${over}), concat("Still to pick:", ${left})))`;
 })();
 /**
- * Every attribute has a saving throw: the attribute + 12. A character's DC is
- * one of them — Might's unless a trait says otherwise (see DC_SAVE_PICK).
+ * Every attribute has a saving throw, given out from an array of its own the
+ * same way the attributes are. A character's DC is one of them — Might's unless
+ * a trait says otherwise (see DC_SAVE_PICK). Items, armor, traits and wounds
+ * move a saving throw the way they move anything else.
+ *
+ * 8 comes up twice, so unlike the attributes these are checked by counting:
+ * two attributes on 8, one on each of the rest.
  */
-export const SAVE_BASE = 12;
+export const SAVE_ARRAY = [8, 8, 10, 12, 14, 16];
+export const SAVE_MIN = 0, SAVE_MAX = Math.max(...SAVE_ARRAY);
+export const SAVE_ARRAY_TEXT = SAVE_ARRAY.join(", ");
+/** Each number in the array once, with how many attributes it wants. */
+export const SAVE_WANTED: Array<{ value: number; count: number }> =
+  Array.from(new Set(SAVE_ARRAY)).map((value) => ({ value, count: SAVE_ARRAY.filter((v) => v === value).length }));
 export const saveKey = (attr: string) => `${attr}_save`;
-export const SAVE_NOTE = `A saving throw is its attribute + ${SAVE_BASE}.`;
+export const SAVE_ARRAY_NOTE = `Six saving throws, given out from this array in any order: ${SAVE_ARRAY_TEXT}. Like the attributes they never rise with rank — items, armor, traits and wounds are what move them.`;
+export const SAVE_RULE_LINE = `One each of ${SAVE_ARRAY_TEXT}.`;
+export const SAVE_NOTE = "A saving throw is a number of its own, given out from the saves array.";
+
+/** How many saving throws sit on `v` right now (the number as written). */
+const savesAt = (v: number) => `(${ATTRS.map((a) => `if(base(${saveKey(a.key)}) == ${v}, 1, 0)`).join(" + ")})`;
+export const SAVE_DONE_TEXT = "Every number given out \u2713";
+/** "Still to give out: 8 ×2, 14" — what the array is still short of. */
+export const SAVE_ARRAY_FORMULA = (() => {
+  const short = SAVE_WANTED.map((w) => `${savesAt(w.value)} < ${w.count}`);
+  const chunks = SAVE_WANTED.map((w, n) => {
+    const sep = n ? `if(${short.slice(0, n).join(" || ")}, ", ", " ")` : '" "';
+    // Two still to give out reads "8 ×2"; one reads just "8".
+    const many = w.count > 1 ? `if(${w.count} - ${savesAt(w.value)} > 1, " \u00d72", "")` : '""';
+    return `if(${short[n]}, concat(${sep}, "${w.value}", ${many}), "")`;
+  });
+  return `if(${short.map((c) => `!(${c})`).join(" && ")}, "${SAVE_DONE_TEXT}", concat("Still to give out:", ${chunks.join(", ")}))`;
+})();
 /** What a trait picks when it moves the DC onto a different saving throw. */
 export const DC_SAVE_NONE = "\u2014 leave it on Might";
 export const DC_SAVE_CHOICES = [DC_SAVE_NONE, ...ATTRS.map((a) => a.name)];
@@ -401,16 +428,21 @@ function characterTemplate(beast = false): AgSnapshot {
     .calc("wounds_count", "Wounds", "count(@wounds.name)");
   // Attributes: one each of +3, +2, +1, 0, −1, −2, and no dice — every roll is
   // 1d20. The rule is written on the page above them, so they carry no tooltip.
+  // No floor or ceiling on either of these. A value's limits are applied after
+  // items and wounds have had their say, so a ceiling of +3 would quietly eat
+  // a sword's +1 Might. The two lines above the boxes are what check the
+  // arrays, and they read what was given out rather than what is in play.
   for (const a of ATTRS) {
-    s.num(a.key, a.name, 0, { min: ATTR_MIN, max: ATTR_MAX });
-    s.calc(saveKey(a.key), `${a.name} Saving Throw`, `${a.key} + ${SAVE_BASE}`);
+    s.num(a.key, a.name, 0);
+    s.num(saveKey(a.key), `${a.name} Saving Throw`, 0); // the rule is on the heading above, not on six numbers
   }
   // The array, checked by its two sums (see ATTR_ARRAY). base() so that a
   // sword's +1 Might doesn't look like a misassigned array.
   const attrSum = ATTRS.map((a) => `base(${a.key})`).join(" + ");
   const attrSquares = ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + ");
   s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
-    .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text");
+    .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text")
+    .calc("save_array", "Saves array", SAVE_ARRAY_FORMULA, "text");
   // DC is a saving throw: Might's, or whichever one a trait moves it to.
   // Armor and other effects still add on top of it.
   s.num("dc_save_n", DC_SAVE_LABEL, 0, { min: 0, max: ATTRS.length, tooltip: DC_SAVE_N_HELP })
@@ -418,7 +450,7 @@ function characterTemplate(beast = false): AgSnapshot {
   // A skill holds the pick its owner spent on it; its bonus is that plus the
   // attribute it hangs off, and that is what the d20 is added to.
   for (const k of SKILLS) {
-    s.num(k.key, `${k.name} pick`, 0, { ...skillOptions(k), min: SKILL_PICKS.worst.value, max: SKILL_PICKS.best.value, tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` });
+    s.num(k.key, `${k.name} pick`, 0, { ...skillOptions(k), tooltip: `${k.desc}\n\n${SKILL_PICK_NOTE}` });
     s.calc(`${k.key}_bonus`, k.name, `${k.parent} + ${k.key}`, "number", bonusOptions(k));
   }
   const picked = (v: number) => SKILLS.map((k) => `if(base(${k.key}) == ${v}, 1, 0)`).join(" + ");
@@ -539,7 +571,7 @@ export const LEGACY_RANK_HELP_2 = "Read off the Energy Pool: nine ranks, Mortal 
 export const RANK_HELP = "Read off the Energy Pool: nine ranks, Mortal to Paragon, of nine Pillars each. Health and Lifespan come with the rank, and each rank up adds 1 Focus (and more on Pillars 3, 5, 7 and 9). Attributes and skills stay as they were made — only items and wounds move them. The ? beside your rank shows the whole ladder.";
 /** The texts before Pillars, to find and replace on existing sheets. */
 export const LEGACY_RANK_HELP = "Read off the Energy Pool. Bronze 1 starts at 0; each star and rank above raises Health and Focus. The ? beside your rank shows the whole ladder.";
-export const DC_HELP = "Your defence: an attack has to beat it. It is your Might Saving Throw \u2014 the attribute + 12 \u2014 unless a trait hands it to another one. Equipped armor and other effects add on top. Beating it by 5 or more wounds you (see Wounds).";
+export const DC_HELP = "Your defence: an attack has to beat it. It is your Might Saving Throw, unless a trait hands it to another one. Equipped armor and other effects move that saving throw as usual. Beating it by 5 or more wounds you (see Wounds).";
 export const INITIATIVE_HELP = "Rolls **1d20 + Finesse** and puts you in the turn order.";
 export const LEGACY_HEALTH_HELP = "20 base, +5 per star, +10 per rank — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
 export const HEALTH_HELP = "Set by your rank: Mortal 50, Awakened 100, Tempered 150, Refined 200, Enlightened 250, Exalted 300, Ascendant 500, Transcendent 700, Paragon 1,000 — a rank up adds its extra HP to your current HP. **Temp HP** is taken before HP and shows in green on the bar (the +number). Click the bar to heal or hurt, or to set Temp HP.";
@@ -650,13 +682,15 @@ export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | unde
 export function budgetNodes(): DocNode {
   // Heading, then the rule in plain words, then what's still left to do —
   // reading down, not a row of numbers to decode.
+  const one = (title: string, help: string, rule: string, ref: string) => [
+    p(b(title), " ", tip(help)),
+    p(muted(rule)),
+    p(val(ref, { look: { color: GILT, bold: true } })),
+  ];
   return columns([
-    [p(b("Attributes"), " ", tip(ATTR_ARRAY_NOTE)),
-     p(muted(ATTR_RULE_LINE)),
-     p(val("attr_array", { look: { color: GILT, bold: true } }))],
-    [p(b("Skill picks"), " ", tip(`${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`)),
-     p(muted(SKILL_RULE_LINE)),
-     p(val("skill_picks", { look: { color: GILT, bold: true } }))],
+    one("Attributes", ATTR_ARRAY_NOTE, ATTR_RULE_LINE, "attr_array"),
+    one("Saving throws", SAVE_ARRAY_NOTE, SAVE_RULE_LINE, "save_array"),
+    one("Skill picks", `${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`, SKILL_RULE_LINE, "skill_picks"),
   ], { gap: 12 });
 }
 /** The Inventory tab's heading over the items. */
