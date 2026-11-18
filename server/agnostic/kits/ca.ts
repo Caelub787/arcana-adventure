@@ -244,12 +244,13 @@ export const SAVE_DONE_TEXT = "Every number given out \u2713";
 /** "Still to give out: 8 ×2, 14" — what the array is still short of. */
 const SAVE_PARTS = (() => {
   const short = SAVE_WANTED.map((w) => `${savesAt(w.value)} < ${w.count}`);
-  const chunks = SAVE_WANTED.map((w, n) => {
-    const sep = n ? `if(${short.slice(0, n).join(" || ")}, ", ", " ")` : '" "';
-    // Two still to give out reads "8 ×2"; one reads just "8".
-    const many = w.count > 1 ? `if(${w.count} - ${savesAt(w.value)} > 1, " \u00d72", "")` : '""';
-    return `if(${short[n]}, concat(${sep}, "${w.value}", ${many}), "")`;
-  });
+  // A number the array wants twice and nobody has is listed twice: "8, 8".
+  const chunks = SAVE_WANTED.flatMap((w, n) =>
+    Array.from({ length: w.count }, (_, k) => {
+      const earlier = [...short.slice(0, n), ...(k ? [`${savesAt(w.value)} < ${k}`] : [])].join(" || ");
+      const sep = earlier ? `if(${earlier}, ", ", " ")` : '" "';
+      return `if(${savesAt(w.value)} < ${w.count - k}, concat(${sep}, "${w.value}"), "")`;
+    }));
   return { done: short.map((c) => `!(${c})`).join(" && "), left: chunks.join(", ") };
 })();
 export const SAVE_DONE = SAVE_PARTS.done;
@@ -276,19 +277,23 @@ export const DC_FORMULA = `choose(clamp(dc_save_n, 0, ${ATTRS.length}) - 1, ${AT
  * is nothing left to say. The rules themselves live in the Character Creation
  * tooltip, out of the way until someone wants them.
  */
-export const CREATION_FORMULA = (() => {
-  const parts = [
-    { done: () => ATTR_DONE, label: "Attributes", left: () => ATTR_LEFT },
-    { done: () => SAVE_DONE, label: "Saving throws", left: () => SAVE_PARTS.left },
-    { done: () => SKILL_DONE, label: "Skill picks", left: () => SKILL_PARTS.both },
-  ];
+const creationLine = (parts: Array<{ done: string; label: string; left: string }>) => {
   const chunks = parts.map((part, n) => {
-    const earlier = parts.slice(0, n).map((x) => `!(${x.done()})`).join(" || ");
+    const earlier = parts.slice(0, n).map((x) => `!(${x.done})`).join(" || ");
     const sep = earlier ? `if(${earlier}, "   \u00b7   ", "")` : '""';
-    return `if(${part.done()}, "", concat(${sep}, "${part.label}:", ${part.left()}))`;
+    return `if(${part.done}, "", concat(${sep}, "${part.label}:", ${part.left}))`;
   });
   return `concat(${chunks.join(", ")})`;
-})();
+};
+/** Above the attribute boxes: the two arrays that are given out there. */
+export const CREATION_FORMULA = creationLine([
+  { done: ATTR_DONE, label: "Attributes", left: ATTR_LEFT },
+  { done: SAVE_DONE, label: "Saving throws", left: SAVE_PARTS.left },
+]);
+/** And above the skills table: the picks that are made there. */
+export const CREATION_SKILLS_FORMULA = creationLine([
+  { done: SKILL_DONE, label: "Skill picks", left: SKILL_PARTS.both },
+]);
 export const CREATION_HELP = [
   "What a new character gives out, once. None of it moves with rank \u2014 items, wounds and traits are what change these afterwards.",
   "",
@@ -298,7 +303,7 @@ export const CREATION_HELP = [
   "",
   `## Skills\nPick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0. A skill's bonus is its attribute plus its pick, and every roll is 1d20 + that bonus.`,
   "",
-  "Double-click a number to change it. The line beside this says whatever is still wrong with the three, and empties itself when nothing is.",
+  "Double-click a number to change it. The gold line above each section says whatever is still wrong with it, and empties itself when nothing is.",
 ].join("\n");
 
 export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
@@ -486,7 +491,8 @@ function characterTemplate(beast = false): AgSnapshot {
   s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
     .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text")
     .calc("save_array", "Saves array", SAVE_ARRAY_FORMULA, "text")
-    .calc("creation", "Still to give out", CREATION_FORMULA, "text");
+    .calc("creation", "Still to give out", CREATION_FORMULA, "text")
+    .calc("creation_skills", "Still to pick", CREATION_SKILLS_FORMULA, "text");
   // DC is a saving throw: Might's, or whichever one a trait moves it to.
   // Armor and other effects still add on top of it.
   s.num("dc_save_n", DC_SAVE_LABEL, 0, { min: 0, max: ATTRS.length, tooltip: DC_SAVE_N_HELP })
@@ -718,6 +724,7 @@ export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | unde
     canvas("cv_attributes", ATTR_CANVAS_W, ATTR_CANVAS_H),
     hr(),
     h(3, icon("Zap", GILT, 18), " Skills ", tip(SKILL_ROLL_NOTE)),
+    skillPicksNode(),
     skillsBlock(),
   ];
 }
@@ -729,11 +736,15 @@ export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | unde
  * A finished character is left with nothing but the tooltip.
  */
 export function budgetNodes(): DocNode {
+  // Most of the row to the text, so a whole array fits on one line before the
+  // next one wraps under it; the tooltip only needs its corner.
   return columns([
     [p(val("creation", { look: { color: GILT, bold: true } }))],
     [pAlign("right", muted("Character Creation "), tip(CREATION_HELP, 15))],
-  ], { gap: 12 });
+  ], { gap: 12, ratio: "3:1" });
 }
+/** The picks line, where the picks are made. */
+export const skillPicksNode = (): DocNode => p(val("creation_skills", { look: { color: GILT, bold: true } }));
 /** The Inventory tab's heading over the items. */
 export function itemsHeading(): DocNode { return h(3, icon("Backpack", GILT, 18), " Items ", tip(INVENTORY_HELP)); }
 

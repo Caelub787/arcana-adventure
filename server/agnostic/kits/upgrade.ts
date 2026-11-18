@@ -45,14 +45,14 @@ import {
   // Level 39: the two lines above the attributes, in words.
   ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
   // Level 41: a saving throw per attribute, and a DC that is one of them.
-  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, CREATION_FORMULA, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
+  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, CREATION_FORMULA, CREATION_SKILLS_FORMULA, skillPicksNode, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 44;
+export const CA_KIT_LEVEL = 45;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -112,6 +112,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 42) await upgrade42(store);
   if (level < 43) await upgrade43(store);
   if (level < 44) await upgrade44(store);
+  if (level < 45) await upgrade45(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2483,6 +2484,47 @@ async function upgrade44(store: ScopeStore) {
       if (at < 0) return;
       tab.delete(at, 1);
       insertNodes(tab, at, [budgetNodes()]);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 45
+// One line a section, each where the thing it is about is: the two arrays above
+// the attribute boxes, the picks above the skills table. The arrays line gets
+// most of its row, so a whole array fits before the next wraps under it, and a
+// number wanted twice reads "8, 8" rather than "8 x2".
+async function upgrade45(store: ScopeStore) {
+  const pages: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+      for (const [key, label, formula] of [
+        ["save_array", "Saves array", SAVE_ARRAY_FORMULA],
+        ["creation", "Still to give out", CREATION_FORMULA],
+        ["creation_skills", "Still to pick", CREATION_SKILLS_FORMULA],
+      ] as const) {
+        await putCalc(store, n, fields, key, label, formula, cs);
+        const f = store.fieldsByNote.get(n.id)?.get(key);
+        if (f) await store.putField({ ...f, options: { ...f.options, resultType: "text" } }, cs);
+      }
+      pages.push(n);
+    }
+  });
+  for (const note of pages) {
+    await editPage(note, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Character Creation/.test(textOf(e)))[0];
+      const at = old ? tab.toArray().indexOf(old) : -1;
+      if (at >= 0) { tab.delete(at, 1); insertNodes(tab, at, [budgetNodes()]); }
+      // The picks line goes under the Skills heading, above the table.
+      if (findAll(tab, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "creation_skills").length) return;
+      const top = tab.toArray();
+      const block = top.findIndex((c) => c instanceof Y.XmlElement && c.nodeName === "agSkills");
+      if (block < 0) return;
+      insertNodes(tab, block, [skillPicksNode()]);
     });
   }
 }
