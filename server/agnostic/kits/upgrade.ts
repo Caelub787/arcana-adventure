@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 46;
+export const CA_KIT_LEVEL = 47;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -114,6 +114,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 44) await upgrade44(store);
   if (level < 45) await upgrade45(store);
   if (level < 46) await upgrade46(store);
+  if (level < 47) await upgrade47(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2571,4 +2572,38 @@ async function upgrade46(store: ScopeStore) {
       }
     }
   });
+}
+
+// --------------------------------------------------------------------------- level 47
+// The attribute and its saving throw are two readings of the same thing, and
+// the boxes had them looking like two different kinds of thing: one gold and
+// large in the middle, the other grey and small off to the side. They are a
+// matched pair now — same size, same colour, same place in every box, each
+// under its own small heading.
+async function upgrade47(store: ScopeStore) {
+  for (const n of Array.from(store.notes.values())) {
+    if (!SHEET_TYPES.has(n.type)) continue;
+    const fields = store.fieldsByNote.get(n.id);
+    if (!fields?.get("might") || !fields.get("athletics")) continue;
+    await editPage(n, (doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      for (const cv of findAll(tab, (e) => e.nodeName === "agCanvas" && e.getAttribute("canvasId") === "cv_attributes")) {
+        cv.setAttribute("width", String(ATTR_CANVAS_W) as any);
+        cv.setAttribute("height", String(ATTR_CANVAS_H) as any);
+      }
+      relayAttrCanvas(doc);
+    });
+  }
+}
+
+/** Put the attribute boxes back the way the kit draws them, stale pieces and all. */
+function relayAttrCanvas(doc: Y.Doc) {
+  const root = doc.getMap<Y.Map<any>>("canvases");
+  let m = root.get("cv_attributes");
+  if (!(m instanceof Y.Map)) { m = new Y.Map<any>(); root.set("cv_attributes", m); }
+  const items = attrCanvasItems();
+  const ids = new Set(items.map((c) => String(c.id)));
+  for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
+  for (const c of items) m.set(String(c.id), c);
 }

@@ -684,21 +684,34 @@ export function traitsNodes(): DocNode[] {
   return [h(3, icon("Star", GILT, 18), " Traits ", tip(TRAITS_HELP)), links("traits", TRAIT_ICON_COLUMNS, TRAIT_ICON_CONFIG)];
 }
 /** The six attribute boxes on the Skills tab's canvas: a name and a number each. */
-/** The attributes box: three across, two down, each with its saving throw. */
-export const ATTR_BOX = { w: 208, h: 46, gapX: 8, gapY: 8, pad: 4 };
+/**
+ * The attributes box: three across, two down. The name on the left, then the
+ * two numbers as a matched pair — same size, same colour, same place in every
+ * box, each under its own heading — because they are two readings of the same
+ * attribute and should look like it.
+ */
+export const ATTR_BOX = { w: 208, h: 46, gapX: 8, gapY: 8, pad: 4, col: 48, gutter: 6 };
 export const ATTR_CANVAS_W = ATTR_BOX.pad * 2 + ATTR_BOX.w * 3 + ATTR_BOX.gapX * 2;
 export const ATTR_CANVAS_H = ATTR_BOX.pad * 2 + ATTR_BOX.h * 2 + ATTR_BOX.gapY;
+/** What each of the two columns is, said once per box in small letters. */
+export const ATTR_COLUMNS = [
+  { cap: "MOD", of: (a: { key: string }) => a.key },
+  { cap: "SAVE", of: (a: { key: string }) => saveKey(a.key) },
+];
 export function attrCanvasItems(): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
-  const { w, h, gapX, gapY, pad } = ATTR_BOX;
+  const { w, h, gapX, gapY, pad, col, gutter } = ATTR_BOX;
+  // The pair sits against the right edge; the name has everything left of it.
+  const firstCol = w - 10 - col * ATTR_COLUMNS.length - gutter * (ATTR_COLUMNS.length - 1);
   ATTRS.forEach((a, n) => {
     const x = pad + (n % 3) * (w + gapX), y = pad + Math.floor(n / 3) * (h + gapY);
     out.push({ id: `bg_${a.key}`, x, y, w, h, z: 0, widget: { kind: "shape", shape: "rect", color: "rgba(41,37,36,0.6)", border: "#d4a24c55", radius: 8 } });
-    // Name on the left, the attribute next to it, its saving throw on the end.
-    out.push({ id: `n_${a.key}`, x: x + 10, y: y + 14, w: w - 112, h: 18, z: 1, widget: { kind: "text", text: `${a.name} (${a.abbr})`, fontSize: 12, color: "#d6d3d1", align: "left" } });
-    out.push({ id: `v_${a.key}`, x: x + w - 104, y: y + 9, w: 42, h: 28, z: 1, widget: { kind: "field", ref: a.key, display: "value", showLabel: false, align: "center", look: { fontSize: 20, bold: true, color: GILT } } });
-    out.push({ id: `sl_${a.key}`, x: x + w - 58, y: y + 6, w: 48, h: 12, z: 1, widget: { kind: "text", text: "SAVE", fontSize: 8, color: "#78716c", align: "center" } });
-    out.push({ id: `s_${a.key}`, x: x + w - 58, y: y + 18, w: 48, h: 22, z: 1, widget: { kind: "field", ref: saveKey(a.key), display: "value", showLabel: false, align: "center", look: { fontSize: 15, bold: true, color: "#a8a29e" } } });
+    out.push({ id: `n_${a.key}`, x: x + 10, y: y + 15, w: firstCol - 16, h: 18, z: 1, widget: { kind: "text", text: a.name, fontSize: 13, color: "#e7e5e4", align: "left" } });
+    ATTR_COLUMNS.forEach((c, i) => {
+      const cx = x + firstCol + i * (col + gutter);
+      out.push({ id: `c${i}_${a.key}`, x: cx, y: y + 5, w: col, h: 11, z: 1, widget: { kind: "text", text: c.cap, fontSize: 9, color: "#8a8178", align: "center" } });
+      out.push({ id: `f${i}_${a.key}`, x: cx, y: y + 16, w: col, h: 26, z: 1, widget: { kind: "field", ref: c.of(a), display: "value", showLabel: false, align: "center", look: { fontSize: 19, bold: true, color: GILT } } });
+    });
   });
   return out;
 }
