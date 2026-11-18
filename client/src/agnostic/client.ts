@@ -44,6 +44,13 @@ export interface DocHandle {
   doc: Y.Doc;
   awareness: Awareness;
   synced: boolean;
+  /**
+   * It has arrived at least once. The socket dropping (a tab left in the
+   * background long enough for the browser to stop its timers) must not throw
+   * the page away: the document is still here, and whatever is typed into it
+   * meanwhile goes up as soon as we're back.
+   */
+  loaded: boolean;
   readOnly: boolean;
   revoked: boolean;
   /** Changes when the doc had to be replaced (denied write → resync). Editors rebind on change. */
@@ -70,6 +77,7 @@ class AgnosticClient {
   private ws: WebSocket | null = null;
   private open = false;
   private backoff = 500;
+  private watching = false;
   private rid = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private scopes = new Map<string, { state: ScopeState; refs: number; listeners: Set<Listener> }>();
@@ -103,7 +111,24 @@ class AgnosticClient {
     }
   }
   // --- connection ---------------------------------------------------------------
+  /**
+   * A tab in the background has its timers slowed and then stopped, so the
+   * socket's heartbeat stops with them and the connection is dropped. Coming
+   * back, reconnect straight away rather than waiting out a backoff that was
+   * frozen too.
+   */
+  private watchVisibility() {
+    if (typeof document === "undefined" || this.watching) return;
+    this.watching = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (this.ws || !(this.scopes.size || this.docs.size)) return;
+      this.backoff = 500;
+      this.ensure();
+    });
+  }
   private ensure() {
+    this.watchVisibility();
     if (this.ws) return;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${proto}//${location.host}/ws/agnostic`);
@@ -296,7 +321,7 @@ class AgnosticClient {
     const color = COLORS[Math.abs(hash(this.user.id)) % COLORS.length];
     awareness.setLocalStateField("user", { name: this.user.name || "Someone", color });
     const handle: DocHandle = {
-      name, scope, doc, awareness, synced: false, readOnly: true, revoked: false, generation, refs: 0,
+      name, scope, doc, awareness, synced: false, loaded: false, readOnly: true, revoked: false, generation, refs: 0,
       listeners: new Set(), dirtyOffline: false, cleanup: () => {},
     };
     let queued: Uint8Array[] = [];
@@ -439,6 +464,7 @@ class AgnosticClient {
         Y.applyUpdate(d.doc, unb64(msg.u), REMOTE);
         d.readOnly = msg.readOnly;
         d.synced = true;
+        d.loaded = true;
         d.revoked = false;
         // Edits made while disconnected go up now that we're caught up.
         if (d.dirtyOffline && !d.readOnly) this.raw({ t: "doc.update", doc: d.name, u: b64(Y.encodeStateAsUpdate(d.doc)) });
@@ -471,6 +497,7 @@ class AgnosticClient {
         // Wipe what we held: the viewer is no longer allowed to have it.
         d.revoked = true;
         d.synced = false;
+        d.loaded = false;
         const fresh = this.createDocHandle(d.scope, d.name, d.generation + 1);
         fresh.refs = d.refs;
         fresh.listeners = d.listeners;

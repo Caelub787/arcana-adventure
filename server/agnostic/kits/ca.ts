@@ -164,7 +164,7 @@ export const SKILL_RULE_LINE = `${SKILL_PICKS.plus.count} skills at +${SKILL_PIC
 /** How many attributes are sitting on `v` right now (the number as written). */
 const attrsAt = (v: number) => `(${ATTRS.map((a) => `if(base(${a.key}) == ${v}, 1, 0)`).join(" + ")})`;
 /** "Still to give out: +3, −1" — the numbers of the array nobody has yet. */
-const ATTR_TODO = (() => {
+const ATTR_LEFT = (() => {
   // Each one is listed only if nobody has it, and takes a comma only if
   // something before it was listed.
   const missing = ATTR_ARRAY.map((v) => `${attrsAt(v)} == 0`);
@@ -173,7 +173,7 @@ const ATTR_TODO = (() => {
     const text = after ? `if(${after}, ", ${signed(v)}", " ${signed(v)}")` : `" ${signed(v)}"`;
     return `if(${missing[n]}, ${text}, "")`;
   });
-  return `concat("Still to give out:", ${chunks.join(", ")})`;
+  return chunks.join(", ");
 })();
 export const ATTR_DONE_TEXT = "Every number given out ✓";
 /** One piece of the skill line: the picks of this kind still to make. */
@@ -195,9 +195,9 @@ export const SKILL_DONE_TEXT = "Every pick made ✓";
  * make — not "+2 0/6". base() throughout, so a sword's +1 Might doesn't read
  * as a misassigned array.
  */
-export const ATTR_ARRAY_FORMULA =
-  `if(attr_sum == ${ATTR_ARRAY_SUM} && attr_squares == ${ATTR_ARRAY_SQUARES}, "${ATTR_DONE_TEXT}", ${ATTR_TODO})`;
-export const SKILL_PICKS_FORMULA = (() => {
+export const ATTR_DONE = `attr_sum == ${ATTR_ARRAY_SUM} && attr_squares == ${ATTR_ARRAY_SQUARES}`;
+export const ATTR_ARRAY_FORMULA = `if(${ATTR_DONE}, "${ATTR_DONE_TEXT}", concat("Still to give out:", ${ATTR_LEFT}))`;
+const SKILL_PARTS = (() => {
   const { plus, best, worst } = SKILL_PICKS;
   const each = [["skill_plus", plus], ["skill_best", best], ["skill_worst", worst]] as const;
   const done = each.map(([key, pick]) => `${key} == ${pick.count}`).join(" && ");
@@ -206,8 +206,11 @@ export const SKILL_PICKS_FORMULA = (() => {
   const spareOf = each.map(([key, pick]) => `${key} > ${pick.count}`);
   const left = each.map(([key, pick], n) => pickShort(key, pick.count, pick.value, under.slice(0, n).join(" || "))).join(", ");
   const over = each.map(([key, pick], n) => pickOver(key, pick.count, pick.value, spareOf.slice(0, n).join(" || "))).join(", ");
-  return `if(${done}, "${SKILL_DONE_TEXT}", if(${spare}, concat("Too many picked:", ${over}), concat("Still to pick:", ${left})))`;
+  return { done, spare, left, over };
 })();
+export const SKILL_DONE = SKILL_PARTS.done;
+export const SKILL_PICKS_FORMULA =
+  `if(${SKILL_PARTS.done}, "${SKILL_DONE_TEXT}", if(${SKILL_PARTS.spare}, concat("Too many picked:", ${SKILL_PARTS.over}), concat("Still to pick:", ${SKILL_PARTS.left})))`;
 /**
  * Every attribute has a saving throw, given out from an array of its own the
  * same way the attributes are. A character's DC is one of them — Might's unless
@@ -232,7 +235,7 @@ export const SAVE_NOTE = "A saving throw is a number of its own, given out from 
 const savesAt = (v: number) => `(${ATTRS.map((a) => `if(base(${saveKey(a.key)}) == ${v}, 1, 0)`).join(" + ")})`;
 export const SAVE_DONE_TEXT = "Every number given out \u2713";
 /** "Still to give out: 8 ×2, 14" — what the array is still short of. */
-export const SAVE_ARRAY_FORMULA = (() => {
+const SAVE_PARTS = (() => {
   const short = SAVE_WANTED.map((w) => `${savesAt(w.value)} < ${w.count}`);
   const chunks = SAVE_WANTED.map((w, n) => {
     const sep = n ? `if(${short.slice(0, n).join(" || ")}, ", ", " ")` : '" "';
@@ -240,8 +243,10 @@ export const SAVE_ARRAY_FORMULA = (() => {
     const many = w.count > 1 ? `if(${w.count} - ${savesAt(w.value)} > 1, " \u00d72", "")` : '""';
     return `if(${short[n]}, concat(${sep}, "${w.value}", ${many}), "")`;
   });
-  return `if(${short.map((c) => `!(${c})`).join(" && ")}, "${SAVE_DONE_TEXT}", concat("Still to give out:", ${chunks.join(", ")}))`;
+  return { done: short.map((c) => `!(${c})`).join(" && "), left: chunks.join(", ") };
 })();
+export const SAVE_DONE = SAVE_PARTS.done;
+export const SAVE_ARRAY_FORMULA = `if(${SAVE_DONE}, "${SAVE_DONE_TEXT}", concat("Still to give out:", ${SAVE_PARTS.left}))`;
 /** What a trait picks when it moves the DC onto a different saving throw. */
 export const DC_SAVE_NONE = "\u2014 leave it on Might";
 export const DC_SAVE_CHOICES = [DC_SAVE_NONE, ...ATTRS.map((a) => a.name)];
@@ -257,6 +262,37 @@ export const DC_SAVE_PICK = ATTRS.reduce(
  */
 export const DC_SAVE_LABEL = "DC saving throw";
 export const DC_FORMULA = `choose(clamp(dc_save_n, 0, ${ATTRS.length}) - 1, ${ATTRS.map((a) => saveKey(a.key)).join(", ")})`;
+
+/**
+ * One line for the three arrays, carrying only what is still outstanding, and
+ * empty once a character is finished — so the page is clear the moment there
+ * is nothing left to say. The rules themselves live in the Character Creation
+ * tooltip, out of the way until someone wants them.
+ */
+export const CREATION_FORMULA = (() => {
+  const parts = [
+    { done: () => ATTR_DONE, label: "Attributes", left: () => ATTR_LEFT },
+    { done: () => SAVE_DONE, label: "Saving throws", left: () => SAVE_PARTS.left },
+    { done: () => SKILL_DONE, label: "Skill picks", left: () => SKILL_PARTS.left },
+  ];
+  const chunks = parts.map((part, n) => {
+    const earlier = parts.slice(0, n).map((x) => `!(${x.done()})`).join(" || ");
+    const sep = earlier ? `if(${earlier}, "   \u00b7   ", "")` : '""';
+    return `if(${part.done()}, "", concat(${sep}, "${part.label}:", ${part.left()}))`;
+  });
+  return `concat(${chunks.join(", ")})`;
+})();
+export const CREATION_HELP = [
+  "What a new character gives out, once. None of it moves with rank \u2014 items, wounds and traits are what change these afterwards.",
+  "",
+  `## Attributes\nOne each of ${ATTR_ARRAY_TEXT}, in any order.`,
+  "",
+  `## Saving throws\nOne each of ${SAVE_ARRAY_TEXT}, in any order. Your DC is your Might Saving Throw, unless a trait hands it to another one.`,
+  "",
+  `## Skills\nPick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0. A skill's bonus is its attribute plus its pick, and every roll is 1d20 + that bonus.`,
+  "",
+  "Double-click a number to change it. The line beside this says what is still to give out, and clears itself when nothing is.",
+].join("\n");
 
 export const SKILL_BONUS_NOTE = "A skill's bonus is its attribute plus its pick. Wounds and equipped items move it from there — that's the green / red number beside it.";
 
@@ -442,7 +478,8 @@ function characterTemplate(beast = false): AgSnapshot {
   const attrSquares = ATTRS.map((a) => `base(${a.key}) * base(${a.key})`).join(" + ");
   s.calc("attr_sum", "Attributes total", attrSum).calc("attr_squares", "Attributes spread", attrSquares)
     .calc("attr_array", "Array", ATTR_ARRAY_FORMULA, "text")
-    .calc("save_array", "Saves array", SAVE_ARRAY_FORMULA, "text");
+    .calc("save_array", "Saves array", SAVE_ARRAY_FORMULA, "text")
+    .calc("creation", "Still to give out", CREATION_FORMULA, "text");
   // DC is a saving throw: Might's, or whichever one a trait moves it to.
   // Armor and other effects still add on top of it.
   s.num("dc_save_n", DC_SAVE_LABEL, 0, { min: 0, max: ATTRS.length, tooltip: DC_SAVE_N_HELP })
@@ -679,18 +716,15 @@ export function skillsTabContent(_rollIdOf?: (skillKey: string) => string | unde
 }
 
 /** The array and the picks, at the top of the Skills tab. */
+/**
+ * One line above the attributes: what is still to give out on the left, and the
+ * rules behind a "Character Creation" tooltip on the right. A finished
+ * character leaves it empty but for the tooltip.
+ */
 export function budgetNodes(): DocNode {
-  // Heading, then the rule in plain words, then what's still left to do —
-  // reading down, not a row of numbers to decode.
-  const one = (title: string, help: string, rule: string, ref: string) => [
-    p(b(title), " ", tip(help)),
-    p(muted(rule)),
-    p(val(ref, { look: { color: GILT, bold: true } })),
-  ];
   return columns([
-    one("Attributes", ATTR_ARRAY_NOTE, ATTR_RULE_LINE, "attr_array"),
-    one("Saving throws", SAVE_ARRAY_NOTE, SAVE_RULE_LINE, "save_array"),
-    one("Skill picks", `${SKILL_PICK_NOTE}\n\n${SKILL_BONUS_NOTE}`, SKILL_RULE_LINE, "skill_picks"),
+    [p(val("creation", { look: { color: GILT, bold: true } }))],
+    [pAlign("right", muted("Character Creation "), tip(CREATION_HELP, 15))],
   ], { gap: 12 });
 }
 /** The Inventory tab's heading over the items. */

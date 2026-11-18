@@ -81,7 +81,9 @@ export function AgEditor({ docName, noteId, nested, inline, placeholder, locked 
   const play = locked || forced || (usePlayView() && !gmSection && !isNote);
   if (!handle) return null;
   if (handle.revoked) return null; // no longer allowed: nothing to show
-  if (!handle.synced) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;
+  // Only before it has ever arrived. Once it is here it stays on screen, even
+  // if the connection drops — see DocHandle.loaded.
+  if (!handle.loaded) return <span className="inline-flex items-center gap-1 text-xs text-stone-500"><Loader2 className="h-3 w-3 animate-spin" />{inline ? "" : "Loading…"}</span>;
   // Blocks draw their tools once, for the editability they started with: switching
   // GM / Player view (or previewing a player) builds the editor afresh.
   const editor = <BoundEditor key={`${docName}#${handle.generation}#${play ? "play" : "build"}#${previewUserId ?? ""}`} doc={handle.doc} awareness={handle.awareness} readOnly={handle.readOnly} locked={play} noteId={noteId} nested={nested} inline={inline} placeholder={placeholder} />;

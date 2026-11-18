@@ -45,14 +45,14 @@ import {
   // Level 39: the two lines above the attributes, in words.
   ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
   // Level 41: a saving throw per attribute, and a DC that is one of them.
-  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
+  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, CREATION_FORMULA, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 42;
+export const CA_KIT_LEVEL = 43;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -110,6 +110,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 40) await healSkillsBlock(store, true);
   if (level < 41) await upgrade41(store);
   if (level < 42) await upgrade42(store);
+  if (level < 43) await upgrade43(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2409,6 +2410,39 @@ async function upgrade42(store: ScopeStore) {
     await editPage(n, (_doc, frag) => {
       const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
       if (!tab) return;
+      const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Attributes/.test(textOf(e)) && /Skill picks/.test(textOf(e)))[0];
+      if (!old) return;
+      const at = tab.toArray().indexOf(old);
+      if (at < 0) return;
+      tab.delete(at, 1);
+      insertNodes(tab, at, [budgetNodes()]);
+    });
+  }
+}
+
+// --------------------------------------------------------------------------- level 43
+// The three columns of rules above the attributes were in the way every time
+// anyone opened the tab, and they only matter once. They move into a
+// "Character Creation" tooltip in the corner, and what's left to give out
+// becomes one line that clears itself the moment a character is finished.
+async function upgrade43(store: ScopeStore) {
+  const pages: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (!SHEET_TYPES.has(n.type)) continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("might") || !fields.get("athletics")) continue;
+      await putCalc(store, n, fields, "creation", "Still to give out", CREATION_FORMULA, cs);
+      const f = store.fieldsByNote.get(n.id)?.get("creation");
+      if (f) await store.putField({ ...f, options: { ...f.options, resultType: "text" } }, cs);
+      pages.push(n);
+    }
+  });
+  for (const note of pages) {
+    await editPage(note, (_doc, frag) => {
+      const tab = findAll(frag, (e) => e.nodeName === "agTab" && e.getAttribute("title") === "Skills")[0];
+      if (!tab) return;
+      // The old block, in either shape it has had: two columns or three.
       const old = findAll(tab, (e) => e.nodeName === "agColumns" && /Attributes/.test(textOf(e)) && /Skill picks/.test(textOf(e)))[0];
       if (!old) return;
       const at = tab.toArray().indexOf(old);
