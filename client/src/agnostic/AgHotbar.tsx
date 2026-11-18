@@ -4,6 +4,7 @@
 // right there). The GM can also make a new function — a button with steps —
 // straight from the picker.
 import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { useAgWindows } from "./windowCtx";
 import { Plus, ChevronRight, ChevronDown, Dices, Trash2, FileText, SlidersHorizontal, Wand2, Pencil, Hammer, FlaskConical, PenTool, Package, User, Loader2 } from "lucide-react";
 import { CRAFT_KIND_LABEL, CRAFT_KIND_OF_STATION, type CraftKind } from "@shared/agnostic/crafting";
 import { agTypeLabel, type AgNote } from "@shared/agnostic/types";
@@ -87,6 +88,12 @@ function useHold(onHold: () => void) {
   };
 }
 
+/** Is this sheet's window open, and how to put it away. */
+function useSheetOpen(noteId: string) {
+  const win = useAgWindows();
+  return { is: !!win?.openIds.includes(noteId), close: () => win?.close(noteId) };
+}
+
 function SlotMenu({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return <AgPanel title={title} onClose={onClose} width={280} height={240} testId="ag-hotbar-menu"><div className="space-y-1.5">{children}</div></AgPanel>;
 }
@@ -96,12 +103,15 @@ function NoteSlot({ noteId, className, onRemove, registerPress, testId }: { note
   const { state, openNote } = useAg();
   const note = state.notes.get(noteId);
   const [menu, setMenu] = useState(false);
-  const press = () => { if (note) openNote(noteId); };
+  // The slot is a switch: it opens the sheet, and pressing it again — the key
+  // or the slot itself — puts it away. The ring says which way it is set.
+  const open = useSheetOpen(noteId);
+  const press = () => { if (!note) return; if (open.is) open.close(); else openNote(noteId); };
   useEffect(() => { registerPress(press); return () => registerPress(null); });
   const hold = useHold(() => setMenu(true));
   return (
     <>
-      <button type="button" className={className} title={note?.name ?? "Sheet"} data-testid={testId}
+      <button type="button" className={`${className}${open.is ? " ring-2 ring-amber-400/80" : ""}`} title={`${note?.name ?? "Sheet"}${open.is ? " — press to close" : ""}`} data-testid={testId}
         onClick={(e) => { if (hold.fired.current) { hold.fired.current = false; e.preventDefault(); return; } press(); }} {...hold.handlers}>
         {note ? (
           <div className="relative w-full h-full pointer-events-none">
@@ -113,7 +123,7 @@ function NoteSlot({ noteId, className, onRemove, registerPress, testId }: { note
       </button>
       {menu && (
         <SlotMenu title={note?.name ?? "Sheet"} onClose={() => setMenu(false)}>
-          <button type="button" className={menuBtn} onClick={() => { setMenu(false); press(); }}><FileText className="h-4 w-4" /> Open</button>
+          <button type="button" className={menuBtn} onClick={() => { setMenu(false); openNote(noteId); }}><FileText className="h-4 w-4" /> Open</button>
           <button type="button" className={`${menuBtn} text-red-300`} onClick={() => { setMenu(false); onRemove(); }} data-testid="ag-hotbar-remove"><Trash2 className="h-4 w-4" /> Remove from hotbar</button>
         </SlotMenu>
       )}
@@ -181,13 +191,15 @@ function ItemSlot({ characterId, itemId, className, onRemove, registerPress, tes
   const held = carries(state, characterId, itemId);
   const qty = item ? qtyOf(state, itemId) : 1;
   const Icon = kind ? STATION_ICON[kind] : null;
-  const use = () => { if (!item) return; if (kind && held) setBench(true); else openNote(itemId); };
+  // Same switch as a sheet slot, except for a station: that opens its craft.
+  const open = useSheetOpen(itemId);
+  const use = () => { if (!item) return; if (kind && held) setBench(true); else if (open.is) open.close(); else openNote(itemId); };
   useEffect(() => { registerPress(use); return () => registerPress(null); });
   const hold = useHold(() => setMenu(true));
   const title = item ? [item.name, character ? (held ? character.name : `no longer with ${character.name}`) : null, kind ? `${CRAFT_KIND_LABEL[kind]} station` : null].filter(Boolean).join(" · ") : "Item";
   return (
     <>
-      <button type="button" className={className} title={title} data-testid={testId}
+      <button type="button" className={`${className}${open.is ? " ring-2 ring-amber-400/80" : ""}`} title={title} data-testid={testId}
         onClick={(e) => { if (hold.fired.current) { hold.fired.current = false; e.preventDefault(); return; } use(); }} {...hold.handlers}>
         {item ? (
           <div className={`relative w-full h-full pointer-events-none ${held ? "" : "opacity-40 grayscale"}`} data-testid="ag-hotbar-item">
