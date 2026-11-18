@@ -4,6 +4,7 @@
 // this is a whole inventory: the rows are real sheets (open one to see it in
 // full), their values are live, and equipped items' modifiers reach the owner.
 import React, { useMemo, useState } from "react";
+import { useRemovingShown } from "./safety";
 import { Plus, Search, X, Trash2, Unlink, ArrowUp, ArrowDown, Package, LayoutList, Table as TableIcon, ExternalLink, Maximize2, Minimize2, Grid3x3 } from "lucide-react";
 import type { AgField, AgLinkColumn, AgLinksConfig, AgLook, AgNote } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel, noteDocName } from "@shared/agnostic/types";
@@ -104,8 +105,10 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
   const canAddAsGM = viewer.isGM;
   const mayAdd = !!config.add && (canAddAsGM || canEditBody || (host?.ownerIds.includes(realViewer.userId) ?? false));
   const removeMode = config.remove ?? "none";
+  // Hidden until the lock at the top of the sheet is opened (see safety.tsx).
+  const removingShown = useRemovingShown();
   const canRemove = (id: string) => {
-    if (removeMode === "none") return false;
+    if (removeMode === "none" || !removingShown) return false;
     if (viewer.isGM) return true;
     // Some lists hold things that are not the holder's to take out again.
     if (config.removeGm) return false;
@@ -344,7 +347,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
             <tr>
               <th className="text-left px-2 py-1 font-medium">{lastLabel.replace(/_/g, " ") || "Connected"}</th>
               {columns.map((c) => { const f = sample ? fieldOf(sample, c.ref) : undefined; return <th key={c.ref} className="text-left px-2 py-1 font-medium"><span className="inline-flex items-center gap-1">{colLabel(c, f)}{f?.options.tooltip && <TipIcon text={f.options.tooltip} size={11} />}</span></th>; })}
-              {removeMode !== "none" && <th className="w-8" />}
+              {removeMode !== "none" && removingShown && <th className="w-8" />}
             </tr>
           </thead>
           <tbody>
@@ -354,7 +357,7 @@ export function LinksTable({ noteId, label, columns: rawColumns, config = {}, lo
                 <tr key={id} draggable onDragStart={dragRow(id)} {...rowMenuProps(id)} className="border-t border-stone-800 hover:bg-stone-800/40" data-testid={`ag-links-row-${n.name}`}>
                   <td className="px-2 py-1"><button type="button" className="inline-flex items-center gap-1.5 text-amber-200 hover:underline text-left" onClick={() => openNote(id)}><Portrait note={n} size={20} radius={4} />{n.name}</button></td>
                   {columns.map((c) => <td key={c.ref} className="px-2 py-1">{cell(id, c)}</td>)}
-                  {removeMode !== "none" && <td className="px-1">{removeBtn(id)}</td>}
+                  {removeMode !== "none" && removingShown && <td className="px-1">{removeBtn(id)}</td>}
                 </tr>
               );
             })}

@@ -4,6 +4,7 @@
 // rather than from a table written into the page. "Add a skill" puts a new one
 // on the sheet: one of the ready-made ones, or any value and attribute you like.
 import React, { useMemo, useState } from "react";
+import { useRemovingShown } from "./safety";
 import { Plus, Trash2 } from "lucide-react";
 import type { AgField } from "@shared/agnostic/types";
 import { CA_ATTRS, CA_ABBR, CA_EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, EXTRA_SKILL_NOTE, bonusKey } from "@shared/agnostic/caSkills";
@@ -43,6 +44,8 @@ export function SkillsBlock({ noteId }: { noteId: string }) {
   const note = state.notes.get(noteId);
   // Your own character's skills are yours to add, not only the GM's.
   const mayAdd = isGM || canEditBody || !!(note && note.ownerIds.includes(state.userId));
+  // Taking a skill off waits on the lock at the top of the sheet.
+  const mayDrop = mayAdd && useRemovingShown();
   const [adding, setAdding] = useState(false);
   const rows = useMemo(() => skillRows(fields), [fields]);
   // Each skill's roll button is the action named after it.
@@ -62,12 +65,12 @@ export function SkillsBlock({ noteId }: { noteId: string }) {
             <th className="py-1.5 px-2 font-semibold hidden sm:table-cell">What it's for</th>
             <th className="py-1.5 px-1 sm:px-2 font-semibold w-14 text-center whitespace-nowrap">Bonus</th>
             <th className="py-1.5 pl-2 font-semibold w-[74px]">Roll</th>
-            {mayAdd && <th className="w-7" aria-label="Take off" />}
+            {mayDrop && <th className="w-7" aria-label="Take off" />}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => <SkillRow key={r.pick.id} row={r} noteId={noteId} actionId={actionOf.get(r.name.toLowerCase())} mayEdit={mayAdd} />)}
-          {!rows.length && <tr><td colSpan={mayAdd ? 5 : 4} className="py-3 text-stone-500">No skills on this sheet yet.</td></tr>}
+          {rows.map((r) => <SkillRow key={r.pick.id} row={r} noteId={noteId} actionId={actionOf.get(r.name.toLowerCase())} mayEdit={mayDrop} />)}
+          {!rows.length && <tr><td colSpan={mayDrop ? 5 : 4} className="py-3 text-stone-500">No skills on this sheet yet.</td></tr>}
         </tbody>
       </table>
       {mayAdd && (

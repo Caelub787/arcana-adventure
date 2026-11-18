@@ -3,6 +3,7 @@
 // equipped. Each effect is a real change to that value (the green / red number
 // beside it), made with simple boxes: which value, how much, and when.
 import React, { useMemo, useState } from "react";
+import { useRemovingShown } from "./safety";
 import { Trash2, Activity } from "lucide-react";
 import type { AgField, AgModifier } from "@shared/agnostic/types";
 import { asNumber, formatValue } from "@shared/agnostic/formula";
@@ -98,6 +99,7 @@ function EffectRow({ m, items, onSave, onRemove }: { m: AgModifier; items: SelIt
   const [text, setText] = useState(m.amount);
   const [focus, setFocus] = useState(false);
   const step = (d: number) => num !== null && onSave({ amount: String(num + d) });
+  const removingShown = useRemovingShown();
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-stone-800 bg-stone-950/50 px-2 py-1.5" data-testid={`ag-effect-${m.targetKey}`}>
       <div className="w-44"><PickField value={m.targetKey} items={items} onChange={(targetKey) => targetKey && onSave({ targetKey })} title="Which value?" display={m.targetKey} /></div>
@@ -114,7 +116,7 @@ function EffectRow({ m, items, onSave, onRemove }: { m: AgModifier; items: SelIt
       </span>
       <input defaultValue={m.condition ?? ""} placeholder="always" title="Only while (e.g. equipped)" onBlur={(e) => { const v = e.target.value.trim(); if (v !== (m.condition ?? "")) onSave({ condition: v || null }); }}
         className="h-7 w-28 bg-stone-900 border border-stone-700 rounded px-1.5 text-[11px] font-mono" />
-      <button type="button" onClick={onRemove} className="ml-auto h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400" title="Remove this effect"><Trash2 className="h-3.5 w-3.5" /></button>
+      {removingShown && <button type="button" onClick={onRemove} className="ml-auto h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400" title="Remove this effect"><Trash2 className="h-3.5 w-3.5" /></button>}
     </div>
   );
 }

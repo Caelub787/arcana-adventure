@@ -1,6 +1,7 @@
 // One Agnostic sheet: portrait + name, then the GM's free-form document.
 // GMs also get the sheet's data (Values), Connections and Settings.
 import React, { useEffect, useRef, useState } from "react";
+import { RemoveGuard, RemoveGuardButton } from "./safety";
 import { Lock, Eye, FileText, Hash, Link2, Settings, Image as ImageIcon, Upload, Users, Loader2, WifiOff, Undo2, Share2, ZoomIn } from "lucide-react";
 import { agTypeLabel, noteDocName } from "@shared/agnostic/types";
 import { useToast } from "@/hooks/use-toast";
@@ -91,7 +92,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
   const lastUndo = peekUndo(scopeKeyStr);
 
   return (
-    <ActiveEditorProvider noteId={noteId}>
+    <ActiveEditorProvider noteId={noteId}><RemoveGuard>
       <div ref={rootRef} tabIndex={-1} className={`h-full flex flex-col bg-stone-950 text-stone-200 outline-none select-text ${dropping ? "ring-2 ring-inset ring-amber-500" : ""}`} data-testid={`ag-sheet-${noteId}`}
         onDragOverCapture={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false); }} onDropCapture={onDrop}>
         <SheetHeader noteId={noteId} />
@@ -106,6 +107,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
             {realViewer.isGM && system === "ca-agnostic" && scope.kind === "campaign" && !note.isTemplate && (
               <button type="button" onClick={() => setSharing(true)} className="h-7 px-2 rounded text-[11px] text-amber-200 hover:bg-stone-800 inline-flex items-center gap-1 border border-amber-800/60" title="Share with players" data-testid="ag-sheet-share"><Share2 className="h-3.5 w-3.5" /> Share</button>
             )}
+            <RemoveGuardButton />
             {realViewer.isGM && <PreviewSelect />}
             <GuideButton compact topic={tab === "fields" ? "values" : tab === "links" ? "connections" : tab === "settings" ? "templates" : "sheets"} />
           </div>
@@ -119,7 +121,7 @@ export function AgSheet({ noteId, onClose }: { noteId: string; onClose?: () => v
           {tab === "settings" && isGM && <SettingsPanel noteId={noteId} onDeleted={() => onClose?.()} />}
         </div>
       </div>
-    </ActiveEditorProvider>
+      </RemoveGuard></ActiveEditorProvider>
   );
 }
 

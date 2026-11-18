@@ -4,6 +4,7 @@
 // builds them in the sheet's Rolls block; the character sheet lists the ones
 // marked "show on the character sheet" (see the "rolls" column of a list).
 import React, { useMemo, useState } from "react";
+import { useRemovingShown } from "./safety";
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings2, Pencil, Check, Minus, EyeOff } from "lucide-react";
 import type { AgAction, AgActionOptions, AgField, AgRollSpec } from "@shared/agnostic/types";
 import { scaleCost, defaultScaleStep } from "@shared/agnostic/types";
@@ -209,6 +210,7 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
   const remove = async () => {
     try { await request({ op: "action.delete", id: action.id }); } catch (e: any) { toast({ title: "Couldn't delete it", description: e.message, variant: "destructive" }); }
   };
+  const removingShown = useRemovingShown();
 
   // Die: a fixed size, or a die off the roller (e.g. their Might die).
   const dieItems: SelItem[] = [
@@ -244,7 +246,7 @@ export function RollEditor({ action, attrs, first, last, neighbours, index, limi
         <ColorInput value={action.color ?? "#9f1239"} onChange={(c) => save({ color: c })} title="Button colour" />
         <button type="button" disabled={first} onClick={() => swap(-1)} className="h-7 w-6 grid place-items-center text-stone-500 hover:text-stone-200 disabled:opacity-30" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></button>
         <button type="button" disabled={last} onClick={() => swap(1)} className="h-7 w-6 grid place-items-center text-stone-500 hover:text-stone-200 disabled:opacity-30" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></button>
-        <button type="button" onClick={remove} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400" title="Delete this roll" data-testid="ag-roll-delete"><Trash2 className="h-3.5 w-3.5" /></button>
+        {removingShown && <button type="button" onClick={remove} className="h-7 w-7 grid place-items-center text-stone-500 hover:text-red-400" title="Delete this roll" data-testid="ag-roll-delete"><Trash2 className="h-3.5 w-3.5" /></button>}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
