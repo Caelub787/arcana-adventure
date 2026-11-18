@@ -539,7 +539,7 @@ export function V3FreeHotbar({ campaignId, isGM, onOpenCharacterSheet, onOpenIte
   return (
     <div
       ref={hotbarRef}
-      className={customPos ? 'fixed z-30 pointer-events-auto' : `fixed bottom-2 sm:bottom-4 z-30 pointer-events-auto ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
+      className={customPos ? 'fixed z-30 pointer-events-auto' : `fixed bottom-[calc(0.5rem+var(--sa-b))] sm:bottom-[calc(1rem+var(--sa-b))] z-30 pointer-events-auto ${isMobile ? 'right-[calc(0.5rem+var(--sa-r))]' : 'left-1/2 -translate-x-1/2'}`}
       style={customPos ? { left: customPos.x, top: customPos.y } : undefined}
       data-testid="v3-free-hotbar"
     >

@@ -11109,7 +11109,7 @@ export default function Campaign() {
       {spectatorMode && (
         <button
           onClick={exitSpectatorMode}
-          className="fixed top-2 right-2 z-[12000] w-8 h-8 rounded-full bg-stone-900/60 hover:bg-stone-800/90 border border-stone-700/60 hover:border-amber-500 text-stone-400 hover:text-amber-400 flex items-center justify-center backdrop-blur-sm shadow-lg transition-all opacity-30 hover:opacity-100"
+          className="fixed top-[calc(0.5rem+var(--sa-t))] right-[calc(0.5rem+var(--sa-r))] z-[12000] w-8 h-8 rounded-full bg-stone-900/60 hover:bg-stone-800/90 border border-stone-700/60 hover:border-amber-500 text-stone-400 hover:text-amber-400 flex items-center justify-center backdrop-blur-sm shadow-lg transition-all opacity-30 hover:opacity-100"
           title="Exit Spectator Mode"
           data-testid="button-exit-spectator"
         >
@@ -11147,7 +11147,7 @@ export default function Campaign() {
           : 'Free Roam';
         return (
           <div
-            className="fixed top-2 left-1/2 -translate-x-1/2 z-[12000] flex items-center gap-2"
+            className="fixed top-[calc(0.5rem+var(--sa-t))] left-1/2 -translate-x-1/2 z-[12000] flex items-center gap-2"
             data-testid="badge-spectator-mode"
           >
             <div className="bg-blue-900/70 border border-blue-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm pointer-events-none">
@@ -11207,7 +11207,7 @@ export default function Campaign() {
           screen and the panel-switch buttons always stay pinned top-right,
           regardless of the side panel's width or open state. */}
       {!spectatorMode && (
-      <div className={`absolute top-0 left-0 right-0 p-4 pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
+      <div className={`absolute top-[var(--sa-t)] left-[var(--sa-l)] right-[var(--sa-r)] p-4 pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
         {/* Left Side - quick search, then Swampy's two campaign panels. The
             dice roller used to sit above this; it now lives in the chat's
             input row, where its result already lands. Search is the top-left
@@ -11595,7 +11595,7 @@ export default function Campaign() {
 
       {/* Show message when player has no character assigned */}
       {!spectatorMode && !isSandbox && !isAgnostic && !character && role === 'player' && (
-        <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
+        <div className="fixed bottom-[calc(1rem+var(--sa-b))] left-[calc(1rem+var(--sa-l))] z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
       )}
@@ -12033,7 +12033,7 @@ export default function Campaign() {
         <button
           type="button"
           onClick={() => setShowSpectatorsPanel(v => !v)}
-          className={`fixed top-2 right-12 z-[12000] h-9 px-2.5 rounded-full border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 text-xs font-medium ${
+          className={`fixed top-[calc(0.5rem+var(--sa-t))] right-[calc(3rem+var(--sa-r))] z-[12000] h-9 px-2.5 rounded-full border shadow-lg backdrop-blur-sm transition-colors flex items-center gap-1.5 text-xs font-medium ${
             showSpectatorsPanel
               ? 'bg-blue-900/80 border-blue-500/60 text-blue-100'
               : 'bg-stone-900/70 border-stone-600/60 text-stone-200 hover:bg-stone-800/80 hover:border-blue-500/50'
@@ -14902,7 +14902,7 @@ export default function Campaign() {
       {!spectatorMode && !isSandbox && !isAAV3 && !isCA && !isSwampy && !isAgnostic && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
-          className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={`fixed bottom-[calc(1rem+var(--sa-b))] z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           style={{ 
             left: sidePanelOpen ? `calc(50% - ${effectivePanelWidth / 2}px)` : '50%',
             transform: 'translateX(-50%)'
@@ -15123,7 +15123,7 @@ export default function Campaign() {
       
       {/* Sandbox Player Hotbar */}
       {!spectatorMode && isSandbox && sandboxHotbarVisible && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900/95 border border-stone-700/60 rounded-xl px-2 py-1.5 backdrop-blur-sm shadow-xl"
+        <div className="fixed bottom-[calc(1rem+var(--sa-b))] left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900/95 border border-stone-700/60 rounded-xl px-2 py-1.5 backdrop-blur-sm shadow-xl"
           data-testid="sandbox-hotbar">
           {sandboxHotbar.map((slot, idx) => (
             <div key={idx} className="relative">
@@ -15173,7 +15173,7 @@ export default function Campaign() {
 
       {isSandbox && !sandboxHotbarVisible && (
         <button
-          className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[60] px-3 py-1 bg-stone-900/80 border border-stone-700/40 rounded-full text-stone-400 text-xs hover:text-stone-200 transition-colors backdrop-blur-sm"
+          className="fixed bottom-[calc(0.5rem+var(--sa-b))] left-1/2 -translate-x-1/2 z-[60] px-3 py-1 bg-stone-900/80 border border-stone-700/40 rounded-full text-stone-400 text-xs hover:text-stone-200 transition-colors backdrop-blur-sm"
           onClick={() => setSandboxHotbarVisible(true)}
           data-testid="hotbar-show-button"
         >
@@ -15359,7 +15359,7 @@ export default function Campaign() {
         if (!tokenChar) return null;
         
         return (
-          <div className="fixed top-4 left-4 z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
+          <div className="fixed top-[calc(1rem+var(--sa-t))] left-[calc(1rem+var(--sa-l))] z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Layers className="h-4 w-4 text-cyan-400" />

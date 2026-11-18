@@ -2681,7 +2681,7 @@ export default function Notes() {
         )}
 
         <div className="flex-1 flex flex-col">
-          <header className="flex items-center gap-4 p-4 border-b border-stone-800 bg-stone-950/60 backdrop-blur">
+          <header className="flex items-center gap-4 p-4 pt-[calc(1rem+var(--sa-t))] border-b border-stone-800 bg-stone-950/60 backdrop-blur">
             {isMobile && (
               <Button
                 variant="ghost"

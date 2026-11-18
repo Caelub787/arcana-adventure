@@ -95,17 +95,17 @@ export default function Home() {
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
       </div>
       {/* Content Layer */}
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-6">
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center page-pad-6">
         
         {/* Notifications Bell - Top Left */}
         {user && (
-          <div className="absolute top-4 left-4">
+          <div className="absolute top-[calc(1rem+var(--sa-t))] left-[calc(1rem+var(--sa-l))]">
             <NotificationsBell />
           </div>
         )}
 
         {/* Profile Dropdown - Top Right */}
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-[calc(1rem+var(--sa-t))] right-[calc(1rem+var(--sa-r))]">
           <ProfileDropdown onLogout={handleLogout} />
         </div>
 

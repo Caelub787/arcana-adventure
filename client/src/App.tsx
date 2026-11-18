@@ -148,7 +148,7 @@ function SiteUpdateBanner() {
 
   return (
     <div 
-      className="fixed top-0 left-0 right-0 z-[9999] bg-amber-500 text-stone-900 py-3 px-4 shadow-lg"
+      className="fixed top-0 left-0 right-0 z-[9999] bg-amber-500 text-stone-900 px-4 pb-3 pt-[calc(0.75rem+var(--sa-t))] shadow-lg"
       data-testid="site-update-banner"
     >
       <div className="container mx-auto flex items-center justify-between gap-4 flex-wrap">

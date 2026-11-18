@@ -27,7 +27,7 @@ export function TutorialPrompt({
   const z = useTopLayerZIndex();
   return (
     <div
-      className="fixed bottom-4 left-4 w-72 rounded-lg border p-3 shadow-2xl"
+      className="fixed bottom-[calc(1rem+var(--sa-b))] left-[calc(1rem+var(--sa-l))] w-72 rounded-lg border p-3 shadow-2xl"
       style={{
         zIndex: z || undefined,
         background: "hsl(var(--popover))",

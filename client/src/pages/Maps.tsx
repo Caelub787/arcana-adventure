@@ -98,7 +98,7 @@ export default function Maps() {
         <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/50 to-black/80" />
       </div>
 
-      <div className="relative z-10 w-full p-6">
+      <div className="relative z-10 w-full page-pad-6">
         <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" onClick={goBack} className="text-stone-400 hover:text-white hover:bg-white/10">

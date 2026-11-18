@@ -167,7 +167,7 @@ export function SoundscapePanel({ campaignId, isGM, hideControls }: Props) {
   return (
     <>
       <div
-        className="fixed top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex flex-col items-center"
+        className="fixed top-[calc(0.75rem+var(--sa-t))] left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex flex-col items-center"
         data-testid="soundscape-panel"
       >
         <button

@@ -9978,7 +9978,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
           mini tracker card on narrow screens - with type buttons above */}
       {!statsOnly && (
       <div
-        className={`fixed bottom-2 sm:bottom-4 pointer-events-auto z-40 ${isMobile ? 'right-2' : 'left-1/2 -translate-x-1/2'}`}
+        className={`fixed bottom-[calc(0.5rem+var(--sa-b))] sm:bottom-[calc(1rem+var(--sa-b))] pointer-events-auto z-40 ${isMobile ? 'right-[calc(0.5rem+var(--sa-r))]' : 'left-1/2 -translate-x-1/2'}`}
         data-collision-id="character-hotbar"
       >
         <div className="glass-panel chrome-frame chrome-frame-lg rounded p-1 md:p-2 border border-stone-700">
@@ -10122,7 +10122,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   return (
     <div 
       className="absolute z-50 pointer-events-auto transition-all duration-300 ease-in-out"
-      style={{ left: '16px', top: topOffset }}
+      style={{ left: 'calc(16px + var(--sa-l))', top: topOffset }}
     >
       <div className="flex flex-col gap-2">
         <TooltipProvider>
@@ -12317,7 +12317,7 @@ export function FullscreenRollFallback({ members, characters, rollFeed }: {
 
   return (
     <div
-      className="fixed top-2 left-1/2 -translate-x-1/2 z-[200001] flex flex-col items-center gap-1.5 pointer-events-none"
+      className="fixed top-[calc(0.5rem+var(--sa-t))] left-1/2 -translate-x-1/2 z-[200001] flex flex-col items-center gap-1.5 pointer-events-none"
       data-testid="fullscreen-roll-fallback"
     >
       {active.map((r) => {
