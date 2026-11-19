@@ -81,13 +81,27 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   // Rolls slide out from the card toward the middle of the screen.
   const trayFrom: TraySide = t.placement === "bottom" ? "above" : t.placement === "left" ? "right" : t.placement === "right" ? "left" : "below";
   const vertical = t.placement === "left" || t.placement === "right";
+  // Whatever the device keeps for its status bar and home indicator. The row
+  // of cards has to start below the one and stop above the other, and how tall
+  // it may get is measured from where it actually starts — not a guess, which
+  // is how it ended up hanging off the bottom of an iPad.
+  // Down the left the tracker hangs off the real, measured bottom of the map's
+  // button column, which is already a screen position and so already carries
+  // the status bar. Everywhere else the distance is ours and has to clear it.
+  const left = t.placement === "left";
+  const top = left ? (leftOffset ?? 240) : t.placement === "right" ? 72 : 56;
+  const topCss = left ? `${top}px` : `calc(${top}px + var(--sa-t))`;
+  // How tall it may get is measured from where it actually starts, so the last
+  // card stops above the home indicator instead of hanging off the bottom.
+  const tall = `calc(100dvh - ${top}px${left ? "" : " - var(--sa-t)"} - 16px - var(--sa-b))`;
+  const wide = "calc(100vw - 32px - var(--sa-l) - var(--sa-r))";
   const pos: React.CSSProperties =
-    t.placement === "top" ? { top: 56, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
-    : t.placement === "bottom" ? { bottom: isMobile ? 132 : 104, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100vw - 32px)" }
-    : t.placement === "left" ? { left: 16, top: leftOffset ?? 240, maxHeight: "calc(100vh - 300px)" }
+    t.placement === "top" ? { top: topCss, left: "50%", transform: "translateX(-50%)", maxWidth: wide }
+    : t.placement === "bottom" ? { bottom: `calc(${isMobile ? 132 : 104}px + var(--sa-b))`, left: "50%", transform: "translateX(-50%)", maxWidth: wide }
+    : left ? { left: "calc(16px + var(--sa-l))", top: topCss, maxHeight: tall }
     // On phones the map's tool buttons run down the right edge: sit beside them, not on them.
     // …and on a desktop it sits left of the open side panel, never under it.
-    : { right: (isMobile ? 64 : 16) + rightInset, top: 72, maxHeight: "calc(100vh - 200px)", maxWidth: isMobile ? "calc(100vw - 132px)" : undefined };
+    : { right: `calc(${(isMobile ? 64 : 16) + rightInset}px + var(--sa-r))`, top: topCss, maxHeight: tall, maxWidth: isMobile ? "calc(100vw - 132px - var(--sa-l) - var(--sa-r))" : undefined };
   if (!notes.length && !viewer.isGM) return null;
   return (
     <>

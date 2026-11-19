@@ -14267,15 +14267,20 @@ export default function Campaign() {
           on screen needs to react to the drag. */}
       {!spectatorMode && activeSidePanel && !sidePanelMinimized && (
         <div
-          className={`fixed right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'pr-2'}`}
+          className={`fixed right-0 z-40 pointer-events-auto flex flex-row-reverse`}
           style={{
             width: isMobile ? '100vw' : `${effectivePanelWidth}px`,
             maxWidth: isMobile ? '100vw' : '90vw',
             // Starts below the top-right panel-switch buttons (pinned at
             // top-4, ~52px tall) instead of at the very top of the screen,
-            // so those buttons always read as sitting above the panel.
-            top: isMobile ? undefined : '64px',
-            bottom: isMobile ? undefined : '8px',
+            // so those buttons always read as sitting above the panel. Those
+            // buttons sit below whatever the device keeps for its status bar,
+            // so this has to clear the same inset or the panel rides up over
+            // their bottom halves, which is what it did on an iPad.
+            top: isMobile ? 'var(--sa-t)' : 'calc(64px + var(--sa-t))',
+            bottom: isMobile ? 'var(--sa-b)' : 'calc(8px + var(--sa-b))',
+            paddingRight: isMobile ? 'var(--sa-r)' : 'calc(0.5rem + var(--sa-r))',
+            paddingLeft: isMobile ? 'var(--sa-l)' : undefined,
             transform: isMobile ? undefined : `translate(${sidePanelDragOffset.x}px, ${sidePanelDragOffset.y}px)`,
           }}
         >
