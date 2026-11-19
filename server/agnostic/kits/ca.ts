@@ -1189,6 +1189,23 @@ export const LEGACY_FOCUS_NOTE = "Spent to choose where a wound lands on an oppo
 /** A wound's severity and location, at the top of its page. */
 export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }), " ", val("state", { display: "badge" }));
 
+export const TABLE_TOKEN_DESCRIPTION = "A favour a character holds at the Table — the GM hands it out, the player spends it. Write what it does in What it does; that is the text shown when anyone hovers it in the Table. The sheet stays in the library once it is spent, so the same token can be given again.";
+export const TABLE_TOKEN_WHAT_HELP = "What spending this token does, in a sentence. This is what the Table shows when you hover it, so write it for the player holding it — \"Before any d20 roll, count it as an automatic critical success.\"";
+
+/** A token handed out at the Table. The Table only ever offers these. */
+export function tableTokenTemplateSnapshot(): AgSnapshot { return tableTokenTemplate(); }
+function tableTokenTemplate(): AgSnapshot {
+  const s = new Sheet();
+  s.text("what", "What it does", "").tip("what", TABLE_TOKEN_WHAT_HELP);
+  const page: DocNode[] = [
+    p(i("A favour this character is holding. The GM puts it in one of their three slots at the Table; whoever plays them spends it.")),
+    hr(),
+    h(3, icon("Coins", GILT, 16), " What it does"),
+    p(val("what")),
+  ];
+  return s.snapshot({ type: "table_token", name: "CA Table Token", playersCanCreate: false, description: TABLE_TOKEN_DESCRIPTION }, page);
+}
+
 function woundTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("severity", "Severity", SEVERITIES, "Minor", SEVERITY_COLORS).choice("location", "Location", LOCATIONS, "Body", LOCATION_COLORS)
@@ -1288,6 +1305,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   await add("beast", characterTemplate(true));
   for (const k of ["Weapon", "Ranged Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
+  await add("tableToken", tableTokenTemplate());
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
   await add("aspect", aspectTemplate());

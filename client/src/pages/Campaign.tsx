@@ -35,6 +35,7 @@ import { AgRoot } from "@/agnostic/AgRoot";
 import { AgCampaignPanel } from "@/agnostic/AgCampaignPanel";
 import { AgTracker } from "@/agnostic/AgTracker";
 import { AgViewModeButton } from "@/agnostic/viewMode";
+import { AgTable } from "@/agnostic/AgTable";
 import { levelIdForNew } from '@/battlemap/levelStore';
 import { useKeybind, useBindingLabel } from '@/lib/keybinds';
 import { KeybindsPanel } from '@/components/KeybindsPanel';
@@ -7323,6 +7324,8 @@ export default function Campaign() {
     }
   };
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  // The C.A. Table (fate slots, tokens). A floating panel, like the others.
+  const [tableOpen, setTableOpen] = useState(false);
   // Notes, given the whole screen: several open at once as windows you can
   // move, resize and tile. Everything in it is the same live note the side
   // panel shows, so leaving it changes nothing but the amount of room.
@@ -7776,6 +7779,9 @@ export default function Campaign() {
   const isAAV2 = campaign && typeof campaign === 'object' && 'system' in campaign && ((campaign as any).system === 'aa-v2' || (campaign as any).system === 'aa-v3');
   const isAAV3 = !!(campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'aa-v3');
   const isCA = !!(campaign && typeof campaign === 'object' && 'system' in campaign && isWoundSystem((campaign as any).system));
+  // C.A. built on the Agnostic engine, specifically — not the older C.A.
+  // Anything that needs agnostic sheets to exist (the Table) asks for this.
+  const isCAAgnostic = (campaign as any)?.system === 'ca-agnostic';
   const isSwampy = isSwampySystem((campaign as any)?.system);
   // Agnostic: fully notes-based, GM-built system (its own data layer + live channel).
   const isAgnostic = isAgnosticSystem((campaign as any)?.system);
@@ -11315,6 +11321,32 @@ export default function Campaign() {
           {isAgnostic && effectiveCampaignId && (
             <AgViewModeButton scope={{ kind: "campaign", id: effectiveCampaignId }} isGM={role === 'gm'} />
           )}
+
+          {/* C.A. only: the Table — fate slots and the tokens each character
+              is holding. Everything on it belongs to the whole group rather
+              than to any one sheet, which is why it isn't on a sheet. */}
+          {isCAAgnostic && effectiveCampaignId && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTableOpen((v) => !v)}
+                    className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
+                      tableOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'
+                    }`}
+                    data-testid="button-ag-table"
+                  >
+                    <Coins className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Table</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* GM-pinned party tracker (portraits, wound/energy bars, live roll
@@ -11323,6 +11355,10 @@ export default function Campaign() {
             dice tray opening to the right - on mobile too, since the left
             toolbar column renders at the same left:16px position and
             heights regardless of device. */}
+        {/* The Table (C.A.): what belongs to the whole group rather than to
+            any one sheet. Inside the agnostic provider, since everything on
+            it is campaign settings. */}
+        {isCAAgnostic && tableOpen && <AgTable onClose={() => setTableOpen(false)} />}
         {isAgnostic ? (
           // Agnostic: the GM-designed tracker (its own placement, cards and values).
           <AgTracker rollFeed={rollFeed as any} isMobile={isMobile} leftOffset={(leftToolbarBottom ?? (selectionToolsTop + 88 + 8 + 5 * 40 + 4 * 8)) + 8} rightInset={sidePanelOpen && !isMobile ? effectivePanelWidth + 8 : 0} />

@@ -86,6 +86,10 @@ export const AG_BUILTIN_TYPES: AgNoteTypeDef[] = [
   // be hurt and killed one at a time.
   { id: "beast", label: "Beast", plural: "Beasts", icon: "PawPrint", library: true },
   { id: "item", label: "Item", plural: "Items", icon: "Package", library: true },
+  // Handed out at the Table (see AgTableState): a favour a character is
+  // holding, spent once and gone. Its own kind so the library keeps them
+  // together and the Table only ever offers these.
+  { id: "table_token", label: "Table Token", plural: "Table Tokens", icon: "Coins", library: true },
   { id: "species", label: "Species", plural: "Species", icon: "Dna", library: true },
   { id: "location", label: "Location", plural: "Locations", icon: "MapPin", library: false },
   { id: "note", label: "Note", plural: "Notes", icon: "StickyNote", library: false },
@@ -628,6 +632,25 @@ export interface AgTrackerCard {
   layout: AgLayout;
 }
 
+/** Three of each, at the table and in front of each character. */
+export const TABLE_FATE_SLOTS = 3;
+export const TABLE_TOKEN_SLOTS = 3;
+
+/**
+ * What the whole table shares, rather than any one sheet.
+ *
+ * Fate is the GM's own count: three slots they fill as things go wrong, and
+ * when the third one fills, something lands on the party. Tokens are favours
+ * the GM hands to a character — the sheet stays in the library, so the same
+ * token can be given again after it is spent.
+ */
+export interface AgTableState {
+  /** How many of the three fate slots are filled. */
+  fate: number;
+  /** character note id → the token sheets it is holding, at most TABLE_TOKEN_SLOTS. */
+  tokens: Record<string, string[]>;
+}
+
 export interface AgCampaignSettings {
   tracker: {
     placement: "top" | "left" | "right" | "bottom";
@@ -650,6 +673,8 @@ export interface AgCampaignSettings {
    * only so an empty one is still there for everyone until it is used.
    */
   folders?: string[];
+  /** The Table: fate slots and the tokens each character is holding. */
+  table?: AgTableState;
 }
 
 export const DEFAULT_TRACKER_CARD: AgTrackerCard = {

@@ -4,9 +4,8 @@
 import { randomUUID } from "crypto";
 import type {
   AgAcl, AgAction, AgActionChoice, AgActionOptions, AgActionResult, AgActionStep, AgCampaignSettings, AgRollMods, AgRollSpec, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
-  AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer,
-} from "@shared/agnostic/types";
-import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost } from "@shared/agnostic/types";
+  AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer, AgTableState } from "@shared/agnostic/types";
+import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost, TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS } from "@shared/agnostic/types";
 import {
   canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, mayPlayNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
@@ -283,6 +282,15 @@ function cleanLayout(raw: unknown): AgLayout {
   };
 }
 
+/** The campaign's settings as they stand, or the defaults if none are saved. */
+function settingsNow(store: ScopeStore): AgCampaignSettings {
+  return store.settings ?? defaultCampaignSettings();
+}
+/** The Table as it stands. Campaigns made before it existed have none. */
+function tableNow(store: ScopeStore): AgTableState {
+  return settingsNow(store).table ?? { fate: 0, tokens: {} };
+}
+
 function cleanSettings(raw: unknown): AgCampaignSettings {
   const d = defaultCampaignSettings();
   const s = (raw && typeof raw === "object" ? raw : {}) as any;
@@ -302,7 +310,23 @@ function cleanSettings(raw: unknown): AgCampaignSettings {
     folders: Array.isArray(s.folders)
       ? Array.from(new Set<string>(s.folders.filter((x: unknown) => typeof x === "string").map((x: string) => normalizeFolder(x)).filter(Boolean))).slice(0, 300)
       : [],
+    table: cleanTable(s.table),
   };
+}
+
+/** The Table's own state, kept through a settings write like everything else. */
+function cleanTable(raw: unknown): AgTableState {
+  const t = (raw && typeof raw === "object" ? raw : {}) as any;
+  const fate = typeof t.fate === "number" && Number.isFinite(t.fate)
+    ? Math.max(0, Math.min(TABLE_FATE_SLOTS, Math.round(t.fate)))
+    : 0;
+  const tokens: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(t.tokens && typeof t.tokens === "object" ? t.tokens : {}).slice(0, 200)) {
+    if (typeof k !== "string" || !Array.isArray(v)) continue;
+    const ids = v.filter((x: unknown) => typeof x === "string").slice(0, TABLE_TOKEN_SLOTS) as string[];
+    if (ids.length) tokens[k.slice(0, 60)] = ids;
+  }
+  return { fate, tokens };
 }
 
 function newNote(store: ScopeStore, init: Partial<AgNote>): AgNote {
@@ -969,6 +993,55 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     }
 
     // ------------------------------------------------------------------ settings & components
+    // ---- The Table -----------------------------------------------------
+    // Fate is the GM's count of how close the party is to something landing
+    // on them, so only they move it.
+    case "table.fate": {
+      requireGM(viewer);
+      if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
+      const filled = Math.max(0, Math.min(TABLE_FATE_SLOTS, Math.round(Number(body.filled) || 0)));
+      return store.run(async (cs) => {
+        await store.putSettings({ ...settingsNow(store), table: { ...tableNow(store), fate: filled } }, cs);
+        return { ok: true as const };
+      });
+    }
+    // Handing a token out is the GM's. Spending one is not — that is the
+    // whole point of holding it — so table.use is open to whoever plays the
+    // character as well.
+    case "table.give": {
+      requireGM(viewer);
+      if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
+      const note = noteOf(store, String(body.noteId));
+      const token = noteOf(store, String(body.tokenId));
+      if (token.type !== "table_token") fail("Only a table token goes in a token slot");
+      const table = tableNow(store);
+      const held = table.tokens[note.id] ?? [];
+      if (held.length >= TABLE_TOKEN_SLOTS) fail("That character's token slots are full");
+      return store.run(async (cs) => {
+        await store.putSettings({
+          ...settingsNow(store),
+          table: { ...table, tokens: { ...table.tokens, [note.id]: [...held, token.id] } },
+        }, cs);
+        return { ok: true as const };
+      });
+    }
+    case "table.use": {
+      if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
+      const note = playable(store, noteOf(store, String(body.noteId)));
+      if (!viewer.isGM && !note.ownerIds.includes(viewer.userId)) fail("That isn't your character's token");
+      const table = tableNow(store);
+      const held = table.tokens[note.id] ?? [];
+      const at = held.indexOf(String(body.tokenId));
+      if (at < 0) fail("That token has already been used");
+      const left = held.filter((_, i) => i !== at);
+      return store.run(async (cs) => {
+        const tokens = { ...table.tokens };
+        if (left.length) tokens[note.id] = left; else delete tokens[note.id];
+        await store.putSettings({ ...settingsNow(store), table: { ...table, tokens } }, cs);
+        return { ok: true as const };
+      });
+    }
+
     case "settings.update": {
       requireGM(viewer);
       if (store.scope.kind !== "campaign") fail("Settings belong to a campaign");

@@ -69,6 +69,11 @@ export type AgOp =
   | { op: "action.run"; id: string; targetNoteIds?: string[]; choices?: Record<string, string>; mods?: AgRollMods }
   | { op: "action.prepare"; id: string; targetNoteIds?: string[] }
   | { op: "settings.update"; settings: AgCampaignSettings }
+  // The Table. Separate ops rather than settings.update because that one is
+  // the GM's alone, and spending a token is the player's to do.
+  | { op: "table.fate"; filled: number }
+  | { op: "table.give"; noteId: string; tokenId: string }
+  | { op: "table.use"; noteId: string; tokenId: string }
   | { op: "component.upsert"; component: { id?: string; name: string; params: string[]; layout: AgLayout } }
   | { op: "component.delete"; id: string }
   | { op: "template.saveVersion"; id: string; label?: string | null }
