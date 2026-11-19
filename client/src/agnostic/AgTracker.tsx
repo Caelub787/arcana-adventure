@@ -31,6 +31,50 @@ import type { AgTokenBar } from "@shared/agnostic/types";
 /** A roll as the campaign's roll feed carries it (newest first). */
 export interface RollFeedLike { id?: string; userId?: string; username?: string; characterName?: string; text?: string; label?: string; total?: number | null; ts?: number; timestamp?: number; dieType?: string; historical?: boolean; breakdown?: string }
 
+/** How many cards fit without scrolling. A sixth is what the scrolling is for. */
+const FIT_CARDS = 5;
+/** Never shrink a card past this, however little room there is — scroll instead. */
+const MIN_FIT = 0.5;
+/** The gap between cards, matching the `gap-2` the row is laid out with. */
+const CARD_GAP = 8;
+/** The `p-0.5` around the row, which eats into the room the cards have. */
+const CARD_PAD = 4;
+
+/**
+ * How much to shrink the cards so FIT_CARDS of them fit in `room`.
+ *
+ * 1 when they already fit — this only ever shrinks, it never grows them past
+ * the size the GM picked. It stops at MIN_FIT, because a card nobody can read
+ * is worse than a scrollbar.
+ */
+export function trackerFit(room: number, biggest: number, cards = FIT_CARDS): number {
+  if (!(biggest > 0) || !(room > 0)) return 1;
+  // The gaps between the cards are a fixed 8px — they don't shrink with the
+  // cards, so they come off the top before the rest is divided up.
+  const forCards = room - CARD_GAP * (cards - 1);
+  if (forCards <= 0) return MIN_FIT;
+  return Math.max(MIN_FIT, Math.min(1, forCards / (biggest * cards)));
+}
+
+/** The screen, and what the device keeps off it, as numbers we can do sums with. */
+function useScreenBox() {
+  const read = () => {
+    if (typeof window === "undefined") return { h: 0, w: 0, t: 0, r: 0, b: 0, l: 0 };
+    const s = getComputedStyle(document.documentElement);
+    const px = (name: string) => parseFloat(s.getPropertyValue(name)) || 0;
+    return { h: window.innerHeight, w: window.innerWidth, t: px("--sa-t"), r: px("--sa-r"), b: px("--sa-b"), l: px("--sa-l") };
+  };
+  const [box, setBox] = useState(read);
+  useEffect(() => {
+    const on = () => setBox(read());
+    window.addEventListener("resize", on);
+    window.addEventListener("orientationchange", on);
+    on();
+    return () => { window.removeEventListener("resize", on); window.removeEventListener("orientationchange", on); };
+  }, []);
+  return box;
+}
+
 export function cardFor(settings: AgCampaignSettings, noteId: string, type: string): AgTrackerCard {
   const t = settings.tracker;
   const id = t.cardByNote[noteId] ?? t.cardByType[type];
@@ -48,6 +92,7 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   // Bindable in Settings > Keyboard shortcuts (GM).
   useKeybind("panel.playerTracker", () => setDesigning((d: boolean) => !d), !!viewer.isGM);
   const [history, setHistory] = useState<string | null>(null);
+  const box = useScreenBox();
   const [menu, setMenu] = useState<null | { id: string; x: number; y: number }>(null);
   // CA Agnostic: the tracker card keeps a roll history button.
   const ca = system === "ca-agnostic";
@@ -63,7 +108,6 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   if (!settings) return null;
   const t = settings.tracker;
   const notes = t.pinned.map((id) => state.notes.get(id)).filter(Boolean) as NonNullable<ReturnType<typeof state.notes.get>>[];
-  const scale = (isMobile ? 0.8 : 1) * (t.scale || 1);
   // A card's rolls: rolled as that sheet, or by a player who owns it (newest first).
   const rollsOf = (n: AgNote) => rollFeed.filter((r) => r.characterName === n.name || (!!r.userId && n.ownerIds.includes(r.userId)));
   const lastRollOf = (n: AgNote) => {
@@ -95,6 +139,20 @@ function AgTrackerInner({ rollFeed = [], isMobile, leftOffset, rightInset = 0 }:
   // card stops above the home indicator instead of hanging off the bottom.
   const tall = `calc(100dvh - ${top}px${left ? "" : " - var(--sa-t)"} - 16px - var(--sa-b))`;
   const wide = "calc(100vw - 32px - var(--sa-l) - var(--sa-r))";
+  // Room for five cards, whatever the screen. A phone used to get a flat 80%
+  // and everything else full size, so the same party filled a cover screen
+  // and overran the big one — you had to scroll on the larger screen, which
+  // is backwards. Now the cards are sized to the room there actually is:
+  // shrunk to fit when they have to be, never grown past what the GM set, and
+  // past a point it stops shrinking and scrolls instead.
+  const room = (vertical
+    ? box.h - top - (left ? 0 : box.t) - 16 - box.b
+    : box.w - 32 - box.l - box.r) - CARD_PAD;
+  const biggest = notes.reduce((m, n) => {
+    const l = cardFor(settings, n.id, n.type).layout;
+    return Math.max(m, vertical ? l.height : l.width);
+  }, 0);
+  const scale = (t.scale || 1) * trackerFit(room, biggest);
   const pos: React.CSSProperties =
     t.placement === "top" ? { top: topCss, left: "50%", transform: "translateX(-50%)", maxWidth: wide }
     : t.placement === "bottom" ? { bottom: `calc(${isMobile ? 132 : 104}px + var(--sa-b))`, left: "50%", transform: "translateX(-50%)", maxWidth: wide }

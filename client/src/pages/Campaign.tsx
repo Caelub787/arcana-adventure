@@ -3,7 +3,7 @@ import { LoadingLogo } from "@/components/LoadingLogo";
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, TradePanel, FullscreenRollFallback, stableColorForId, characterTrackerColor, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, DetachedItemDetailPanel, DetachedSpellbookPanel, PinnedRosterBar, TradePanel, FullscreenRollFallback, type SelectionMode, type RulerShape, type RulerMarker, type PinnedRollFeedEntry } from "@/components/game/GameComponents";
 import { AuraCurrentField, AuraEdgeField } from "@/components/game/CAPanels";
 import { caAuraOf, CA_ITEM_TYPES, CA_ITEM_TYPE_LABELS, caNormalizeItemType } from "@shared/ca";
 import { V3RuneAttachEditor } from "@/components/game/V3RuneAttachEditor";
@@ -1084,26 +1084,26 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
 
   const otherMembers = (members || []).filter((m: any) => m.userId !== user?.id);
 
-  // Resolves the avatar image and accent-ring color for a chat/roll message:
-  // the sender's assigned character portrait when they have one, otherwise
-  // their account avatar; NPC/actor rolls (no owning member) fall back to
-  // matching a character by name. The ring color is the player's beacon
-  // color - the same color used everywhere else (pinned tracker, mini
-  // tracker card) - or a stable per-identity color when there's no member.
+  // Resolves the avatar image for a chat/roll message: the sender's assigned
+  // character portrait when they have one, otherwise their account avatar;
+  // NPC/actor rolls (no owning member) fall back to matching a character by
+  // name.
+  //
+  // The frames used to be painted in each player's beacon colour, which is
+  // right on the map and on the tracker - that is what the colour is for,
+  // telling people apart at a glance on a busy board. In a list of messages
+  // every line is already labelled with a name, so the colour wasn't telling
+  // anyone anything; it just put a row of arbitrary colours through the one
+  // panel that is otherwise all gilt on stone. The frames are the app's now.
+  // An aura is different: it is chosen, and it still shows.
   const resolveMessageIdentity = (msg: any) => {
     const member = (members || []).find((m: any) => m.userId === msg.userId);
     const assignedChar = member?.assignedCharacterId ? (characters || []).find((c: any) => c.id === member.assignedCharacterId) : null;
     const namedChar = !assignedChar ? (characters || []).find((c: any) => c.name === msg.sender) : null;
     const char = assignedChar || namedChar;
     const portrait = char?.portrait || member?.avatarUrl;
-    const color = char
-      ? characterTrackerColor(char, member)
-      : (member?.beaconColor || stableColorForId(msg.userId || msg.sender || 'unknown'));
-    // Chat already wore the aura's colour; it gets the shapes too, on the
-    // same terms as everywhere else - only once the player has actually
-    // chosen an aura, never on the fallback colour.
-    const aura = char?.caAuraColor ? caAuraOf(char, color) : null;
-    return { portrait, color, aura };
+    const aura = char?.caAuraColor ? caAuraOf(char) : null;
+    return { portrait, aura };
   };
 
   const isRollMessage = (msg: any) => msg.type === 'roll' || (msg.type !== 'system' && msg.type !== 'gm-audit' && !!msg.text?.includes('rolled'));
@@ -1178,15 +1178,14 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
               );
             }
 
-            const { portrait, color, aura } = resolveMessageIdentity(msg);
+            const { portrait, aura } = resolveMessageIdentity(msg);
             return (
               <div
                 key={msg.id || i}
-                className={`flex items-center gap-2 rounded-lg border p-2 bg-stone-800/40 ${isWhisper ? 'border-amber-800/40 bg-amber-900/10' : 'border-stone-800'}`}
+                className={`flex items-center gap-2 rounded-lg border p-2 ${isWhisper ? 'border-amber-800/40 bg-amber-950/20' : 'border-stone-800/70 bg-stone-950/40'}`}
               >
                 <div
-                  className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border-2 bg-stone-800 self-start"
-                  style={{ borderColor: color }}
+                  className="chrome-frame relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border bg-stone-900 self-start"
                 >
                   {portrait ? (
                     <img src={portrait} alt="" className="w-full h-full object-cover" />
@@ -1217,8 +1216,8 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
                 </div>
                 {rollTotal !== null && (
                   <span
-                    className="relative self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold bg-stone-950/40"
-                    style={{ borderColor: color, color }}
+                    className="chrome-frame relative self-center shrink-0 rounded-md border px-2 py-1 text-sm font-bold tabular-nums bg-stone-950/60"
+                    style={{ color: 'var(--ca-gilt-bright)' }}
                   >
                     {aura && <AuraCurrentField {...aura} count={4} />}
                     <span className="relative">{rollTotal}</span>
@@ -1236,7 +1235,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
           <select
             value={chatTarget}
             onChange={(e) => setChatTarget(e.target.value)}
-            className="bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded px-1.5 py-0.5 h-6 min-w-0 flex-1 max-w-[160px]"
+            className="chrome-frame bg-stone-900 border text-stone-200 text-xs rounded px-1.5 py-0.5 h-6 min-w-0 flex-1 max-w-[160px]"
             data-testid="select-chat-target"
           >
             <option value="all">All</option>
