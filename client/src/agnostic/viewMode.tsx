@@ -90,7 +90,7 @@ export function AgViewModeButton({ scope, isGM: isGMProp }: { scope: AgScope; is
             variant="ghost"
             size="icon"
             onClick={() => setAgViewMode(key, play ? "gm" : "player")}
-            className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${play ? "border-sky-500/80 text-sky-300" : "border-amber-500 text-amber-400"}`}
+            className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${play ? "border-sky-500/80 text-sky-300" : "border-amber-500 text-amber-400"}`}
             aria-label={`${label} — switch to ${play ? "GM view" : "Player view"}${shortcut ? ` (${shortcut})` : ""}`}
             data-testid="button-ag-view-mode"
             data-mode={mode}

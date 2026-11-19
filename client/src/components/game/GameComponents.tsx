@@ -595,7 +595,7 @@ function ToolbarIconButton({ icon, label, active, danger, disabled, onClick, tes
             style={{ touchAction: 'manipulation' }}
             className={`
               chrome-frame chrome-btn
-              w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+              w-10 h-10 rounded-lg border flex items-center justify-center
               transition-all duration-200 shadow-lg backdrop-blur-sm
               ${active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
               ${danger ? 'hover:border-red-500 hover:text-red-400' : ''}
@@ -688,7 +688,7 @@ function HoldMenuButton({ options, testId, holdMs = 250, forceOpen = false }: {
         style={{ touchAction: 'manipulation' }}
         className={`
           chrome-frame chrome-btn
-          w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+          w-10 h-10 rounded-lg border flex items-center justify-center
           transition-all duration-200 shadow-lg backdrop-blur-sm
           ${defaultOption.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
           ${defaultOption.disabled ? 'opacity-50 cursor-not-allowed' : (effectiveOpen ? 'ring-2 ring-white/20' : 'hover:scale-105')}
@@ -718,7 +718,7 @@ function HoldMenuButton({ options, testId, holdMs = 250, forceOpen = false }: {
                     }}
                     style={{ touchAction: 'manipulation' }}
                     className={`
-                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      w-10 h-10 rounded-lg border flex items-center justify-center
                       transition-all duration-200 shadow-lg backdrop-blur-sm
                       ${opt.active ? 'bg-stone-700 border-amber-500 text-amber-400' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50'}
                       ${opt.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}
@@ -3151,21 +3151,16 @@ export function BattleMap({ tokens, onMoveToken, tokenMovePathsRef, onTokenClick
               options={tokenOptions}
               forceOpen={tutorialForceOpenHoldMenu === 'tokenOptions'}
             />
-            {(isGM || multiLevel) && (
-              <div className="relative">
-                <ToolbarIconButton
-                  icon={<Building2 className="h-4 w-4 md:h-5 md:w-5" />}
-                  label={isGM ? `Levels — viewing ${viewLevel.name}` : `You're on: ${viewLevel.name}`}
-                  active={levelsPanelOpen}
-                  onClick={() => { if (isGM) setLevelsPanelOpen(o => !o); }}
-                  testId="button-battlemap-levels"
-                />
-                {multiLevel && (
-                  <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-sky-500/60 bg-stone-900/90 px-2 py-0.5 text-[11px] font-semibold text-sky-200 shadow pointer-events-none" data-testid="battlemap-level-label">
-                    {viewLevel.name}
-                  </span>
-                )}
-              </div>
+            {/* Levels moved into Scene Settings — it is a thing about the
+                scene, not a tool you reach for while playing. The panel is
+                still opened from here through levelsPanelToggleRef, so the
+                keyboard shortcut and Scene Settings both work. A scene with
+                more than one level still says which one you are looking at,
+                since that is worth knowing at a glance and is not a button. */}
+            {multiLevel && (
+              <span className="self-start whitespace-nowrap rounded-full border border-sky-500/60 bg-stone-900/90 px-2 py-0.5 text-[11px] font-semibold text-sky-200 shadow pointer-events-none" data-testid="battlemap-level-label">
+                {viewLevel.name}
+              </span>
             )}
             {isGM && (
               <ToolbarIconButton
@@ -10135,7 +10130,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 style={{ touchAction: 'manipulation' }}
                 className={`
                   chrome-frame chrome-btn
-                  w-10 h-10 rounded-lg border-2 flex items-center justify-center
+                  w-10 h-10 rounded-lg border flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('stone', selectionMode === 'select')}
                   ${selectionMode === 'select' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
@@ -10163,7 +10158,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 style={{ touchAction: 'manipulation' }}
                 className={`
                   chrome-frame chrome-btn
-                  w-10 h-10 rounded-lg border-2 flex items-center justify-center
+                  w-10 h-10 rounded-lg border flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses('amber', selectionMode === 'ruler')}
                   ${selectionMode === 'ruler' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}

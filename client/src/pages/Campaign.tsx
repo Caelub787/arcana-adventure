@@ -81,7 +81,7 @@ import { itemPanelKey, openItemPanel, closeItemPanel, itemPanelStaggerPosition }
 import { Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check, Lock, Unlock, Camera, Wand2, Layout as LayoutIcon } from "lucide-react";
 
 // Scene Settings Form Component
-function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
+function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid, onOpenLevels }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void; onOpenLevels?: () => void }) {
   const [localSettings, setLocalSettings] = useState({
     gridEnabled: scene.gridEnabled,
     gridType: scene.gridType,
@@ -306,6 +306,23 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
             </div>
           </div>
         </div>
+      )}
+
+      {/* Levels — the scene's floors, basements and rooftops. This used to be
+          a button on the map's left rail; it is a thing about the scene, so
+          it lives with the rest of them. GM only: onOpenLevels is only handed
+          down when you can edit them. */}
+      {onOpenLevels && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onOpenLevels}
+          className="w-full border-sky-700 hover:bg-sky-900/40 text-sky-300"
+          data-testid="button-scene-levels"
+        >
+          <Layers className="h-4 w-4 mr-2" />
+          Levels
+        </Button>
       )}
 
       {/* Calibrate Grid Button */}
@@ -7326,7 +7343,11 @@ export default function Campaign() {
   // dice roller leaving, Swampy's two arriving - the column grew holes.
   // Everything below is derived from these three numbers now.
   const LEFT_TOOLBAR_TOP = 16;      // the column's own `top-4`
-  const LEFT_TOOLBAR_BUTTON = 40;   // a size="icon" Button
+  // 40, and every button in every rail is now that square: the icon variant
+  // is 36, so each rail button used to come up 4px short of what this says
+  // and the gap between this column and the map's tools below it came out at
+  // 16 instead of 8. They all carry an explicit h-10 w-10 now.
+  const LEFT_TOOLBAR_BUTTON = 40;
   const LEFT_TOOLBAR_GAP = 8;       // the column's `gap-2`
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
@@ -11224,7 +11245,7 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => setGlobalSearchOpen((v) => !v)}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
+                  className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
                     globalSearchOpen
                       ? 'border-amber-500 text-amber-400'
                       : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'
@@ -11255,7 +11276,7 @@ export default function Campaign() {
                         if (activeSidePanel === 'ledger' && !sidePanelMinimized) setSidePanelMinimized(true);
                         else { setActiveSidePanel('ledger'); setSidePanelMinimized(false); }
                       }}
-                      className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'ledger' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                       data-testid="button-panel-ledger"
                     >
                       <ScrollText className="h-5 w-5" />
@@ -11276,7 +11297,7 @@ export default function Campaign() {
                         if (activeSidePanel === 'deck' && !sidePanelMinimized) setSidePanelMinimized(true);
                         else { setActiveSidePanel('deck'); setSidePanelMinimized(false); }
                       }}
-                      className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                      className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'deck' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                       data-testid="button-panel-deck"
                     >
                       <Layers className="h-5 w-5" />
@@ -11392,7 +11413,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-chat"
                 >
                   <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11419,7 +11440,7 @@ export default function Campaign() {
                         setSidePanelMinimized(false);
                       }
                     }}
-                    className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-initiative"
                   >
                     <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11446,7 +11467,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-characters"
                 >
                   <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11477,7 +11498,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNoteIds.length > 0 || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNoteIds.length > 0 || !!mobileNotesNav ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11497,7 +11518,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setLocation(`/library?from=${encodeURIComponent(location)}&system=${encodeURIComponent(campaignSystemSlug || '')}`)}
-                    className="chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
+                    className="chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white"
                     data-testid="button-panel-my-library"
                   >
                     <Package className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11518,7 +11539,7 @@ export default function Campaign() {
                     variant="ghost"
                     size="icon"
                     onClick={() => setV3SpellManagerOpen(true)}
-                    className={`relative chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${v3SpellManagerOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`relative chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${v3SpellManagerOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-crafted-spells"
                   >
                     <Wand2 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11554,7 +11575,7 @@ export default function Campaign() {
                         setSidePanelMinimized(false);
                       }
                     }}
-                    className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                    className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                     data-testid="button-panel-scene"
                   >
                     <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11581,7 +11602,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`chrome-frame chrome-btn bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
+                  className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'}`}
                   data-testid="button-panel-settings"
                 >
                   <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11991,6 +12012,7 @@ export default function Campaign() {
                     scene={activeScene} 
                     onUpdateScene={handleUpdateScene}
                     onCalibrateGrid={() => setGridCalibrationMode(true)}
+                    onOpenLevels={role === 'gm' ? () => levelsPanelToggleRef.current?.() : undefined}
                   />
 
                   {/* Set Default View Button */}
@@ -14762,6 +14784,7 @@ export default function Campaign() {
                           scene={activeScene}
                           onUpdateScene={handleUpdateScene}
                           onCalibrateGrid={() => setGridCalibrationMode(true)}
+                          onOpenLevels={role === 'gm' ? () => levelsPanelToggleRef.current?.() : undefined}
                         />
                         <div className="pt-4">
                           <Button
