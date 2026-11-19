@@ -51,6 +51,15 @@ describe("boot-time schema guard", () => {
     expect(unguarded, `Add an "ALTER TABLE ... ADD COLUMN IF NOT EXISTS" for these in server/app.ts`).toEqual([]);
   });
 
+  // Not prefixed, so the sweep above doesn't see it, but the failure mode is
+  // the same one this file exists for: chat reads `select()`, so a column in
+  // schema.ts that isn't in the database takes out every message in every
+  // campaign at once.
+  it("guards the picture a chat message was sent under", () => {
+    expect(schema).toContain('senderAvatar: text("sender_avatar")');
+    expect(guardedColumns.has("sender_avatar")).toBe(true);
+  });
+
   it("creates every C.A. and Swampy table declared in the schema", () => {
     const tableNames = [...schema.matchAll(/pgTable\(\s*"((?:ca|swampy)_[a-z0-9_]+)"/g)].map((m) => m[1]);
     const missing = tableNames.filter((name) => !declaredTables.has(name));

@@ -2382,8 +2382,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Chat operations
+
+  /**
+   * The picture to stamp a message with: the character the sender is playing
+   * in this campaign, or their own if they aren't playing one (or the
+   * character has no portrait of its own yet).
+   */
+  private async senderAvatarFor(campaignId: string, userId: string): Promise<string | null> {
+    const [member] = await db.select({ assigned: campaignMembers.assignedCharacterId })
+      .from(campaignMembers)
+      .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, userId)))
+      .limit(1);
+    if (member?.assigned) {
+      const [char] = await db.select({ portrait: characters.portrait })
+        .from(characters).where(eq(characters.id, member.assigned)).limit(1);
+      if (char?.portrait) return char.portrait;
+    }
+    const [user] = await db.select({ avatarUrl: users.avatarUrl })
+      .from(users).where(eq(users.id, userId)).limit(1);
+    return user?.avatarUrl ?? null;
+  }
+
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
-    const [chatMessage] = await db.insert(chatMessages).values(message).returning();
+    // Worked out here rather than at each of the callers, so a new one can't
+    // forget to do it. A caller that has already decided still wins.
+    const values = message.senderAvatar === undefined && message.userId
+      ? { ...message, senderAvatar: await this.senderAvatarFor(message.campaignId, message.userId).catch(() => null) }
+      : message;
+    const [chatMessage] = await db.insert(chatMessages).values(values).returning();
     return chatMessage;
   }
 

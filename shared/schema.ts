@@ -572,6 +572,13 @@ export const chatMessages = pgTable("chat_messages", {
   type: text("type").notNull().default("chat"), // "chat" or "system" or "roll" or "whisper"
   recipientId: varchar("recipient_id").references(() => users.id, { onDelete: "set null" }),
   recipientName: text("recipient_name"),
+  // The picture the sender wore at the time: the character they were playing
+  // when they sent it, or their own if they weren't playing one. Stamped on
+  // the way in rather than worked out on the way out, so reassigning a player
+  // to another character doesn't go back and rewrite everything they ever
+  // said. Null on anything sent before this existed and on messages with no
+  // sender (system lines); the chat falls back to working it out live.
+  senderAvatar: text("sender_avatar"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

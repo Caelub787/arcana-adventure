@@ -1084,10 +1084,15 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
 
   const otherMembers = (members || []).filter((m: any) => m.userId !== user?.id);
 
-  // Resolves the avatar image for a chat/roll message: the sender's assigned
-  // character portrait when they have one, otherwise their account avatar;
-  // NPC/actor rolls (no owning member) fall back to matching a character by
-  // name.
+  // The picture on a chat/roll message.
+  //
+  // The rule is: your own picture until you're playing a character, and that
+  // character's once you are. A message keeps the picture it was sent under —
+  // the server stamps it on the way in — so being reassigned to someone else
+  // doesn't go back and rewrite every line you ever said as the last one.
+  // Anything said before that was stamped gets worked out here instead, by
+  // the same rule, as though it had been said now. NPC/actor rolls have no
+  // owning member, so they fall back to matching a character by name.
   //
   // The frames used to be painted in each player's beacon colour, which is
   // right on the map and on the tracker - that is what the colour is for,
@@ -1101,7 +1106,7 @@ function SidePanelChat({ campaignId, role, members, characters, currentUserId, r
     const assignedChar = member?.assignedCharacterId ? (characters || []).find((c: any) => c.id === member.assignedCharacterId) : null;
     const namedChar = !assignedChar ? (characters || []).find((c: any) => c.name === msg.sender) : null;
     const char = assignedChar || namedChar;
-    const portrait = char?.portrait || member?.avatarUrl;
+    const portrait = msg.senderAvatar || char?.portrait || member?.avatarUrl;
     const aura = char?.caAuraColor ? caAuraOf(char) : null;
     return { portrait, aura };
   };

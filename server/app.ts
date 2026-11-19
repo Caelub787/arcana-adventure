@@ -550,6 +550,25 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS scene_map_pins ADD COLUMN IF NOT EXISTS level_id varchar`,
     `ALTER TABLE IF EXISTS campaign_map_pins ADD COLUMN IF NOT EXISTS level_id varchar`,
     `ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS keybinds jsonb`,
+    // The picture a chat message was sent under (shared/schema.ts).
+    `ALTER TABLE IF EXISTS chat_messages ADD COLUMN IF NOT EXISTS sender_avatar text`,
+    // Everything said before that column existed, stamped as though it had
+    // been said now: the character the sender is playing, else their own
+    // picture. Only rows that resolve to something are touched, so this does
+    // no work on the second run and none at all once chat has caught up.
+    `UPDATE chat_messages m SET sender_avatar = v.avatar
+       FROM (
+         SELECT c.id,
+                COALESCE(
+                  (SELECT ch.portrait FROM campaign_members cm
+                     JOIN characters ch ON ch.id = cm.assigned_character_id
+                    WHERE cm.user_id = c.user_id AND cm.campaign_id = c.campaign_id),
+                  (SELECT u.avatar_url FROM users u WHERE u.id = c.user_id)
+                ) AS avatar
+           FROM chat_messages c
+          WHERE c.user_id IS NOT NULL AND c.sender_avatar IS NULL
+       ) v
+      WHERE m.id = v.id AND v.avatar IS NOT NULL`,
     // Agnostic system tables (+ tokens.agnostic_note_id) — see shared/agnostic-schema.ts.
     ...AGNOSTIC_SCHEMA_STATEMENTS,
   ];
