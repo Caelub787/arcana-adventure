@@ -401,6 +401,8 @@ export class Sheet {
   bool(key: string, label: string, value = false) { return this.add(key, label, "boolean", value); }
   choice(key: string, label: string, choices: string[], value: string, colors?: Record<string, string>) { return this.add(key, label, "select", value, null, { choices, choiceColors: colors }); }
   calc(key: string, label: string, formula: string, resultType: "number" | "text" = "number", options: AgFieldOptions = {}) { return this.add(key, label, "formula", null, formula, { ...options, resultType }); }
+  /** A colour per value, for a badge that says which state something is in. */
+  choiceColors(key: string, colors: Record<string, string>) { const f = this.fields.find((x) => x.key === key); if (f) f.options = { ...f.options, choiceColors: colors }; return this; }
   /** A tooltip (the ? beside the value wherever it's shown). */
   tip(key: string, text: string) { const f = this.fields.find((x) => x.key === key); if (f) f.options = { ...f.options, tooltip: text }; return this; }
   dice(key: string, label: string, expr: string) { return this.add(key, label, "dice", null, expr); }
@@ -473,7 +475,7 @@ function characterTemplate(beast = false): AgSnapshot {
     .calc("usable_energy", "Usable Energy", USABLE_FORMULA).num("energy", "Energy", 0, { min: 0, follows: "usable_energy", shield: "temp_energy" })
     .num("temp_energy", "Temp Energy", 0, { min: 0, color: TEMP_ENERGY_COLOR })
     .calc("focus_max", "Max Focus", FOCUS_FORMULA).num("focus", "Focus", 6, { min: 0, follows: "focus_max" })
-    .calc("wounds_count", "Wounds", "count(@wounds.name)");
+    .calc("wounds_count", "Wounds", "sum(@wounds.open)"); // a healed one is a scar, not a wound
   // Attributes: one each of +3, +2, +1, 0, −1, −2, and no dice — every roll is
   // 1d20. The rule is written on the page above them, so they carry no tooltip.
   // No floor or ceiling on either of these. A value's limits are applied after
@@ -945,7 +947,20 @@ export function legacyAbilityPage(gmRegionId: string | null): DocNode[] {
   ];
 }
 
-export const WOUND_EFFECTS_HELP = "What this wound does to its bearer while it lasts — each one really changes that value (the red number beside it on the character). Treat or heal the wound and they're gone.";
+export const WOUND_EFFECTS_HELP = "What this wound does to its bearer while it is open — each one really changes that value (the red number beside it on the character). Healing the wound stops them all at once; they come back if it is opened again.";
+/**
+ * A healed wound stays on the sheet as what it left behind. Its effects hang
+ * on `!healed`, so healing stops every one of them at once without anybody
+ * deleting and retyping them, and the sheet is there to be written up as the
+ * scar, the limp, the missing finger. Taking the wound off the character
+ * altogether is still the remove button on their list of wounds.
+ */
+export const WOUND_HEALED_CONDITION = "!healed";
+export const WOUND_OPEN_TEXT = "Open wound", WOUND_SCAR_TEXT = "Healed";
+export const WOUND_STATE_FORMULA = `if(healed, "${WOUND_SCAR_TEXT}", "${WOUND_OPEN_TEXT}")`;
+export const WOUND_STATE_COLORS: Record<string, string> = { [WOUND_OPEN_TEXT]: "#f43f5e", [WOUND_SCAR_TEXT]: "#a8a29e" };
+export const WOUND_HEAL_HELP = "Healing keeps the wound and stops everything it was doing. Write it up as whatever it left behind — a scar, a limp — or take it off the character with the remove button on their wounds. Press it again to open the wound back up.";
+export const WOUND_HEALED_HELP = "A healed wound does nothing to its bearer and isn't counted among their wounds. Everything it did comes back if it's opened again.";
 export const ITEM_EFFECTS_HELP = "What this item changes on its owner. New effects only count while it's equipped (change “equipped” to always for ones that apply anyway).";
 /** An "Effects" heading and block: changes this sheet makes to `via`'s values. */
 export function effectsNodes(via: string, condition: string, help: string): DocNode[] {
@@ -986,7 +1001,7 @@ export const STATION_HELP = "A crafting station: a **Forge** for Blacksmithing, 
 export const PART_HELP = "A part forged at the anvil. Its quality comes from the hammering; its durability from keeping the heat right. Assemble parts into a weapon from Blacksmithing.";
 export const LEGACY_TRAINING_HELP = "Using it raises that attribute or skill for good (and gives the matching point, so it doesn't use up the points they've earned), and adds any granted points to spend. One is used up each time.";
 export const TRAINING_HELP = "Using it raises that attribute or skill for good — items are the only thing that move either of them. A negative number lowers it. One is used up each time.";
-export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** removes one of their wounds up to the severity it heals. Using one takes it from the stack; the last one is gone.";
+export const CONSUMABLE_HELP = "**Heal HP** rolls its dice and heals the owner. **Heal a wound** heals one of their open wounds up to the severity it treats — everything that wound was doing stops, and it stays on them as whatever it left behind. Using one takes it from the stack; the last one is gone.";
 export const consumableLine = (): DocNode => p(muted("Heals "), val("heal_dice", { look: { bold: true } }), muted(" HP, or one wound up to "), val("heal_wounds", { look: { bold: true } }));
 export const RUNE_HELP = "Attach it to a weapon or armor from that item's Runes list. The GM can also make it change values (Links → Changes values).";
 export const CONTAINER_HELP = "A Backpack raises its owner's carry weight by its capacity while equipped. A Storage Ring holds its own items (below).";
@@ -1084,8 +1099,10 @@ export function itemTemplate(kind: ItemKind): AgSnapshot {
       ...used(),
     ], "#15803d");
     const healWound = s.action("a_heal_wound", "Heal a wound", [
-      { type: "choose", name: "wound", from: "@owner.wounds", filter: "severity_rank <= @source.heal_rank", prompt: "Which wound does it heal?" },
-      { type: "remove", target: "wound" },
+      { type: "choose", name: "wound", from: "@owner.wounds", filter: "severity_rank <= @source.heal_rank && !healed", prompt: "Which wound does it heal?" },
+      // Healed, not deleted: what it did stops, and the sheet stays to be
+      // written up as whatever it left behind.
+      { type: "modify", target: "@wound.healed", op: "set", value: "1" },
       ...used(),
     ], "#0f766e");
     body.push(
@@ -1170,21 +1187,25 @@ export const FOCUS_NOTE = "Spent to choose where a wound lands on an opponent. T
 export const LEGACY_FOCUS_COSTS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 on each rank up and on Pillars 3, 5, 7 and 9. Resets on a long rest. Click the bar to spend or restore it.";
 export const LEGACY_FOCUS_NOTE = "Spent to choose where a wound lands on an opponent, when you get to choose:\nWhere | Focus\nBody | 0\nArm or leg | 2\nHead | 4\n\n6 to start, +1 per star. Resets on a long rest. Click the bar to spend or restore it.";
 /** A wound's severity and location, at the top of its page. */
-export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }));
+export const woundBadges = (): DocNode => p(val("severity", { display: "badge" }), " ", val("location", { display: "badge" }), " ", val("state", { display: "badge" }));
 
 function woundTemplate(): AgSnapshot {
   const s = new Sheet();
   s.choice("severity", "Severity", SEVERITIES, "Minor", SEVERITY_COLORS).choice("location", "Location", LOCATIONS, "Body", LOCATION_COLORS)
     .calc("severity_rank", "Severity level", `if(severity == "Severe", 3, if(severity == "Moderate", 2, 1))`);
-  const treat = s.action("a_treat", "Treat", [{ type: "remove", target: "self" }], "#15803d");
+  s.bool("healed", "Healed").tip("healed", WOUND_HEALED_HELP)
+    .calc("open", "Still open", "if(healed, 0, 1)")
+    .calc("state", "State", WOUND_STATE_FORMULA, "text").choiceColors("state", WOUND_STATE_COLORS);
+  // Healing is a switch, not a delete: it leaves the sheet to be written up.
+  const heal = s.action("a_treat", "Heal", [{ type: "modify", target: "healed", op: "set", value: "if(healed, 0, 1)" }], "#15803d");
   const page: DocNode[] = [
     woundBadges(),
-    p(i("What happened — describe the wound here.")),
-    ...effectsNodes("bearer", "", WOUND_EFFECTS_HELP),
+    p(i("What happened — describe the wound here. Once it's healed, what it left behind.")),
+    ...effectsNodes("bearer", WOUND_HEALED_CONDITION, WOUND_EFFECTS_HELP),
     hr(),
-    p(button(treat, "Treat (removes the wound)", { color: "#15803d" })),
+    p(button(heal, "Heal", { color: "#15803d" }), " ", tip(WOUND_HEAL_HELP)),
   ];
-  return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects that really change its bearer's values (skills, speed…). Treat removes it." }, page);
+  return s.snapshot({ type: "wound", name: "Wound", playersCanCreate: true, description: "A wound with severity, location and effects that really change its bearer's values (skills, speed…). Healing keeps it and stops the effects, so it can be written up as the scar it left." }, page);
 }
 
 export const DC_SAVE_HELP = "Leave this alone unless the trait is what decides how its holder defends. Pick a saving throw and their DC becomes that one instead of Might's, for as long as they have the trait. Only give this to one of a character's traits.";

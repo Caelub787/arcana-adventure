@@ -45,14 +45,14 @@ import {
   // Level 39: the two lines above the attributes, in words.
   ATTR_ARRAY_FORMULA, SKILL_PICKS_FORMULA, skillOptions, bonusOptions, EXTRA_SKILLS, EXTRA_SKILL_MIN, EXTRA_SKILL_MAX, skillsBlock,
   // Level 41: a saving throw per attribute, and a DC that is one of them.
-  saveKey, SAVE_ARRAY, SAVE_ARRAY_FORMULA, CREATION_FORMULA, CREATION_SKILLS_FORMULA, skillPicksNode, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
+  saveKey, SAVE_ARRAY, WOUND_HEALED_CONDITION, WOUND_STATE_FORMULA, WOUND_STATE_COLORS, WOUND_HEALED_HELP, SAVE_ARRAY_FORMULA, CREATION_FORMULA, CREATION_SKILLS_FORMULA, skillPicksNode, DC_FORMULA, DC_SAVE_PICK, DC_SAVE_CHOICES, DC_SAVE_NONE, DC_SAVE_HELP, DC_SAVE_N_HELP, DC_SAVE_LABEL, ATTR_CANVAS_W, ATTR_CANVAS_H,
 } from "./ca";
 import type { AgAction, AgRollSpec } from "@shared/agnostic/types";
 import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 47;
+export const CA_KIT_LEVEL = 48;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -115,6 +115,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 45) await upgrade45(store);
   if (level < 46) await upgrade46(store);
   if (level < 47) await upgrade47(store);
+  if (level < 48) await upgrade48(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2606,4 +2607,84 @@ function relayAttrCanvas(doc: Y.Doc) {
   const ids = new Set(items.map((c) => String(c.id)));
   for (const k of Array.from(m.keys())) if (!ids.has(k)) m.delete(k);
   for (const c of items) m.set(String(c.id), c);
+}
+
+// --------------------------------------------------------------------------- level 48
+// Healing a wound used to delete it. Now it keeps it and stops everything it
+// was doing, so the GM can write the sheet up as what it left behind — the
+// scar, the limp — and taking it off the character altogether is the remove
+// button on their wounds, as it always was.
+//
+// The effects a GM has already written are hung on `!healed` rather than
+// retyped, so an old wound heals exactly like a new one.
+async function upgrade48(store: ScopeStore) {
+  const pages: AgNote[] = [];
+  await store.run(async (cs) => {
+    for (const n of Array.from(store.notes.values())) {
+      if (n.type !== "wound") continue;
+      const fields = store.fieldsByNote.get(n.id);
+      if (!fields?.get("severity")) continue;
+
+      if (!fields.get("healed")) {
+        await makeField(store, n, fields, "healed", "Healed", "boolean", cs, { value: false, options: { tooltip: WOUND_HEALED_HELP } });
+      }
+      await putCalc(store, n, fields, "open", "Still open", "if(healed, 0, 1)", cs);
+      await putCalc(store, n, fields, "state", "State", WOUND_STATE_FORMULA, cs);
+      const st = store.fieldsByNote.get(n.id)?.get("state");
+      if (st) await store.putField({ ...st, options: { ...st.options, resultType: "text", choiceColors: WOUND_STATE_COLORS } }, cs);
+
+      // Whatever it does to its bearer, it does only while it is open.
+      for (const m of store.modifiersOf(n.id)) {
+        if (m.via !== "bearer" || (m.condition ?? "").trim()) continue;
+        await store.putModifier({ ...m, condition: WOUND_HEALED_CONDITION }, cs);
+      }
+      // Treat deleted the wound; Heal puts it away and can open it again.
+      for (const a of store.actionsOf(n.id)) {
+        if (!a.steps.some((st) => st.type === "remove" && st.target === "self")) continue;
+        await store.putAction({ ...a, name: a.name === "Treat" ? "Heal" : a.name, steps: [{ type: "modify", target: "healed", op: "set", value: "if(healed, 0, 1)" }] }, cs);
+      }
+      pages.push(n);
+    }
+
+    for (const n of Array.from(store.notes.values())) {
+      const fields = store.fieldsByNote.get(n.id);
+      // A character counts the wounds still open, not the scars.
+      if (fields?.get("wounds_count") && fields.get("might")) {
+        await putCalc(store, n, fields, "wounds_count", "Wounds", "sum(@wounds.open)", cs);
+      }
+      // A potion heals its wound instead of wiping it off the character.
+      for (const a of store.actionsOf(n.id)) {
+        const pick = a.steps.findIndex((st) => st.type === "choose" && (st as any).from === "@owner.wounds");
+        if (pick < 0) continue;
+        const name = (a.steps[pick] as any).name;
+        const steps = a.steps.map((st, i) => {
+          if (i === pick) {
+            const f = String((st as any).filter ?? "").trim();
+            return { ...st, filter: f.includes("healed") ? f : (f ? `${f} && !healed` : "!healed") };
+          }
+          return st.type === "remove" && st.target === name
+            ? { type: "modify" as const, target: `@${name}.healed`, op: "set" as const, value: "1" }
+            : st;
+        });
+        await store.putAction({ ...a, steps }, cs);
+      }
+      const help = fields?.get("heal_wounds");
+      if (help) await store.putField({ ...help, options: { ...help.options, tooltip: help.options.tooltip ? CONSUMABLE_HELP : help.options.tooltip } }, cs);
+    }
+  });
+
+  // The badge row gains the state, and the button says Heal.
+  for (const note of pages) {
+    await editPage(note, (_doc, frag) => {
+      if (findAll(frag, (e) => e.nodeName === "agField" && e.getAttribute("ref") === "state").length) return;
+      const row = findAll(frag, (e) => e.nodeName === "paragraph" && findAll(e, (f) => f.getAttribute("ref") === "severity").length > 0)[0];
+      const at = row ? frag.toArray().indexOf(row) : -1;
+      if (at < 0) return;
+      frag.delete(at, 1);
+      insertNodes(frag, at, [woundBadges()]);
+      for (const b of findAll(frag, (e) => e.nodeName === "agButton")) {
+        if (/removes the wound/i.test(String(b.getAttribute("label") ?? ""))) b.setAttribute("label", "Heal" as any);
+      }
+    });
+  }
 }
