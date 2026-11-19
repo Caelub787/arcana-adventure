@@ -74,6 +74,7 @@ export type AgOp =
   | { op: "table.fate"; filled: number }
   | { op: "table.give"; noteId: string; tokenId: string }
   | { op: "table.use"; noteId: string; tokenId: string }
+  | { op: "table.notes"; text: string }
   | { op: "component.upsert"; component: { id?: string; name: string; params: string[]; layout: AgLayout } }
   | { op: "component.delete"; id: string }
   | { op: "template.saveVersion"; id: string; label?: string | null }

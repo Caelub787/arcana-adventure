@@ -5,7 +5,7 @@ import { randomUUID } from "crypto";
 import type {
   AgAcl, AgAction, AgActionChoice, AgActionOptions, AgActionResult, AgActionStep, AgCampaignSettings, AgRollMods, AgRollSpec, AgComponentDef, AgExportBundle, AgField, AgFieldOptions,
   AgFieldType, AgLayout, AgLink, AgLook, AgModifier, AgNote, AgScope, AgTokenBar, AgValue, AgViewer, AgTableState } from "@shared/agnostic/types";
-import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost, TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS } from "@shared/agnostic/types";
+import { defaultCampaignSettings, isValidKey, slugifyKey, noteDocName, regionDocName, scaleCost, TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS, TABLE_NOTES_MAX } from "@shared/agnostic/types";
 import {
   canEditBody, canEditField, canEditNoteHeader, canRunAction, canViewNote, mayPlayNote, normalizeAcl, normalizeAudience,
 } from "@shared/agnostic/acl";
@@ -320,13 +320,14 @@ function cleanTable(raw: unknown): AgTableState {
   const fate = typeof t.fate === "number" && Number.isFinite(t.fate)
     ? Math.max(0, Math.min(TABLE_FATE_SLOTS, Math.round(t.fate)))
     : 0;
+  const notes = typeof t.notes === "string" ? t.notes.slice(0, TABLE_NOTES_MAX) : "";
   const tokens: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(t.tokens && typeof t.tokens === "object" ? t.tokens : {}).slice(0, 200)) {
     if (typeof k !== "string" || !Array.isArray(v)) continue;
     const ids = v.filter((x: unknown) => typeof x === "string").slice(0, TABLE_TOKEN_SLOTS) as string[];
     if (ids.length) tokens[k.slice(0, 60)] = ids;
   }
-  return { fate, tokens };
+  return { fate, tokens, notes };
 }
 
 function newNote(store: ScopeStore, init: Partial<AgNote>): AgNote {
@@ -1038,6 +1039,17 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
         const tokens = { ...table.tokens };
         if (left.length) tokens[note.id] = left; else delete tokens[note.id];
         await store.putSettings({ ...settingsNow(store), table: { ...table, tokens } }, cs);
+        return { ok: true as const };
+      });
+    }
+
+    // What the GM has written up for the table to read.
+    case "table.notes": {
+      requireGM(viewer);
+      if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
+      const text = String(body.text ?? "").slice(0, TABLE_NOTES_MAX);
+      return store.run(async (cs) => {
+        await store.putSettings({ ...settingsNow(store), table: { ...tableNow(store), notes: text } }, cs);
         return { ok: true as const };
       });
     }

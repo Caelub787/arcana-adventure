@@ -649,7 +649,11 @@ export interface AgTableState {
   fate: number;
   /** character note id → the token sheets it is holding, at most TABLE_TOKEN_SLOTS. */
   tokens: Record<string, string[]>;
+  /** The GM's standing note to the table — everyone reads it, the GM writes it. */
+  notes?: string;
 }
+/** As much as anyone needs to write on the Table in one go. */
+export const TABLE_NOTES_MAX = 4000;
 
 export interface AgCampaignSettings {
   tracker: {
