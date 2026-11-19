@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { LoadingLogo } from "@/components/LoadingLogo";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, AlertCircle, Download } from "lucide-react";
+import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, AlertCircle, Download, Folder, Upload } from "lucide-react";
 import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
@@ -27,6 +27,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { ImageBrowser } from "@/components/ImageBrowser";
+import { storeImage } from "@/lib/images";
 import FriendsPanel from "@/components/FriendsPanel";
 
 interface ProfileDropdownProps {
@@ -57,7 +59,8 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
   const [username, setUsername] = useState("");
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const [newAvatarBase64, setNewAvatarBase64] = useState<string | null>(null);
+  const [newAvatar, setNewAvatar] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
@@ -101,7 +104,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
       setUsername(profile.username || "");
       setUsernameError(null);
       setAvatarPreview(profile.avatarUrl || null);
-      setNewAvatarBase64(null);
+      setNewAvatar(null);
     }
     setEditDialogOpen(true);
   };
@@ -113,7 +116,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
       reader.onloadend = () => {
         const base64 = reader.result as string;
         setAvatarPreview(base64);
-        setNewAvatarBase64(base64);
+        setNewAvatar(base64);
       };
       reader.readAsDataURL(file);
     }
@@ -126,8 +129,11 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
       if (bio !== profile?.bio) {
         await updateProfileMutation.mutateAsync({ bio });
       }
-      if (newAvatarBase64) {
-        await updateAvatarMutation.mutateAsync(newAvatarBase64);
+      if (newAvatar) {
+        // A picture off disk arrives spelled out in full. Save it once and
+        // keep the link: it gets copied wherever your picture is shown, and
+        // a few megabytes of string copied around is no good to anyone.
+        await updateAvatarMutation.mutateAsync(await storeImage(newAvatar));
       }
       if (username !== profile?.username) {
         try {
@@ -252,6 +258,16 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
           <DialogHeader>
             <DialogTitle className="text-amber-500">Edit Profile</DialogTitle>
           </DialogHeader>
+          {/* Picked from the library you already have, rather than only off
+              disk. saveToFile means this comes back as a link to the picture
+              instead of the whole thing spelled out. */}
+          <ImageBrowser
+            open={browsing}
+            onOpenChange={setBrowsing}
+            saveToFile
+            title="Choose a picture"
+            onSelect={(url) => { setAvatarPreview(url); setNewAvatar(url); }}
+          />
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-4">
               <Avatar className="h-24 w-24 border-2 border-stone-700">
@@ -270,15 +286,28 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                 onChange={handleFileChange}
                 data-testid="input-avatar-file"
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="border-stone-700 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-amber-500"
-                data-testid="button-upload-avatar"
-              >
-                Upload Avatar
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-stone-700 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-amber-500"
+                  data-testid="button-upload-avatar"
+                >
+                  <Upload className="mr-1 h-4 w-4" />
+                  Upload
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBrowsing(true)}
+                  className="border-stone-700 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-amber-500"
+                  data-testid="button-browse-avatar-library"
+                >
+                  <Folder className="mr-1 h-4 w-4" />
+                  Library
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="username" className="text-stone-400">

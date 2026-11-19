@@ -10,6 +10,7 @@ import { audienceIncludes } from "@shared/agnostic/acl";
 import { formatValue, asNumber } from "@shared/agnostic/formula";
 import { useAg, useAgMaybe, resolveRef, effOf, follow, usePerms, fieldsOf, useNoteFields } from "./hooks";
 import { triggerRollNotification } from "@/components/game/RollNotification";
+import { storeImage } from "@/lib/images";
 import { useToast } from "@/hooks/use-toast";
 import { AgPanel, AgSelector, PickField, useAgPanel } from "./float";
 import { api } from "@/lib/api";
@@ -477,13 +478,7 @@ export async function uploadImage(file: File): Promise<string> {
 }
 
 /** Keep a picture (a data: URL) for sheets — in the database, so it's there for everyone, for good. */
-export async function storeAgImage(dataUrl: string): Promise<string> {
-  if (!dataUrl.startsWith("data:")) return dataUrl;
-  const res = await fetch("/api/agnostic/image", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: dataUrl }) });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.url) throw new Error(body.error || "Couldn't save that picture");
-  return body.url as string;
-}
+export const storeAgImage = storeImage;
 
 /** One field shown the way the GM picked. */
 type FieldDisplayProps = {

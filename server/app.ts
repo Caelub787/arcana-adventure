@@ -552,10 +552,16 @@ async function ensureKnowledgeSystemSchema() {
     `ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS keybinds jsonb`,
     // The picture a chat message was sent under (shared/schema.ts).
     `ALTER TABLE IF EXISTS chat_messages ADD COLUMN IF NOT EXISTS sender_avatar text`,
+    // A picture can be stored spelled out in full as a `data:` URL rather than
+    // as a link. Those are never stamped — a few megabytes copied onto every
+    // line someone ever said, and sent again every time the log is opened —
+    // so any that an earlier run of this put there come back off.
+    `UPDATE chat_messages SET sender_avatar = NULL
+      WHERE sender_avatar LIKE 'data:%'`,
     // Everything said before that column existed, stamped as though it had
     // been said now: the character the sender is playing, else their own
-    // picture. Only rows that resolve to something are touched, so this does
-    // no work on the second run and none at all once chat has caught up.
+    // picture. Only rows that resolve to a link are touched, so this does no
+    // work on the second run and none at all once chat has caught up.
     `UPDATE chat_messages m SET sender_avatar = v.avatar
        FROM (
          SELECT c.id,
@@ -568,7 +574,7 @@ async function ensureKnowledgeSystemSchema() {
            FROM chat_messages c
           WHERE c.user_id IS NOT NULL AND c.sender_avatar IS NULL
        ) v
-      WHERE m.id = v.id AND v.avatar IS NOT NULL`,
+      WHERE m.id = v.id AND v.avatar IS NOT NULL AND v.avatar NOT LIKE 'data:%'`,
     // Agnostic system tables (+ tokens.agnostic_note_id) — see shared/agnostic-schema.ts.
     ...AGNOSTIC_SCHEMA_STATEMENTS,
   ];

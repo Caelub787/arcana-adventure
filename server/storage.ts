@@ -107,6 +107,7 @@ import {
   spectatorTokens, users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, characterTrades, passwordResetTokens, scenes, hotbars, freeHotbarEntries, items, itemTemplateLinks, spells, spellTemplateLinks, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, caAbilities, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, timelines, timelineEvents, knowledgeRevisions, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, bookChapters, maps, stampAssets, stampAssetVariants, mapObjects, mapLayers, mapElements, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls, classes, classSkillNodes, classSkillConnections, characterClasses, characterClassSkills, worldCollaborators, worldCanvasNodes, entityAccess
 } from "@shared/schema";
 import { db } from "./db";
+import { senderAvatarFor } from "./chatAvatar";
 import { eq, and, asc, desc, sql, inArray, or, isNull, isNotNull, ne } from "drizzle-orm";
 
 // Shared helper: builds an owner-scope WHERE clause for personal-library tables.
@@ -2383,31 +2384,11 @@ export class DatabaseStorage implements IStorage {
 
   // Chat operations
 
-  /**
-   * The picture to stamp a message with: the character the sender is playing
-   * in this campaign, or their own if they aren't playing one (or the
-   * character has no portrait of its own yet).
-   */
-  private async senderAvatarFor(campaignId: string, userId: string): Promise<string | null> {
-    const [member] = await db.select({ assigned: campaignMembers.assignedCharacterId })
-      .from(campaignMembers)
-      .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, userId)))
-      .limit(1);
-    if (member?.assigned) {
-      const [char] = await db.select({ portrait: characters.portrait })
-        .from(characters).where(eq(characters.id, member.assigned)).limit(1);
-      if (char?.portrait) return char.portrait;
-    }
-    const [user] = await db.select({ avatarUrl: users.avatarUrl })
-      .from(users).where(eq(users.id, userId)).limit(1);
-    return user?.avatarUrl ?? null;
-  }
-
   async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
     // Worked out here rather than at each of the callers, so a new one can't
     // forget to do it. A caller that has already decided still wins.
     const values = message.senderAvatar === undefined && message.userId
-      ? { ...message, senderAvatar: await this.senderAvatarFor(message.campaignId, message.userId).catch(() => null) }
+      ? { ...message, senderAvatar: await senderAvatarFor(message.campaignId, message.userId).catch(() => null) }
       : message;
     const [chatMessage] = await db.insert(chatMessages).values(values).returning();
     return chatMessage;
