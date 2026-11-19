@@ -1194,6 +1194,24 @@ export const TABLE_TOKEN_WHAT_HELP = "What spending this token does, in a senten
 
 /** A token handed out at the Table. The Table only ever offers these. */
 export function tableTokenTemplateSnapshot(): AgSnapshot { return tableTokenTemplate(); }
+
+export const HERO_TOKEN_NAME = "Hero's Token";
+export const HERO_TOKEN_WHAT = "Can be used before any d20 roll to count it as an automatic critical success!";
+
+/**
+ * One ready-made token, so the Table has something in it the first time it is
+ * opened and the shape of the thing is obvious.
+ *
+ * Does nothing once the campaign has any token of its own — a GM who has
+ * started writing their own doesn't want ours appearing beside them.
+ */
+export async function addExampleTableToken(store: ScopeStore, cs: ChangeSet): Promise<AgNote | null> {
+  const notes = Array.from(store.notes.values());
+  if (notes.some((n) => !n.isTemplate && n.type === "table_token")) return null;
+  const tmpl = notes.find((n) => n.isTemplate && n.type === "table_token");
+  if (!tmpl) return null;
+  return createFrom(store, tmpl, HERO_TOKEN_NAME, { what: HERO_TOKEN_WHAT }, cs);
+}
 function tableTokenTemplate(): AgSnapshot {
   const s = new Sheet();
   s.text("what", "What it does", "").tip("what", TABLE_TOKEN_WHAT_HELP);
@@ -1306,6 +1324,7 @@ export async function applyCAKit(store: ScopeStore, cs: ChangeSet, opts: { examp
   for (const k of ["Weapon", "Ranged Weapon", "Armor", "Consumable", "Rune", "Container", "Currency", "Ammunition", "Miscellaneous", "Training"] as ItemKind[]) await add(k, itemTemplate(k));
   await add("wound", woundTemplate());
   await add("tableToken", tableTokenTemplate());
+  await addExampleTableToken(store, cs);
   await add("trait", traitTemplate());
   await add("ability", abilityTemplate());
   await add("aspect", aspectTemplate());

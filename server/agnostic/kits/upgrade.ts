@@ -32,7 +32,7 @@ import {
   ATTR_BUDGET_FORMULA, SKILL_BUDGET_FORMULA, ATTR_BUDGET_NOTE, SKILL_BUDGET_NOTE,
   // Levels before 26 knew the six ranks of five stars; level 26 moves everything onto the Pillars.
   LEGACY_RANK_NAMES as RANK_NAMES, RANK_FORMULAS, LEGACY_LADDER_LABELS as LADDER_LABELS, legacyRankLadder as rankLadder, trainingTemplateSnapshot,
-  itemTemplate, tableTokenTemplateSnapshot, beastTemplateSnapshot, applyCATrackerSettings, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
+  itemTemplate, tableTokenTemplateSnapshot, addExampleTableToken, beastTemplateSnapshot, applyCATrackerSettings, AMMO_TYPES, AMMO_HELP, RANGED_HELP, LEGACY_AMMO, attackAspectTemplateSnapshot, STATION_HELP, CRAFTING_HELP,
   RANK_HELP, LEGACY_RANK_HELP, HEALTH_HELP, LEGACY_HEALTH_HELP, ENERGY_HELP, LEGACY_ENERGY_HELP, LEGACY_FOCUS_NOTE,
   LEGACY_FOCUS_COSTS_NOTE,
   craftingSkillNodes, craftingTabContent, craftBenchNode, scrollNodes, runeSlotNodes, DURABILITY_HELP, SELL_HELP, ITEM_RANKS, ITEM_RANK_COLORS, RUNE_SOCKETS_HELP, RUNE_SPACE_HELP, LEGACY_RUNE_SPACE_HELP, RUNEABLE_KINDS, TOOL_HELP, TOOL_SKILL_HELP, TOOL_MIN_RUNE_HELP, LEGACY_CRAFTING_HELP, LEGACY_CRAFTING_HELP_2, itemRankOf, CRAFT_SKILL_HELP, HEAL_VALUE, POTENCY_HELP, ITEM_TYPES, ITEM_TYPE_COLORS,
@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 49;
+export const CA_KIT_LEVEL = 50;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -117,6 +117,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 47) await upgrade47(store);
   if (level < 48) await upgrade48(store);
   if (level < 49) await upgrade49(store);
+  if (level < 50) await upgrade50(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2618,6 +2619,13 @@ function relayAttrCanvas(doc: Y.Doc) {
 //
 // The effects a GM has already written are hung on `!healed` rather than
 // retyped, so an old wound heals exactly like a new one.
+// One ready-made token to go with the template, so the Table isn't empty the
+// first time it is opened. Campaigns that already have a token of their own
+// are left alone.
+async function upgrade50(store: ScopeStore) {
+  await store.run(async (cs) => { await addExampleTableToken(store, cs); });
+}
+
 // The Table: a kind of sheet for the favours the GM hands out there. The
 // Table itself only ever offers these, so a campaign without the template has
 // nothing to give.
