@@ -159,7 +159,7 @@ export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKI
 export const signed = (v: number) => (v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0");
 /** The rule in one line, under the heading, so nobody has to open a tooltip. */
 export const ATTR_RULE_LINE = `One each of ${ATTR_ARRAY_TEXT}.`;
-export const SKILL_RULE_LINE = `${SKILL_PICKS.plus.count} skills at +${SKILL_PICKS.plus.value}, one at +${SKILL_PICKS.best.value}, one at ${signed(SKILL_PICKS.worst.value)}.`;
+export const SKILL_RULE_LINE = `${SKILL_PICKS.plus.count} at +${SKILL_PICKS.plus.value}, ${SKILL_PICKS.best.count} at +${SKILL_PICKS.best.value}, ${SKILL_PICKS.worst.count} at ${signed(SKILL_PICKS.worst.value)}.`;
 
 /** How many attributes are sitting on `v` right now (the number as written). */
 const attrsAt = (v: number) => `(${ATTRS.map((a) => `if(base(${a.key}) == ${v}, 1, 0)`).join(" + ")})`;
@@ -177,15 +177,22 @@ const ATTR_LEFT = (() => {
 })();
 export const ATTR_DONE_TEXT = "Every number given out ✓";
 /** One piece of the skill line: the picks of this kind still to make. */
+/**
+ * One entry in the list: always "5 at +2", never "the +4".
+ *
+ * The singular used to read differently from the plural, so a line came out
+ * "6 at +2, the +4, the −2" — which looks like the rule rather than what is
+ * left of it, and says nothing about how many of each. One shape for all
+ * three, and a count even when the count is one.
+ */
 const pickShort = (have: string, want: number, value: number, after: string) => {
-  const label = signed(value), sep = after ? `if(${after}, ", ", " ")` : '" "';
-  const some = want === 1 ? `concat(${sep}, "the ${label}")` : `concat(${sep}, ${want} - ${have}, " at ${label}")`;
-  return `if(${have} < ${want}, ${some}, "")`;
+  const sep = after ? `if(${after}, ", ", "")` : '""';
+  return `if(${have} < ${want}, concat(${sep}, ${want} - ${have}, " at ${signed(value)}"), "")`;
 };
 /** And the other way: picks of this kind past what's allowed. */
 const pickOver = (have: string, want: number, value: number, after: string) => {
-  const sep = after ? `if(${after}, ", ", " ")` : '" "';
-  return `if(${have} > ${want}, concat(${sep}, ${have} - ${want}, " extra at ${signed(value)}"), "")`;
+  const sep = after ? `if(${after}, ", ", "")` : '""';
+  return `if(${have} > ${want}, concat(${sep}, ${have} - ${want}, " at ${signed(value)}"), "")`;
 };
 export const SKILL_DONE_TEXT = "Every pick made ✓";
 
@@ -207,17 +214,19 @@ const SKILL_PARTS = (() => {
   const wrong = each.map(([key, pick]) => `${key} != ${pick.count}`);
   const left = each.map(([key, pick], n) => pickShort(key, pick.count, pick.value, under.slice(0, n).join(" || "))).join(", ");
   const over = each.map(([key, pick], n) => pickOver(key, pick.count, pick.value, spareOf.slice(0, n).join(" || "))).join(", ");
-  // Both ways at once: one skill short of its six +2s and two too many +4s is
-  // two things to fix, and the line says both.
-  const both = each.map(([key, pick], n) => {
-    const after = wrong.slice(0, n).join(" || ");
-    return `if(${key} < ${pick.count}, ${pickShort(key, pick.count, pick.value, after)}, ${pickOver(key, pick.count, pick.value, after)})`;
-  }).join(", ");
+  // Both ways at once, each side said in its own words. One skill short of
+  // its six +2s and two too many +4s is two different problems, and running
+  // them into one unlabelled list left you to work out which was which.
+  const anyUnder = under.join(" || ");
+  const anyOver = spareOf.join(" || ");
+  const both =
+    `if(${anyUnder}, concat(" still to pick ", ${left}), ""), ` +
+    `if(${anyOver}, concat(if(${anyUnder}, "   \u00b7   ", " "), "too many ", ${over}), "")`;
   return { done, spare, left, over, both };
 })();
 export const SKILL_DONE = SKILL_PARTS.done;
 export const SKILL_PICKS_FORMULA =
-  `if(${SKILL_PARTS.done}, "${SKILL_DONE_TEXT}", if(${SKILL_PARTS.spare}, concat("Too many picked:", ${SKILL_PARTS.over}), concat("Still to pick:", ${SKILL_PARTS.left})))`;
+  `if(${SKILL_PARTS.done}, "${SKILL_DONE_TEXT}", if(${SKILL_PARTS.spare}, concat("Too many picked: ", ${SKILL_PARTS.over}), concat("Still to pick: ", ${SKILL_PARTS.left})))`;
 /**
  * Every attribute has a saving throw, given out from an array of its own the
  * same way the attributes are. A character's DC is one of them — Might's unless
@@ -292,7 +301,7 @@ export const CREATION_FORMULA = creationLine([
 ]);
 /** And above the skills table: the picks that are made there. */
 export const CREATION_SKILLS_FORMULA = creationLine([
-  { done: SKILL_DONE, label: "Skill picks", left: SKILL_PARTS.both },
+  { done: SKILL_DONE, label: "Skills", left: SKILL_PARTS.both },
 ]);
 export const CREATION_HELP = [
   "What a new character gives out, once. None of it moves with rank \u2014 items, wounds and traits are what change these afterwards.",
@@ -301,7 +310,7 @@ export const CREATION_HELP = [
   "",
   `## Saving throws\nOne each of ${SAVE_ARRAY_TEXT}, in any order. Your DC is your Might Saving Throw, unless a trait hands it to another one.`,
   "",
-  `## Skills\nPick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${signed(SKILL_PICKS.worst.value)}. The rest stay at 0. A skill's bonus is its attribute plus its pick, and every roll is 1d20 + that bonus.`,
+  `## Skills\n${SKILL_PICKS.plus.count} skills at +${SKILL_PICKS.plus.value}, ${SKILL_PICKS.best.count} at +${SKILL_PICKS.best.value}, ${SKILL_PICKS.worst.count} at ${signed(SKILL_PICKS.worst.value)} \u2014 ${SKILL_PICKS.plus.count + SKILL_PICKS.best.count + SKILL_PICKS.worst.count} picks in all. Every other skill stays at 0. A skill's bonus is its attribute plus its pick, and every roll is 1d20 + that bonus.`,
   "",
   "Double-click a number to change it. The gold line above each section says whatever is still wrong with it, and empties itself when nothing is.",
 ].join("\n");
