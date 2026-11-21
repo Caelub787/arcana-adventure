@@ -152,11 +152,11 @@ export const ATTR_ARRAY_SQUARES = ATTR_ARRAY.reduce((t, v) => t + v * v, 0);
 export const ATTR_ARRAY_TEXT = "+3, +2, +1, 0, −1, −2";
 export const ATTR_MIN = Math.min(...ATTR_ARRAY), ATTR_MAX = Math.max(...ATTR_ARRAY);
 /** The skills a character picks out, and what each pick is worth. */
-export const SKILL_PICKS = { plus: { value: 2, count: 6 }, best: { value: 4, count: 1 }, worst: { value: -2, count: 1 } };
-export const ATTR_ARRAY_NOTE = `Six attributes, one of each: ${ATTR_ARRAY_TEXT}, in any order. They never rise with rank — only items and wounds move them afterwards.`;
-export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills for +${SKILL_PICKS.plus.value}, one for +${SKILL_PICKS.best.value} and one for ${SKILL_PICKS.worst.value}. Everything else stays at 0, and nothing rises with rank.`;
 /** A number the way it's written on a sheet: +3, 0, −2. */
 export const signed = (v: number) => (v > 0 ? `+${v}` : v < 0 ? `−${Math.abs(v)}` : "0");
+export const SKILL_PICKS = { plus: { value: 2, count: 5 }, best: { value: 4, count: 1 }, worst: { value: -2, count: 2 } };
+export const ATTR_ARRAY_NOTE = `Six attributes, one of each: ${ATTR_ARRAY_TEXT}, in any order. They never rise with rank — only items and wounds move them afterwards.`;
+export const SKILL_PICK_NOTE = `Pick ${SKILL_PICKS.plus.count} skills at +${SKILL_PICKS.plus.value}, ${SKILL_PICKS.best.count} at +${SKILL_PICKS.best.value} and ${SKILL_PICKS.worst.count} at ${signed(SKILL_PICKS.worst.value)}. Everything else stays at 0, and nothing rises with rank.`;
 /** The rule in one line, under the heading, so nobody has to open a tooltip. */
 export const ATTR_RULE_LINE = `One each of ${ATTR_ARRAY_TEXT}.`;
 export const SKILL_RULE_LINE = `${SKILL_PICKS.plus.count} at +${SKILL_PICKS.plus.value}, ${SKILL_PICKS.best.count} at +${SKILL_PICKS.best.value}, ${SKILL_PICKS.worst.count} at ${signed(SKILL_PICKS.worst.value)}.`;
@@ -517,8 +517,8 @@ function characterTemplate(beast = false): AgSnapshot {
   const picked = (v: number) => SKILLS.map((k) => `if(base(${k.key}) == ${v}, 1, 0)`).join(" + ");
   const { plus, best, worst } = SKILL_PICKS;
   s.calc("skill_plus", `+${plus.value} skills`, picked(plus.value))
-    .calc("skill_best", `+${best.value} skill`, picked(best.value))
-    .calc("skill_worst", `${signed(worst.value)} skill`, picked(worst.value))
+    .calc("skill_best", `+${best.value} skills`, picked(best.value))
+    .calc("skill_worst", `${signed(worst.value)} skills`, picked(worst.value))
     .calc("skill_picks", "Skill picks", SKILL_PICKS_FORMULA, "text");
   // Crafting and the like are skills too, added on the Skills tab when they're
   // wanted (see EXTRA_SKILLS) — a fresh character carries none of them.

@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 53;
+export const CA_KIT_LEVEL = 54;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -121,6 +121,9 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 51) await upgrade51(store);
   if (level < 52) await upgrade52(store);
   if (level < 53) await upgrade53(store);
+  // 54 is the same rewrite as 53, for the same reason: the counts a sheet
+  // checks itself against are baked into its formulas, and they changed.
+  if (level < 54) await upgrade53(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2622,9 +2625,13 @@ function relayAttrCanvas(doc: Y.Doc) {
 //
 // The effects a GM has already written are hung on `!healed` rather than
 // retyped, so an old wound heals exactly like a new one.
-// The skill picks line said "6 at +2, the +4, the −2", which reads like the
-// rule rather than what is left of it. The wording lives in the formula on
-// each sheet, so every sheet needs the new one.
+// The skill picks line, and the counts it checks against, live in a formula
+// on each sheet — so a change to either has to be written onto every sheet.
+// Run once for the wording (53) and again for the 5 / 1 / 2 split (54).
+//
+// It does not touch anybody's skills. A character built under the old rule
+// keeps every pick they made and the line tells them what no longer adds up,
+// which is a thing only the person playing them can decide.
 async function upgrade53(store: ScopeStore) {
   await store.run(async (cs) => {
     for (const n of Array.from(store.notes.values())) {
