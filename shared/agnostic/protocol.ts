@@ -72,8 +72,10 @@ export type AgOp =
   // The Table. Separate ops rather than settings.update because that one is
   // the GM's alone, and spending a token is the player's to do.
   | { op: "table.fate"; filled: number }
-  | { op: "table.give"; noteId: string; tokenId: string }
-  | { op: "table.use"; noteId: string; tokenId: string }
+  // Tokens belong to the player, so they stay with them across a change of
+  // character rather than being left behind on the old sheet.
+  | { op: "table.give"; userId: string; tokenId: string }
+  | { op: "table.use"; userId: string; tokenId: string }
   | { op: "table.notes"; text: string }
   /** Play this sheet (or, with noteId null, stop playing whatever you were). */
   | { op: "note.assign"; noteId: string | null; userId?: string }

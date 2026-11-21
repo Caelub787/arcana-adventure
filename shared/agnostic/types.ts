@@ -647,7 +647,13 @@ export const TABLE_TOKEN_SLOTS = 3;
 export interface AgTableState {
   /** How many of the three fate slots are filled. */
   fate: number;
-  /** character note id → the token sheets it is holding, at most TABLE_TOKEN_SLOTS. */
+  /**
+   * player id → the token sheets they are holding, at most TABLE_TOKEN_SLOTS.
+   *
+   * Keyed by the player and not by the character: a token is given to a
+   * person, so it stays with them when they put one character down and pick
+   * another up, rather than being stranded on the sheet they left.
+   */
   tokens: Record<string, string[]>;
   /** The GM's standing note to the table — everyone reads it, the GM writes it. */
   notes?: string;

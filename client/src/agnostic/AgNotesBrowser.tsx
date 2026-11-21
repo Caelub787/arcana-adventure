@@ -404,9 +404,20 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
     request({ op: "settings.update", settings: { ...state.settings, tracker: { ...t, pinned: pinned ? t.pinned.filter((x) => x !== note.id) : [...t.pinned, note.id] } } }).catch(fail);
   };
   const isGM = viewer.isGM;
+  // A player picks up and puts down a sheet they can already change, without
+  // waiting on the GM. Who else plays what is still the GM's to say, so they
+  // get the full dialog below and a player gets this one line.
+  const canPlay = !isGM && !note.isTemplate && scope.kind === "campaign" && note.ownerIds.includes(viewer.userId);
+  const playingIt = assignedNoteOf(state.settings, viewer.userId) === note.id;
   type Item = MenuItem;
   const items: Item[] = [
     { icon: <ExternalLink className="h-4 w-4" />, label: "Open", run: () => onOpen(note.id), testId: "open" },
+    ...(canPlay ? [{
+      icon: <UserCheck className="h-4 w-4" />,
+      label: playingIt ? "Stop playing this" : "Play this one",
+      run: () => { void request({ op: "note.assign", noteId: playingIt ? null : note.id }).catch(fail); onClose(); },
+      testId: "play",
+    } as Item] : []),
     ...(isGM && !note.isTemplate && scope.kind === "campaign" ? [
       // Who plays it. The one people reach for most, so it sits near the top.
       { icon: <UserCheck className="h-4 w-4" />, label: "Assign to…", run: () => setPanel("assign"), testId: "assign" } as Item,
@@ -425,7 +436,7 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
   if (panel === "share") return <ShareDialog note={note} onClose={onClose} />;
   if (panel === "assign") return <AssignDialog note={note} onClose={onClose} />;
   if (panel === "rename") return <RenameDialog note={note} onClose={onClose} />;
-  return <MenuAt at={at} title={note.name || "Untitled"} items={items} keep={["share", "rename", "assign"]} testId="ag-row-menu" onClose={onClose} />;
+  return <MenuAt at={at} title={note.name || "Untitled"} items={items} keep={["share", "rename", "assign", "play"]} testId="ag-row-menu" onClose={onClose} />;
 }
 
 /** Who sees a sheet, who owns it — in one place, from the list. */

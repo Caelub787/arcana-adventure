@@ -1018,6 +1018,13 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
       }
       const note = noteOf(store, String(body.noteId));
       if (note.isTemplate) fail("A template isn't something to play");
+      // Taking up a sheet that isn't yours would be wearing a face that isn't
+      // yours, so a player may only pick one they are an owner of — which is
+      // what the Assign dialog calls "can change it", and what the GM hands
+      // out. Not canEditBody: that reads acl.edit, which is "gm" on anything
+      // the GM made, so it would refuse a player their own character. The GM
+      // may put anyone on anything.
+      if (!viewer.isGM && !note.ownerIds.includes(viewer.userId)) fail("You can only play a sheet you can change");
       assigned[userId] = note.id;
       return store.run(async (cs) => {
         await store.putSettings({ ...settingsNow(store), assigned }, cs);
@@ -1046,32 +1053,32 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     case "table.give": {
       requireGM(viewer);
       if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
-      const note = noteOf(store, String(body.noteId));
+      const userId = String(body.userId);
       const token = noteOf(store, String(body.tokenId));
       if (token.type !== "table_token") fail("Only a table token goes in a token slot");
       const table = tableNow(store);
-      const held = table.tokens[note.id] ?? [];
-      if (held.length >= TABLE_TOKEN_SLOTS) fail("That character's token slots are full");
+      const held = table.tokens[userId] ?? [];
+      if (held.length >= TABLE_TOKEN_SLOTS) fail("Their token slots are full");
       return store.run(async (cs) => {
         await store.putSettings({
           ...settingsNow(store),
-          table: { ...table, tokens: { ...table.tokens, [note.id]: [...held, token.id] } },
+          table: { ...table, tokens: { ...table.tokens, [userId]: [...held, token.id] } },
         }, cs);
         return { ok: true as const };
       });
     }
     case "table.use": {
       if (store.scope.kind !== "campaign") fail("The Table belongs to a campaign");
-      const note = playable(store, noteOf(store, String(body.noteId)));
-      if (!viewer.isGM && !note.ownerIds.includes(viewer.userId)) fail("That isn't your character's token");
+      const userId = String(body.userId);
+      if (!viewer.isGM && userId !== viewer.userId) fail("That isn't your token");
       const table = tableNow(store);
-      const held = table.tokens[note.id] ?? [];
+      const held = table.tokens[userId] ?? [];
       const at = held.indexOf(String(body.tokenId));
       if (at < 0) fail("That token has already been used");
       const left = held.filter((_, i) => i !== at);
       return store.run(async (cs) => {
         const tokens = { ...table.tokens };
-        if (left.length) tokens[note.id] = left; else delete tokens[note.id];
+        if (left.length) tokens[userId] = left; else delete tokens[userId];
         await store.putSettings({ ...settingsNow(store), table: { ...table, tokens } }, cs);
         return { ok: true as const };
       });

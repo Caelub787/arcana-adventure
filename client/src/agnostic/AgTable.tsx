@@ -65,7 +65,7 @@ export function AgTable({ onClose }: { onClose: () => void }) {
   const { state, viewer, request, openNote } = useAg();
   const { toast } = useToast();
   const [giving, setGiving] = useState<string | null>(null);
-  const [using, setUsing] = useState<{ noteId: string; tokenId: string } | null>(null);
+  const [using, setUsing] = useState<{ userId: string; tokenId: string } | null>(null);
 
   const table = state.settings?.table ?? { fate: 0, tokens: {}, notes: "" };
   const notes = useMemo(() => Array.from(state.notes.values()) as AgNote[], [state.notes]);
@@ -77,8 +77,8 @@ export function AgTable({ onClose }: { onClose: () => void }) {
 
   const say = (e: any) => toast({ title: "That didn't work", description: e?.message, variant: "destructive" });
   const setFate = (filled: number) => request({ op: "table.fate", filled }).catch(say);
-  const give = (noteId: string, tokenId: string) => request({ op: "table.give", noteId, tokenId }).catch(say);
-  const use = (noteId: string, tokenId: string) => request({ op: "table.use", noteId, tokenId }).catch(say);
+  const give = (userId: string, tokenId: string) => request({ op: "table.give", userId, tokenId }).catch(say);
+  const use = (userId: string, tokenId: string) => request({ op: "table.use", userId, tokenId }).catch(say);
 
   return (
     <AgPanel title={<span className="flex items-center gap-2"><Coins className="h-4 w-4" style={{ color: GILT }} /> Table</span>}
@@ -135,32 +135,34 @@ export function AgTable({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {rows.map(({ member, note: n }) => {
-            if (!n) {
-              return (
-                <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800/70 bg-stone-950/40 px-2 py-1.5" data-testid={`ag-table-row-${member.name}`}>
-                  <span className="flex-1 min-w-0 truncate text-xs font-semibold text-stone-500">{member.name}</span>
-                  <span className="text-[11px] text-stone-600 shrink-0">not playing anything</span>
-                </div>
-              );
-            }
-            const held = table.tokens[n.id] ?? [];
-            const mine = viewer.isGM || n.ownerIds.includes(viewer.userId);
+            // Tokens are the player's, so the slots are there whether or not
+            // they are playing anything — and they come with them when they
+            // change character.
+            const held = table.tokens[member.userId] ?? [];
+            const mine = viewer.isGM || member.userId === viewer.userId;
             return (
-              <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1.5" data-testid={`ag-table-row-${n.name}`}>
-                <button type="button" onClick={() => openNote(n.id)}
-                  className="flex-1 min-w-0 text-left hover:opacity-90">
-                  <span className="block truncate text-xs font-semibold" style={{ color: GILT }}>{n.name}</span>
-                  <span className="block truncate text-[10px] text-stone-500">{member.name}</span>
-                </button>
+              <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1.5" data-testid={`ag-table-row-${n?.name ?? member.name}`}>
+                {n ? (
+                  <button type="button" onClick={() => openNote(n.id)}
+                    className="flex-1 min-w-0 text-left hover:opacity-90">
+                    <span className="block truncate text-xs font-semibold" style={{ color: GILT }}>{n.name}</span>
+                    <span className="block truncate text-[10px] text-stone-500">{member.name}</span>
+                  </button>
+                ) : (
+                  <div className="flex-1 min-w-0">
+                    <span className="block truncate text-xs font-semibold text-stone-300">{member.name}</span>
+                    <span className="block truncate text-[10px] text-stone-600">not playing anything</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5 shrink-0">
                   {Array.from({ length: TABLE_TOKEN_SLOTS }, (_, i) => {
                     const tokenId = held[i];
                     if (!tokenId) {
                       return (
                         <button key={i} type="button" disabled={!viewer.isGM}
-                          onClick={() => setGiving(n.id)}
-                          aria-label={viewer.isGM ? `Give ${n.name} a token` : "Empty token slot"}
-                          data-testid={`ag-table-slot-${n.name}-${i}`}
+                          onClick={() => setGiving(member.userId)}
+                          aria-label={viewer.isGM ? `Give ${n?.name ?? member.name} a token` : "Empty token slot"}
+                          data-testid={`ag-table-slot-${n?.name ?? member.name}-${i}`}
                           className={`h-9 w-9 rounded-lg border border-dashed grid place-items-center ${
                             viewer.isGM
                               ? "border-stone-700 text-stone-600 hover:border-amber-600/70 hover:text-amber-400 cursor-pointer"
@@ -176,8 +178,8 @@ export function AgTable({ onClose }: { onClose: () => void }) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button type="button" disabled={!mine}
-                              onClick={() => setUsing({ noteId: n.id, tokenId })}
-                              data-testid={`ag-table-token-${n.name}-${i}`}
+                              onClick={() => setUsing({ userId: member.userId, tokenId })}
+                              data-testid={`ag-table-token-${n?.name ?? member.name}-${i}`}
                               className={`chrome-frame h-9 w-9 rounded-lg border grid place-items-center overflow-hidden bg-stone-900 ${
                                 mine ? "cursor-pointer hover:border-amber-500" : "cursor-default"
                               }`}
@@ -218,7 +220,7 @@ export function AgTable({ onClose }: { onClose: () => void }) {
         return (
           <UseToken name={token?.name ?? "this token"} what={whatItDoes(state, using.tokenId)}
             onClose={() => setUsing(null)}
-            onUse={() => { const u = using; setUsing(null); void use(u.noteId, u.tokenId); }} />
+            onUse={() => { const u = using; setUsing(null); void use(u.userId, u.tokenId); }} />
         );
       })()}
     </AgPanel>

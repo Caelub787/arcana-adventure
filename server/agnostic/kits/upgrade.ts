@@ -5,7 +5,7 @@
 // anything the GM changed alone wherever it can.
 import * as Y from "yjs";
 import { randomUUID } from "crypto";
-import { noteDocName, regionDocName, defaultCampaignSettings, type AgNote } from "@shared/agnostic/types";
+import { noteDocName, regionDocName, defaultCampaignSettings, TABLE_TOKEN_SLOTS, type AgNote } from "@shared/agnostic/types";
 import type { ScopeStore, ChangeSet } from "../store";
 import * as repo from "../repo";
 import * as docs from "../docs";
@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 51;
+export const CA_KIT_LEVEL = 52;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -119,6 +119,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 49) await upgrade49(store);
   if (level < 50) await upgrade50(store);
   if (level < 51) await upgrade51(store);
+  if (level < 52) await upgrade52(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2620,6 +2621,31 @@ function relayAttrCanvas(doc: Y.Doc) {
 //
 // The effects a GM has already written are hung on `!healed` rather than
 // retyped, so an old wound heals exactly like a new one.
+// Tokens were handed to a character; they are handed to a player now, so
+// they follow whoever is playing rather than being stranded on a sheet that
+// person has since put down. Each sheet's tokens go to whoever is playing it;
+// a sheet nobody plays loses them, since there is no one left to hold them.
+async function upgrade52(store: ScopeStore) {
+  if (store.scope.kind !== "campaign") return;
+  const current = store.settings;
+  const held = current?.table?.tokens;
+  if (!current || !held || !Object.keys(held).length) return;
+  const assigned = current.assigned ?? {};
+  // Anything already keyed by a player is left exactly as it is.
+  const players = new Set(Object.keys(assigned));
+  const moved: Record<string, string[]> = {};
+  for (const [key, ids] of Object.entries(held)) {
+    if (players.has(key)) { moved[key] = ids; continue; }
+    for (const [userId, noteId] of Object.entries(assigned)) {
+      if (noteId !== key) continue;
+      moved[userId] = [...(moved[userId] ?? []), ...ids].slice(0, TABLE_TOKEN_SLOTS);
+    }
+  }
+  await store.run(async (cs) => {
+    await store.putSettings({ ...current, table: { ...current.table!, tokens: moved } }, cs);
+  });
+}
+
 // Who is playing what used to be read straight off who could edit what, so
 // everything carried over cleanly needs that written down once: each player
 // gets the character sheet they already had, the first by name if they had
