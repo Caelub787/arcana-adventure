@@ -11332,7 +11332,12 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setTableOpen((v) => !v)}
+                    // Let go of the button as well as pressing it. On a
+                    // touch screen the tap leaves it focused, and a focused
+                    // button keeps its tooltip up — which then floats over
+                    // the panel that just opened, reading "Table" in the
+                    // middle of the fate slots.
+                    onClick={(e) => { e.currentTarget.blur(); setTableOpen((v) => !v); }}
                     className={`chrome-frame chrome-btn h-10 w-10 rounded-lg bg-stone-900/70 hover:bg-stone-800/90 border backdrop-blur-sm shadow-lg pointer-events-auto ${
                       tableOpen ? 'border-amber-500 text-amber-400' : 'border-stone-600/60 hover:border-amber-500/60 text-white/80 hover:text-white'
                     }`}

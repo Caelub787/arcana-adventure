@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Flame, Plus, X } from "lucide-react";
 import { TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS, TABLE_NOTES_MAX } from "@shared/agnostic/types";
 import type { AgNote } from "@shared/agnostic/types";
+import type { AgMember } from "@shared/agnostic/protocol";
 import { AgPanel, AgSelector } from "./float";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAg, fieldsOf } from "./hooks";
@@ -32,6 +33,29 @@ function Heading({ icon, children, hint }: { icon: React.ReactNode; children: Re
   );
 }
 
+/**
+ * A row per player, holding the character they play.
+ *
+ * Not "every sheet with an owner": a player owns their traits, their items,
+ * their wounds and everything else hanging off their sheet, so that listed
+ * the lot — a trait called Sandwich Addiction sat there asking for tokens.
+ * It is the players we want, and for each the character sheet they own.
+ * Someone with two gets the first by name; someone with none still gets a
+ * row, so it is plain why they have no slots rather than them quietly going
+ * missing. The GM is not a row: the tokens are for the people they are
+ * handed to.
+ */
+export function tableRows(notes: AgNote[], members: AgMember[]): { member: AgMember; note: AgNote | null }[] {
+  const chars = notes.filter((n) => !n.isTemplate && n.type === "character");
+  return members
+    .filter((m) => m.role !== "gm")
+    .map((m) => ({
+      member: m,
+      note: chars.filter((n) => n.ownerIds.includes(m.userId)).sort((a, b) => a.name.localeCompare(b.name))[0] ?? null,
+    }))
+    .sort((a, b) => (a.note?.name ?? a.member.name).localeCompare(b.note?.name ?? b.member.name));
+}
+
 /** What a token does, as its sheet says. Shown when you hover it. */
 function whatItDoes(state: any, tokenId: string): string {
   const f = fieldsOf(state, tokenId).find((x: any) => x.key === "what");
@@ -47,12 +71,7 @@ export function AgTable({ onClose }: { onClose: () => void }) {
 
   const table = state.settings?.table ?? { fate: 0, tokens: {}, notes: "" };
   const notes = useMemo(() => Array.from(state.notes.values()) as AgNote[], [state.notes]);
-  // A row each for the sheets somebody plays. A sheet nobody owns is the GM's
-  // own business and doesn't want token slots at the table.
-  const played = useMemo(
-    () => notes.filter((n) => !n.isTemplate && n.ownerIds.length > 0).sort((a, b) => a.name.localeCompare(b.name)),
-    [notes],
-  );
+  const rows = useMemo(() => tableRows(notes, state.members), [notes, state.members]);
   const tokenSheets = useMemo(
     () => notes.filter((n) => !n.isTemplate && n.type === "table_token").sort((a, b) => a.name.localeCompare(b.name)),
     [notes],
@@ -112,20 +131,28 @@ export function AgTable({ onClose }: { onClose: () => void }) {
         <section className="space-y-1.5">
           <Heading icon={<Coins className="h-3.5 w-3.5" />}
             hint={viewer.isGM ? "press an empty slot to hand one out" : "press one to spend it"}>Tokens</Heading>
-          {!played.length && (
+          {!rows.length && (
             <div className="rounded border border-stone-800 bg-stone-950/60 px-2 py-2 text-[11px] text-stone-500">
-              No sheets are assigned to anyone yet.
+              Nobody has joined the campaign yet.
             </div>
           )}
-          {played.map((n) => {
+          {rows.map(({ member, note: n }) => {
+            if (!n) {
+              return (
+                <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800/70 bg-stone-950/40 px-2 py-1.5" data-testid={`ag-table-row-${member.name}`}>
+                  <span className="flex-1 min-w-0 truncate text-xs font-semibold text-stone-500">{member.name}</span>
+                  <span className="text-[11px] text-stone-600 shrink-0">no character yet</span>
+                </div>
+              );
+            }
             const held = table.tokens[n.id] ?? [];
             const mine = viewer.isGM || n.ownerIds.includes(viewer.userId);
             return (
-              <div key={n.id} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1.5" data-testid={`ag-table-row-${n.name}`}>
+              <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800 bg-stone-950/60 px-2 py-1.5" data-testid={`ag-table-row-${n.name}`}>
                 <button type="button" onClick={() => openNote(n.id)}
-                  className="flex-1 min-w-0 truncate text-left text-xs font-semibold hover:text-amber-300"
-                  style={{ color: GILT }}>
-                  {n.name}
+                  className="flex-1 min-w-0 text-left hover:opacity-90">
+                  <span className="block truncate text-xs font-semibold" style={{ color: GILT }}>{n.name}</span>
+                  <span className="block truncate text-[10px] text-stone-500">{member.name}</span>
                 </button>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {Array.from({ length: TABLE_TOKEN_SLOTS }, (_, i) => {
