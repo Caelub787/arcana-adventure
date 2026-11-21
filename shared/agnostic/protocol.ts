@@ -75,6 +75,8 @@ export type AgOp =
   | { op: "table.give"; noteId: string; tokenId: string }
   | { op: "table.use"; noteId: string; tokenId: string }
   | { op: "table.notes"; text: string }
+  /** Play this sheet (or, with noteId null, stop playing whatever you were). */
+  | { op: "note.assign"; noteId: string | null; userId?: string }
   | { op: "component.upsert"; component: { id?: string; name: string; params: string[]; layout: AgLayout } }
   | { op: "component.delete"; id: string }
   | { op: "template.saveVersion"; id: string; label?: string | null }

@@ -5,7 +5,7 @@
 // anything the GM changed alone wherever it can.
 import * as Y from "yjs";
 import { randomUUID } from "crypto";
-import { noteDocName, regionDocName, type AgNote } from "@shared/agnostic/types";
+import { noteDocName, regionDocName, defaultCampaignSettings, type AgNote } from "@shared/agnostic/types";
 import type { ScopeStore, ChangeSet } from "../store";
 import * as repo from "../repo";
 import * as docs from "../docs";
@@ -52,7 +52,7 @@ import { SELL_VALUE_FORMULA } from "@shared/agnostic/crafting";
 import { defaultScaleStep } from "@shared/agnostic/types";
 
 /** Bump when adding a step below. */
-export const CA_KIT_LEVEL = 50;
+export const CA_KIT_LEVEL = 51;
 const marker = (key: string) => `kit-upgrade:${key}`;
 
 /** A scope that was just filled with the current kit needs no upgrades. */
@@ -118,6 +118,7 @@ export async function upgradeCAKit(store: ScopeStore) {
   if (level < 48) await upgrade48(store);
   if (level < 49) await upgrade49(store);
   if (level < 50) await upgrade50(store);
+  if (level < 51) await upgrade51(store);
   await repo.setSeedLevel(marker(store.key), CA_KIT_LEVEL);
   console.log(`[agnostic] CA kit: ${store.key} brought up to level ${CA_KIT_LEVEL}`);
 }
@@ -2619,6 +2620,25 @@ function relayAttrCanvas(doc: Y.Doc) {
 //
 // The effects a GM has already written are hung on `!healed` rather than
 // retyped, so an old wound heals exactly like a new one.
+// Who is playing what used to be read straight off who could edit what, so
+// everything carried over cleanly needs that written down once: each player
+// gets the character sheet they already had, the first by name if they had
+// more than one. Without this a campaign would come back with nobody playing
+// anything and every speech bubble would stop.
+async function upgrade51(store: ScopeStore) {
+  if (store.scope.kind !== "campaign") return;
+  const current = store.settings;
+  if (current?.assigned) return;
+  const assigned: Record<string, string> = {};
+  const chars = Array.from(store.notes.values())
+    .filter((n) => !n.isTemplate && n.type === "character")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const n of chars) for (const u of n.ownerIds) if (!assigned[u]) assigned[u] = n.id;
+  await store.run(async (cs) => {
+    await store.putSettings({ ...(current ?? defaultCampaignSettings()), assigned }, cs);
+  });
+}
+
 // One ready-made token to go with the template, so the Table isn't empty the
 // first time it is opened. Campaigns that already have a token of their own
 // are left alone.

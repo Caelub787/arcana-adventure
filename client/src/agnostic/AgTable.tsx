@@ -10,7 +10,8 @@
 // changes — nobody reloads anything to see a token appear or a slot fill.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Flame, Plus, X } from "lucide-react";
-import { TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS, TABLE_NOTES_MAX } from "@shared/agnostic/types";
+import { TABLE_FATE_SLOTS, TABLE_TOKEN_SLOTS, TABLE_NOTES_MAX, assignedNoteOf } from "@shared/agnostic/types";
+import type { AgCampaignSettings } from "@shared/agnostic/types";
 import type { AgNote } from "@shared/agnostic/types";
 import type { AgMember } from "@shared/agnostic/protocol";
 import { AgPanel, AgSelector } from "./float";
@@ -34,25 +35,22 @@ function Heading({ icon, children, hint }: { icon: React.ReactNode; children: Re
 }
 
 /**
- * A row per player, holding the character they play.
+ * A row per player, holding the sheet that player is playing.
  *
- * Not "every sheet with an owner": a player owns their traits, their items,
- * their wounds and everything else hanging off their sheet, so that listed
- * the lot — a trait called Sandwich Addiction sat there asking for tokens.
- * It is the players we want, and for each the character sheet they own.
- * Someone with two gets the first by name; someone with none still gets a
- * row, so it is plain why they have no slots rather than them quietly going
- * missing. The GM is not a row: the tokens are for the people they are
+ * It read this off edit access once, which listed everything a player owned
+ * — their traits, their items, their wounds — and a trait called Sandwich
+ * Addiction sat there asking for tokens. Playing a sheet is its own thing
+ * now, and one at a time, so there is exactly one answer per player.
+ *
+ * Someone playing nothing still gets a row saying so, rather than quietly
+ * going missing. The GM is not a row: the tokens are for the people they are
  * handed to.
  */
-export function tableRows(notes: AgNote[], members: AgMember[]): { member: AgMember; note: AgNote | null }[] {
-  const chars = notes.filter((n) => !n.isTemplate && n.type === "character");
+export function tableRows(notes: AgNote[], members: AgMember[], settings?: AgCampaignSettings | null): { member: AgMember; note: AgNote | null }[] {
+  const by = new Map(notes.filter((n) => !n.isTemplate).map((n) => [n.id, n]));
   return members
     .filter((m) => m.role !== "gm")
-    .map((m) => ({
-      member: m,
-      note: chars.filter((n) => n.ownerIds.includes(m.userId)).sort((a, b) => a.name.localeCompare(b.name))[0] ?? null,
-    }))
+    .map((m) => ({ member: m, note: by.get(assignedNoteOf(settings, m.userId) ?? "") ?? null }))
     .sort((a, b) => (a.note?.name ?? a.member.name).localeCompare(b.note?.name ?? b.member.name));
 }
 
@@ -71,7 +69,7 @@ export function AgTable({ onClose }: { onClose: () => void }) {
 
   const table = state.settings?.table ?? { fate: 0, tokens: {}, notes: "" };
   const notes = useMemo(() => Array.from(state.notes.values()) as AgNote[], [state.notes]);
-  const rows = useMemo(() => tableRows(notes, state.members), [notes, state.members]);
+  const rows = useMemo(() => tableRows(notes, state.members, state.settings), [notes, state.members, state.settings]);
   const tokenSheets = useMemo(
     () => notes.filter((n) => !n.isTemplate && n.type === "table_token").sort((a, b) => a.name.localeCompare(b.name)),
     [notes],
@@ -141,7 +139,7 @@ export function AgTable({ onClose }: { onClose: () => void }) {
               return (
                 <div key={member.userId} className="flex items-center gap-2 rounded border border-stone-800/70 bg-stone-950/40 px-2 py-1.5" data-testid={`ag-table-row-${member.name}`}>
                   <span className="flex-1 min-w-0 truncate text-xs font-semibold text-stone-500">{member.name}</span>
-                  <span className="text-[11px] text-stone-600 shrink-0">no character yet</span>
+                  <span className="text-[11px] text-stone-600 shrink-0">not playing anything</span>
                 </div>
               );
             }

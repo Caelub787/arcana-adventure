@@ -311,6 +311,7 @@ function cleanSettings(raw: unknown): AgCampaignSettings {
       ? Array.from(new Set<string>(s.folders.filter((x: unknown) => typeof x === "string").map((x: string) => normalizeFolder(x)).filter(Boolean))).slice(0, 300)
       : [],
     table: cleanTable(s.table),
+    assigned: strMap(s.assigned),
   };
 }
 
@@ -994,6 +995,39 @@ export async function runOp(ctx: OpContext, body: AgOp): Promise<AgOpResult> {
     }
 
     // ------------------------------------------------------------------ settings & components
+    /**
+     * Who is playing this sheet.
+     *
+     * One at a time: the map is keyed by player, so assigning someone takes
+     * them off whatever they were on. Playing a sheet also means being able
+     * to change it, so it grants edit access — but giving it back does not
+     * take that away again, because edit access is its own thing and the GM
+     * may well have meant them to keep it.
+     */
+    case "note.assign": {
+      if (store.scope.kind !== "campaign") fail("Playing a sheet belongs to a campaign");
+      const userId = String(body.userId ?? viewer.userId);
+      if (!viewer.isGM && userId !== viewer.userId) fail("Only the GM says who plays what");
+      const assigned = { ...(settingsNow(store).assigned ?? {}) };
+      if (!body.noteId) {
+        delete assigned[userId];
+        return store.run(async (cs) => {
+          await store.putSettings({ ...settingsNow(store), assigned }, cs);
+          return { ok: true as const };
+        });
+      }
+      const note = noteOf(store, String(body.noteId));
+      if (note.isTemplate) fail("A template isn't something to play");
+      assigned[userId] = note.id;
+      return store.run(async (cs) => {
+        await store.putSettings({ ...settingsNow(store), assigned }, cs);
+        if (!note.ownerIds.includes(userId)) {
+          await store.putNote({ ...note, ownerIds: [...note.ownerIds, userId] }, cs);
+        }
+        return { ok: true as const };
+      });
+    }
+
     // ---- The Table -----------------------------------------------------
     // Fate is the GM's count of how close the party is to something landing
     // on them, so only they move it.

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { AclEditor } from "./pickers";
+import { assignedNoteOf } from "@shared/agnostic/types";
 import type { AgAcl } from "@shared/agnostic/types";
 import type { AgNote, AgScope } from "@shared/agnostic/types";
 import { AG_BUILTIN_TYPES, agTypeLabel, agLibraryScope } from "@shared/agnostic/types";
@@ -429,12 +430,18 @@ function NoteMenu({ note, opts, at, onOpen, onClose }: { note: AgNote; opts: Bro
 
 /** Who sees a sheet, who owns it — in one place, from the list. */
 /**
- * Who plays this sheet.
+ * Who plays this sheet, and who may change it.
  *
- * Whoever it is assigned to moves its token on the map, changes its values,
- * presses its buttons and carries its things — and what they type in chat
- * shows over its head. A GM takes one the same way: running a character for a
- * scene is the same job as playing one.
+ * Two different things, and they used to be one. Playing a sheet is taking
+ * its name and its face: its token is yours to move, and what you type shows
+ * over its head. You do that with one sheet at a time, because you can only
+ * be one person at the table — picking a second takes you off the first.
+ *
+ * Being able to change a sheet is not that. A GM runs three NPCs, a player
+ * keeps a spare: edit access goes to as many as you like. Picking somebody to
+ * play a sheet gives them edit access too, since you can hardly play what you
+ * cannot touch — but taking them off it leaves that alone, in case it was
+ * meant.
  */
 function AssignDialog({ note: initial, onClose }: { note: AgNote; onClose: () => void }) {
   const { state, request, viewer } = useAg();
@@ -443,7 +450,16 @@ function AssignDialog({ note: initial, onClose }: { note: AgNote; onClose: () =>
   const fail = (e: any) => toast({ title: "Couldn't save", description: e?.message, variant: "destructive" });
   const set = (ownerIds: string[]) => request({ op: "note.update", id: note.id, patch: { ownerIds } }).catch(fail);
   const toggle = (id: string) => set(note.ownerIds.includes(id) ? note.ownerIds.filter((x) => x !== id) : [...note.ownerIds, id]);
-  const mine = note.ownerIds.includes(viewer.userId);
+  // Playing it. One sheet each, so this moves them rather than adding.
+  const assign = (userId: string, on: boolean) =>
+    request({ op: "note.assign", noteId: on ? note.id : null, userId }).catch(fail);
+  const playing = (userId: string) => assignedNoteOf(state.settings, userId) === note.id;
+  const mine = playing(viewer.userId);
+  /** The sheet this person is on now, when it isn't this one. */
+  const alreadyOn = (userId: string) => {
+    const id = assignedNoteOf(state.settings, userId);
+    return id && id !== note.id ? state.notes.get(id)?.name ?? null : null;
+  };
   // Assigned, but hidden from everyone: they'd never find it.
   const hidden = note.acl.view === "gm" && note.ownerIds.some((id) => id !== viewer.userId);
   return (
@@ -451,25 +467,45 @@ function AssignDialog({ note: initial, onClose }: { note: AgNote; onClose: () =>
       onClose={onClose} width={420} height={430} testId="ag-assign"
       footer={<button type="button" onClick={onClose} className="h-9 px-4 rounded bg-amber-600 hover:bg-amber-500 text-white text-sm" data-testid="ag-assign-done">Done</button>}>
       <div className="space-y-3 text-stone-200">
-        <button type="button" onClick={() => toggle(viewer.userId)}
+        <button type="button" onClick={() => assign(viewer.userId, !mine)}
           className={`w-full h-10 rounded-md border text-sm ${mine ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 hover:border-amber-600"}`}
-          data-testid="ag-assign-me">{mine ? "It's mine — hand it back" : "Assign it to me"}</button>
+          data-testid="ag-assign-me">{mine ? "You're playing this — stop" : "Play this one"}</button>
+
         <div className="space-y-1.5">
-          <div className="text-[11px] text-stone-400">Everyone at the table</div>
+          <div className="text-[11px] uppercase tracking-wide text-amber-400/90">Playing it</div>
           <div className="flex flex-wrap gap-1.5">
             {state.members.map((m) => {
-              const on = note.ownerIds.includes(m.userId);
+              const on = playing(m.userId);
+              const other = alreadyOn(m.userId);
               return (
-                <button key={m.userId} type="button" onClick={() => toggle(m.userId)}
+                <button key={m.userId} type="button" onClick={() => assign(m.userId, !on)}
+                  title={other ? `${m.name} is playing ${other} — this takes them off it` : undefined}
                   className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-amber-500 bg-amber-500/15 text-amber-200" : "border-stone-700 text-stone-300"}`}
                   data-testid={`ag-assign-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>
               );
             })}
             {!state.members.length && <span className="text-xs text-stone-500">Nobody has joined yet.</span>}
           </div>
+          <div className="text-[11px] text-stone-500 leading-snug">
+            One sheet each: picking someone takes them off whatever they were playing. They move its token, press its buttons and carry its things, and what they say shows over its head.
+          </div>
         </div>
-        <div className="text-[11px] text-stone-500 leading-snug">
-          Whoever it's assigned to moves its token, changes its values, presses its buttons and carries its things, and what they say in chat shows over its head on the map.
+
+        <div className="space-y-1.5">
+          <div className="text-[11px] uppercase tracking-wide text-amber-400/90">Can change it</div>
+          <div className="flex flex-wrap gap-1.5">
+            {state.members.map((m) => {
+              const on = note.ownerIds.includes(m.userId);
+              return (
+                <button key={m.userId} type="button" onClick={() => toggle(m.userId)}
+                  className={`h-8 px-2.5 rounded-full border text-xs ${on ? "border-sky-500 bg-sky-500/15 text-sky-200" : "border-stone-700 text-stone-300"}`}
+                  data-testid={`ag-edit-${m.name}`}>{m.name}{m.role === "gm" ? " (GM)" : ""}</button>
+              );
+            })}
+          </div>
+          <div className="text-[11px] text-stone-500 leading-snug">
+            As many sheets as you like. Whoever plays it gets this anyway.
+          </div>
         </div>
         {hidden && (
           <div className="rounded-md border border-amber-800/60 bg-amber-950/30 p-2 space-y-1.5" data-testid="ag-assign-hidden">

@@ -679,6 +679,30 @@ export interface AgCampaignSettings {
   folders?: string[];
   /** The Table: fate slots and the tokens each character is holding. */
   table?: AgTableState;
+  /**
+   * Who is playing what: user id → the one sheet they are playing.
+   *
+   * Being able to edit a sheet and playing it are two different things. Edit
+   * access is `ownerIds` on the sheet and you can have it on as many as you
+   * like — a GM running three NPCs, a player keeping a spare. Playing one is
+   * this, and it is one at a time, because it is whose face and whose voice
+   * you are using at the table. A map keyed by player can only hold one each,
+   * so the rule is the shape rather than something to enforce.
+   *
+   * Two players can be assigned the same sheet; that is a shared character,
+   * and fine. It is the other way round that cannot happen.
+   */
+  assigned?: Record<string, string>;
+}
+
+/** The one sheet this player is playing, if any. */
+export function assignedNoteOf(settings: AgCampaignSettings | null | undefined, userId: string): string | null {
+  return settings?.assigned?.[userId] ?? null;
+}
+/** Everyone playing this sheet — usually one, occasionally a shared character. */
+export function playersOfNote(settings: AgCampaignSettings | null | undefined, noteId: string): string[] {
+  const a = settings?.assigned ?? {};
+  return Object.keys(a).filter((u) => a[u] === noteId);
 }
 
 export const DEFAULT_TRACKER_CARD: AgTrackerCard = {

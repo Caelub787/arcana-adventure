@@ -5,6 +5,7 @@ import React from "react";
 import type { AgTokenBar, AgNote } from "@shared/agnostic/types";
 import { Portrait } from "./widgets";
 import { canViewNote } from "@shared/agnostic/acl";
+import { playersOfNote } from "@shared/agnostic/types";
 import { useAgMaybe, resolveRef } from "./hooks";
 import { ResourceBar } from "./widgets";
 import { onSpeech, speechOf, speechOpacity, SPEECH_FADE_MS } from "./speech";
@@ -56,11 +57,15 @@ export function AgTokenOverlay({ noteId, tokenSize, showName = true, showBars = 
  * each of their sheets, if they have more than one on the table.
  */
 function SpeechBubble({ note, tokenSize }: { note: AgNote; tokenSize: number }) {
+  const ag = useAgMaybe();
   const [, bump] = React.useState(0);
   React.useEffect(() => onSpeech(() => bump((n) => n + 1)), []);
   // The GM's lines belong to the table, not to a token, even when the GM owns
   // the sheet: those go across the top of the screen instead (GmSpeech).
-  const owner = note.ownerIds.find((id) => { const s = speechOf(id); return !!s && !s.gm; });
+  // Whoever is playing this sheet — not whoever can edit it. A player can be
+  // able to change several sheets; their line belongs over the one they are
+  // actually being.
+  const owner = playersOfNote(ag?.state.settings, note.id).find((id: string) => { const s = speechOf(id); return !!s && !s.gm; });
   const said = speechOf(owner);
   React.useEffect(() => {
     if (!said) return;
